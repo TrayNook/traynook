@@ -1,6 +1,8 @@
 # TrayNook — design workspace
 
-This repository currently contains research and product-design documents only. No application code has been written yet.
+This repository contains the research and product-design workspace plus a
+disposable Gate A inventory/identity spike. No production application code has
+been written yet.
 
 The selected product name is **TrayNook**, pending final trademark and release-surface clearance. The intended first public version is **1.0.0**.
 
@@ -24,6 +26,15 @@ Copyright © 2026 Suren Khorenyan. Released under the [MIT License](LICENSE).
 - [Naming research](docs/NAMING.md) — shortlist and preliminary collision checks
 - [Domain language](CONTEXT.md) — precise terms used throughout the project
 - [Translation guide](TRANSLATING.md) — contribution workflow and RTL review expectations
+
+## Prototype status
+
+Phase 1 is implemented in
+[`Prototypes/InventoryIdentitySpike`](Prototypes/InventoryIdentitySpike). It uses
+public Accessibility APIs to inventory Source Items, conservatively assess
+identity and manageability, watch for changes, and measure metadata scan cost.
+The spike must still be run through the Gate A live compatibility matrix before
+Gate A is accepted.
 
 ## Current conclusion
 
