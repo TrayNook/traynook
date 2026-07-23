@@ -32,6 +32,37 @@ struct AdditionChangeEvaluatorTests {
     )
   }
 
+  @Test("Returns every matching addition so mutation cannot guess")
+  func returnsMultipleMatchingAdditions() {
+    let changes = [
+      SnapshotChange(
+        kind: .created,
+        identity: ProvisionalIdentityKey(
+          bundleIdentifier: "example.target",
+          discriminatorCandidate: "first"
+        ),
+        previousRuntimeID: nil,
+        currentRuntimeID: "100:0"
+      ),
+      SnapshotChange(
+        kind: .created,
+        identity: ProvisionalIdentityKey(
+          bundleIdentifier: "example.target",
+          discriminatorCandidate: "second"
+        ),
+        previousRuntimeID: nil,
+        currentRuntimeID: "100:1"
+      ),
+    ]
+
+    #expect(
+      evaluator.relevantAdditions(
+        in: changes,
+        targetBundleIdentifier: "example.target"
+      ).count == 2
+    )
+  }
+
   @Test("Treats only an increasing Ambiguous group count as an addition")
   func matchesAmbiguousCountIncrease() {
     let group = RuntimeInventoryGroupKey(

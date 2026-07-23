@@ -78,7 +78,17 @@ public struct AdditionChangeEvaluator: Sendable {
     in changes: [SnapshotChange],
     targetBundleIdentifier: String?
   ) -> SnapshotChange? {
-    changes.first { change in
+    relevantAdditions(
+      in: changes,
+      targetBundleIdentifier: targetBundleIdentifier
+    ).first
+  }
+
+  public func relevantAdditions(
+    in changes: [SnapshotChange],
+    targetBundleIdentifier: String?
+  ) -> [SnapshotChange] {
+    changes.filter { change in
       switch change.kind {
       case .created:
         guard

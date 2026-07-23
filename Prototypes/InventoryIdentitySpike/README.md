@@ -74,6 +74,34 @@ The executable does not yet move foreign Source Items or claim that the boundary
 works across the compatibility matrix. Forced termination removes the
 process-owned items, but macOS may retain user-authored status-item ordering.
 
+Pass a target bundle to enable a one-shot dry run:
+
+```sh
+swift run traynook-boundary-spike --target-bundle-id <target-bundle-id>
+```
+
+After positioning and expanding the boundary, choose **Arm Safe-Default Dry
+Run**. The spike reports whether a newly added target item is uniquely actionable
+but posts no input.
+
+The live bridge additionally requires `--execute-correction` and the explicit
+**Arm One Live Safe-Default Correction** menu action. On a matching addition it
+collapses the boundary first, rebinds the unique identity from a fresh scan,
+requires two stable visible same-display observations, rejects active physical
+mouse/modifier input, then posts one public Quartz Command-drag with only the
+Command modifier. It requires two stable reconciled observations both before and
+after re-expanding. The arm expires after 60 seconds and can be cancelled from
+the menu; system sleep or display reconfiguration cancels it. Any permission,
+identity, process, display, geometry, collateral-order, input, or timeout
+uncertainty leaves the boundary collapsed and reports only a non-identifying
+failure code.
+
+Do not run live correction against an Apple/system item, an Ambiguous or
+Protected Item, or an item needed for recovery. Live validation requires an
+explicitly chosen disposable third-party item, Accessibility approval, free
+menu-bar space, no pointer input during the short drag, and a known manual
+Command-drag recovery path.
+
 ## Verify
 
 ```sh

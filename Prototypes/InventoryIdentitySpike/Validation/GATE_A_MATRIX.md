@@ -30,6 +30,7 @@ Run every row on every environment above.
 | Source-app quit/relaunch preserves provisional identity | Not run | Not run | Not run |
 | Width/title changes do not create a new identity | Not run | Not run | Not run |
 | Already-running app creates a Source Item | Not run | Not run | Not run |
+| New item on either boundary side returns to safe default | Not run | Not run | Not run |
 | Obvious non-candidates are identified without mutation | Not run | Not run | Not run |
 | Accessibility denial and regrant fail safely | Not run | Not run | Not run |
 
@@ -63,5 +64,6 @@ do not currently define numeric acceptance limits.
   reviewed result.
 - “Protected” remains provisional until later non-mutating probes and the
   placement gate establish that movement and activation are unavailable.
-- Safe-default correction on either side of a boundary is tracked with the
-  boundary/movement bridge because the current scanner never mutates layout.
+- Safe-default correction has a dry-run-by-default boundary/movement bridge, but
+  it remains unaccepted until the live matrix verifies both insertion sides,
+  restoration, collateral order, and fail-visible behavior.
