@@ -1,6 +1,6 @@
 # Gate A live compatibility matrix
 
-Status: not run.
+Status: partially run.
 
 Use this file to record sanitized conclusions only. Do not paste raw `scan`,
 `watch`, or Accessibility output. In particular, never record Source Item titles,
@@ -12,7 +12,7 @@ content-bearing strings, or a source-application inventory.
 | macOS | Exact version/build | Architecture | Hardware/display facts | Result |
 | --- | --- | --- | --- | --- |
 | Sonoma 14 | Not run | Not run | Intel, no notch | Not run |
-| Sequoia 15 | Not run | Not run | Apple silicon, notch | Not run |
+| Sequoia 15 | 15.7.1 (24G231) | arm64 | Apple silicon; display class pending | Partial — permission and initial enumeration exercised at `3bf230d` |
 | Tahoe 26 | Not run | Not run | Apple silicon | Not run |
 
 Record only facts needed to interpret compatibility, such as architecture,
@@ -25,14 +25,14 @@ Run every row on every environment above.
 
 | Scenario | Sonoma 14 | Sequoia 15 | Tahoe 26 |
 | --- | --- | --- | --- |
-| Enumerate representative manageable Source Items | Not run | Not run | Not run |
+| Enumerate representative manageable Source Items | Not run | Partial — 19 Source Items enumerated in 41,490.66 ms; classification review pending (`3bf230d`) | Not run |
 | Two Source Items from one app remain distinguishable | Not run | Not run | Not run |
 | Source-app quit/relaunch preserves provisional identity | Not run | Not run | Not run |
 | Width/title changes do not create a new identity | Not run | Not run | Not run |
 | Already-running app creates a Source Item | Not run | Not run | Not run |
 | New item on either boundary side returns to safe default | Not run | Not run | Not run |
 | Obvious non-candidates are identified without mutation | Not run | Not run | Not run |
-| Accessibility denial and regrant fail safely | Not run | Not run | Not run |
+| Accessibility denial and regrant fail safely | Not run | Pass — denial returned an empty non-mutating result; regrant resumed enumeration (`3bf230d`) | Not run |
 
 For the addition row, run:
 
@@ -56,8 +56,8 @@ do not currently define numeric acceptance limits.
 | Metric | Sonoma 14 | Sequoia 15 | Tahoe 26 | Accepted budget |
 | --- | --- | --- | --- | --- |
 | Marker-to-detection upper bound | Not run | Not run | Not run | Pending evidence |
-| Average metadata scan | Not run | Not run | Not run | Pending evidence |
-| Maximum metadata scan | Not run | Not run | Not run | Pending evidence |
+| Average metadata scan | Not run | 41,490.66 ms (one pre-timeout scan at `3bf230d`) | Not run | Pending evidence |
+| Maximum metadata scan | Not run | 41,490.66 ms (one pre-timeout scan at `3bf230d`) | Not run | Pending evidence |
 
 ## Conclusions
 
@@ -68,3 +68,6 @@ do not currently define numeric acceptance limits.
 - Safe-default correction has a dry-run-by-default boundary/movement bridge, but
   it remains unaccepted until the live matrix verifies both insertion sides,
   restoration, collateral order, and fail-visible behavior.
+- The first granted Sequoia scan proved public Accessibility enumeration but
+  exposed an unacceptable 41.49-second synchronous scan. Further live rows are
+  blocked until bounded Accessibility messaging is rebuilt and remeasured.
