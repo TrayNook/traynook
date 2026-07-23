@@ -26,6 +26,28 @@ The spike does not trigger the macOS Accessibility prompt by default. Append
 Inventory Spike** in **System Settings → Privacy & Security → Accessibility**,
 and rerun without rebuilding the app bundle.
 
+Every synchronous Accessibility message is bounded to 0.2 seconds by default.
+Use `--ax-timeout SECONDS` to measure another value from 0.01 through 2.0
+seconds. If any application times out or otherwise returns a transient
+Accessibility failure, the whole snapshot is marked `incomplete`, and that
+sample never replaces the last complete baseline or drives correction. `scan`
+exits unsuccessfully; `watch` retains the last complete baseline and exits
+unsuccessfully if any sample was incomplete; `validate-addition` refuses an
+incomplete initial baseline but may skip later incomplete samples while
+reporting their count; and the boundary bridge collapses on any incomplete
+sample. The sanitized aggregate metrics separately report incomplete
+applications and applications affected by `AXError.cannotComplete` without
+naming them. Across multiple samples, the report sums affected application-scan
+pairs. Apple defines `cannotComplete` as a messaging failure, not proof that the
+configured timeout alone elapsed. Scanning stops for that application after the
+first fatal Accessibility error, and traversal is deduplicated and capped at 512
+descendants so one malformed tree cannot create unbounded work.
+
+Because these local bundles are ad-hoc signed, rebuilding can change their macOS
+privacy identity. After running `Scripts/build-prototype-apps.sh` again, remove
+the old Accessibility entry, add the newly built whole `.app`, and regrant it
+before collecting live evidence.
+
 Watch for additions, removals, relaunches, order changes, and runtime metadata
 changes while measuring each scan:
 
@@ -50,11 +72,14 @@ and reports the marker-to-detection upper bound plus aggregate scan cost:
   --bundle-id <target-bundle-id> --interval 0.25 --timeout 60 --json
 ```
 
-The command prints the exact `kill -USR1` marker command to stderr. Send that
-signal immediately before causing an already-running app to create its Source
-Item. Unlike `scan --json` and `watch --json`, this command's report is sanitized:
-it excludes the target bundle identifier, Source Item inventory, Accessibility
-metadata, geometry, process IDs, and provisional identities.
+The command first acquires a granted, complete baseline. Only then does it print
+the exact `kill -USR1` marker command to stderr and begin its marker timeout.
+Send that signal immediately before causing the explicitly selected,
+already-running app to create its Source Item. A denied or incomplete initial
+scan never announces that validation is armed. Unlike `scan --json` and `watch
+--json`, this command's report is sanitized: it excludes the target bundle
+identifier, Source Item inventory, Accessibility metadata, geometry, process
+IDs, and provisional identities.
 
 Record only non-identifying conclusions in
 [`Validation/GATE_A_MATRIX.md`](Validation/GATE_A_MATRIX.md).
@@ -101,9 +126,9 @@ mouse/modifier input, then posts one public Quartz Command-drag with only the
 Command modifier. It requires two stable reconciled observations both before and
 after re-expanding. The arm expires after 60 seconds and can be cancelled from
 the menu; system sleep or display reconfiguration cancels it. Any permission,
-identity, process, display, geometry, collateral-order, input, or timeout
-uncertainty leaves the boundary collapsed and reports only a non-identifying
-failure code.
+identity, process, display, geometry, collateral-order, physical-input,
+incomplete-inventory, or timeout uncertainty leaves the boundary collapsed and
+reports only a non-identifying failure code.
 
 Do not run live correction against an Apple/system item, an Ambiguous or
 Protected Item, or an item needed for recovery. Live validation requires an
@@ -127,6 +152,8 @@ The fixture suite verifies:
   can only be reported as a bundle-level inventory change;
 - physical ordering remains deterministic when some items lack geometry;
 - missing geometry yields a non-mutating Protected classification.
+- denied and incomplete snapshots cannot replace the last complete baseline or
+  fabricate inventory changes.
 
 ## Interpretation limits
 

@@ -42,10 +42,13 @@ For the addition row, run:
   --bundle-id <target-bundle-id> --interval 0.25 --timeout 60 --json
 ```
 
-The command prints a PID and waits for `SIGUSR1`. Send the displayed command
-immediately before triggering creation of the target Source Item. Its JSON report
-contains only OS/architecture, polling parameters, aggregate scan timings,
-change kind, and the marker-to-detection upper bound.
+The command first acquires a granted, complete baseline; it then prints a PID and
+waits for `SIGUSR1`. Send the displayed command immediately before triggering
+creation of the target Source Item. Its JSON report contains only
+OS/architecture, polling parameters, aggregate scan timings, the configured
+messaging timeout, complete/incomplete scan and cannot-complete counts, change
+kind, and the marker-to-detection upper bound. An incomplete snapshot is never
+diffed or used for correction.
 
 ## Measured results
 

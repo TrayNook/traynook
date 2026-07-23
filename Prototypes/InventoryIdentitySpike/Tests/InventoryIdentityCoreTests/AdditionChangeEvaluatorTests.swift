@@ -105,6 +105,10 @@ struct AdditionChangeEvaluatorTests {
       intervalMilliseconds: 250,
       timeoutSeconds: 60,
       completedScanCount: 3,
+      completeScanCount: 2,
+      incompleteScanCount: 1,
+      cannotCompleteApplicationScanCount: 1,
+      messagingTimeoutMilliseconds: 200,
       markerToDetectionMilliseconds: 200,
       averageScanMilliseconds: 1,
       maximumScanMilliseconds: 2,
@@ -121,5 +125,13 @@ struct AdditionChangeEvaluatorTests {
     #expect(!encoded.contains("metadata"))
     #expect(!encoded.contains("geometry"))
     #expect(!encoded.contains("processIdentifier"))
+    #expect(!encoded.contains("target"))
+    #expect(!encoded.contains("title"))
+    #expect(!encoded.contains("label"))
+    #expect(!encoded.contains("runtimeID"))
+    #expect(!encoded.contains("identity"))
+    #expect(encoded.contains("incompleteScanCount"))
+    #expect(encoded.contains("cannotCompleteApplicationScanCount"))
+    #expect(encoded.contains("messagingTimeoutMilliseconds"))
   }
 }

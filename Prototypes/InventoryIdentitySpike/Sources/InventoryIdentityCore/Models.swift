@@ -160,25 +160,45 @@ public enum AccessibilityPermissionStatus: String, Codable, Sendable {
   case denied
 }
 
+public enum InventoryScanCompleteness: String, Codable, Sendable {
+  case complete
+  case incomplete
+}
+
 public struct ScanMetrics: Codable, Equatable, Sendable {
   public let durationMilliseconds: Double
   public let inspectedApplicationCount: Int
   public let sourceItemCount: Int
+  public let incompleteApplicationCount: Int
+  public let cannotCompleteApplicationCount: Int
+  public let maximumApplicationScanMilliseconds: Double
+  public let messagingTimeoutMilliseconds: Double
 
   public init(
     durationMilliseconds: Double,
     inspectedApplicationCount: Int,
-    sourceItemCount: Int
+    sourceItemCount: Int,
+    incompleteApplicationCount: Int = 0,
+    cannotCompleteApplicationCount: Int = 0,
+    maximumApplicationScanMilliseconds: Double = 0,
+    messagingTimeoutMilliseconds: Double = 0
   ) {
     self.durationMilliseconds = durationMilliseconds
     self.inspectedApplicationCount = inspectedApplicationCount
     self.sourceItemCount = sourceItemCount
+    self.incompleteApplicationCount = incompleteApplicationCount
+    self.cannotCompleteApplicationCount =
+      cannotCompleteApplicationCount
+    self.maximumApplicationScanMilliseconds =
+      maximumApplicationScanMilliseconds
+    self.messagingTimeoutMilliseconds = messagingTimeoutMilliseconds
   }
 }
 
 public struct InventorySnapshot: Codable, Equatable, Sendable {
   public let capturedAt: Date
   public let permission: AccessibilityPermissionStatus
+  public let completeness: InventoryScanCompleteness
   public let items: [ClassifiedSourceItem]
   public let warnings: [String]
   public let metrics: ScanMetrics
@@ -186,12 +206,14 @@ public struct InventorySnapshot: Codable, Equatable, Sendable {
   public init(
     capturedAt: Date,
     permission: AccessibilityPermissionStatus,
+    completeness: InventoryScanCompleteness = .complete,
     items: [ClassifiedSourceItem],
     warnings: [String],
     metrics: ScanMetrics
   ) {
     self.capturedAt = capturedAt
     self.permission = permission
+    self.completeness = completeness
     self.items = items
     self.warnings = warnings
     self.metrics = metrics
@@ -277,17 +299,23 @@ public struct WatchSample: Codable, Equatable, Sendable {
 
 public struct WatchMetrics: Codable, Equatable, Sendable {
   public let sampleCount: Int
+  public let completeSampleCount: Int
+  public let incompleteSampleCount: Int
   public let intervalSeconds: Double
   public let averageScanMilliseconds: Double
   public let maximumScanMilliseconds: Double
 
   public init(
     sampleCount: Int,
+    completeSampleCount: Int,
+    incompleteSampleCount: Int,
     intervalSeconds: Double,
     averageScanMilliseconds: Double,
     maximumScanMilliseconds: Double
   ) {
     self.sampleCount = sampleCount
+    self.completeSampleCount = completeSampleCount
+    self.incompleteSampleCount = incompleteSampleCount
     self.intervalSeconds = intervalSeconds
     self.averageScanMilliseconds = averageScanMilliseconds
     self.maximumScanMilliseconds = maximumScanMilliseconds

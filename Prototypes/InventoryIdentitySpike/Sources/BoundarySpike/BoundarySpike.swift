@@ -371,20 +371,36 @@ private final class BoundaryAppDelegate: NSObject, NSApplicationDelegate,
       return
     }
 
-    guard
-      isExpanded,
-      let targetBundleIdentifier =
-        configuration.targetBundleIdentifier,
-      let environment = boundaryEnvironment()
-    else {
+    guard isExpanded else {
       NSSound.beep()
+      return
+    }
+    guard
+      let targetBundleIdentifier =
+        configuration.targetBundleIdentifier
+    else {
+      failVisible("target_bundle_identifier_unavailable")
+      return
+    }
+    guard let environment = boundaryEnvironment() else {
+      failVisible("environment_geometry_unavailable")
       return
     }
 
     let baseline = scanner.scan()
     guard baseline.permission == .granted else {
-      writeDiagnostic("correction_not_armed:accessibility_denied")
-      NSSound.beep()
+      failVisible("accessibility_denied")
+      return
+    }
+    guard baseline.completeness == .complete else {
+      failVisible("inventory_incomplete")
+      return
+    }
+    guard
+      let refreshedEnvironment = boundaryEnvironment(),
+      refreshedEnvironment.armState == environment.armState
+    else {
+      failVisible("environment_changed_while_arming")
       return
     }
 
@@ -396,7 +412,7 @@ private final class BoundaryAppDelegate: NSObject, NSApplicationDelegate,
         SafeDefaultCorrectionTuning.armTimeoutSeconds
           * 1_000_000_000
       )
-    armedBoundaryState = environment.armState
+    armedBoundaryState = refreshedEnvironment.armState
     let timer = Timer(
       timeInterval: configuration.pollingInterval,
       target: self,
@@ -441,6 +457,10 @@ private final class BoundaryAppDelegate: NSObject, NSApplicationDelegate,
     let current = scanner.scan()
     guard current.permission == .granted else {
       failVisible("accessibility_lost")
+      return
+    }
+    guard current.completeness == .complete else {
+      failVisible("inventory_incomplete")
       return
     }
 
@@ -504,6 +524,10 @@ private final class BoundaryAppDelegate: NSObject, NSApplicationDelegate,
     let rebound = scanner.scan()
     guard rebound.permission == .granted else {
       failVisible("accessibility_lost")
+      return
+    }
+    guard rebound.completeness == .complete else {
+      failVisible("inventory_incomplete")
       return
     }
     guard
@@ -625,6 +649,10 @@ private final class BoundaryAppDelegate: NSObject, NSApplicationDelegate,
     let snapshot = scanner.scan()
     guard snapshot.permission == .granted else {
       failVisible("accessibility_lost")
+      return
+    }
+    guard snapshot.completeness == .complete else {
+      failVisible("inventory_incomplete")
       return
     }
 
