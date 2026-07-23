@@ -32,6 +32,25 @@ Accessibility titles and labels, so redirect it to a file only during an explici
 local test and delete the file after recording non-identifying conclusions.
 The spike itself writes nothing to disk.
 
+### Measure new-item detection
+
+The sanitized addition harness continuously scans, accepts a `SIGUSR1` marker,
+and reports the marker-to-detection upper bound plus aggregate scan cost:
+
+```sh
+swift run traynook-inventory-spike validate-addition \
+  --bundle-id <target-bundle-id> --interval 0.25 --timeout 60 --json
+```
+
+The command prints the exact `kill -USR1` marker command to stderr. Send that
+signal immediately before causing an already-running app to create its Source
+Item. Unlike `scan --json` and `watch --json`, this command's report is sanitized:
+it excludes the target bundle identifier, Source Item inventory, Accessibility
+metadata, geometry, process IDs, and provisional identities.
+
+Record only non-identifying conclusions in
+[`Validation/GATE_A_MATRIX.md`](Validation/GATE_A_MATRIX.md).
+
 ## Verify
 
 ```sh

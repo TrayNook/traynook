@@ -1,9 +1,11 @@
+import Darwin
 import Foundation
 import InventoryIdentityCore
 
 private enum Command {
   case scan
   case watch
+  case validateAddition
   case help
 }
 
@@ -13,6 +15,8 @@ private struct Options {
   var promptForPermission = false
   var sampleCount = 5
   var intervalSeconds = 1.0
+  var timeoutSeconds = 60.0
+  var targetBundleIdentifier: String?
 
   init(arguments: [String]) throws {
     var arguments = Array(arguments.dropFirst())
@@ -24,6 +28,8 @@ private struct Options {
         command = .scan
       case "watch":
         command = .watch
+      case "validate-addition":
+        command = .validateAddition
       case "help":
         command = .help
       default:
@@ -54,6 +60,19 @@ private struct Options {
         guard intervalSeconds >= 0 else {
           throw OptionError("--interval cannot be negative.")
         }
+      case "--timeout":
+        timeoutSeconds = try Self.consumeDouble(
+          option: argument,
+          arguments: &arguments
+        )
+        guard timeoutSeconds > 0 else {
+          throw OptionError("--timeout must be greater than zero.")
+        }
+      case "--bundle-id":
+        targetBundleIdentifier = try Self.consumeString(
+          option: argument,
+          arguments: &arguments
+        )
       case "--help", "-h":
         command = .help
       default:
@@ -83,6 +102,17 @@ private struct Options {
     arguments.removeFirst()
     return value
   }
+
+  private static func consumeString(
+    option: String,
+    arguments: inout [String]
+  ) throws -> String {
+    guard let value = arguments.first, !value.isEmpty else {
+      throw OptionError("\(option) requires a value.")
+    }
+    arguments.removeFirst()
+    return value
+  }
 }
 
 private struct OptionError: Error, CustomStringConvertible {
@@ -90,6 +120,26 @@ private struct OptionError: Error, CustomStringConvertible {
 
   init(_ description: String) {
     self.description = description
+  }
+}
+
+private final class SignalMarker: @unchecked Sendable {
+  private let lock = NSLock()
+  private var value: UInt64?
+
+  func mark() {
+    lock.lock()
+    defer { lock.unlock() }
+    guard value == nil else {
+      return
+    }
+    value = DispatchTime.now().uptimeNanoseconds
+  }
+
+  func read() -> UInt64? {
+    lock.lock()
+    defer { lock.unlock() }
+    return value
   }
 }
 
@@ -117,6 +167,45 @@ private enum InventoryIdentitySpike {
         )
         try output(report, asJSON: options.formatJSON)
         if report.samples.last?.snapshot.permission == .denied {
+          Foundation.exit(EXIT_FAILURE)
+        }
+
+      case .validateAddition:
+        guard options.intervalSeconds > 0 else {
+          throw OptionError(
+            "--interval must be greater than zero for validate-addition."
+          )
+        }
+        let marker = SignalMarker()
+        Darwin.signal(SIGUSR1, SIG_IGN)
+        let signalSource = DispatchSource.makeSignalSource(
+          signal: SIGUSR1,
+          queue: DispatchQueue.global(qos: .userInitiated)
+        )
+        signalSource.setEventHandler {
+          marker.mark()
+        }
+        signalSource.resume()
+        defer { signalSource.cancel() }
+
+        writeToStandardError(
+          """
+          Validation armed. Immediately before creating the Source Item, run:
+            kill -USR1 \(ProcessInfo.processInfo.processIdentifier)
+          Waiting up to \(String(format: "%.1f", options.timeoutSeconds)) seconds for the marker,
+          then the same duration for a matching addition.
+
+          """
+        )
+        let report = AdditionValidationRunner().run(
+          intervalSeconds: options.intervalSeconds,
+          timeoutSeconds: options.timeoutSeconds,
+          targetBundleIdentifier: options.targetBundleIdentifier,
+          promptForPermission: options.promptForPermission,
+          markerUptimeNanoseconds: marker.read
+        )
+        try output(report, asJSON: options.formatJSON)
+        if report.status != .detected {
           Foundation.exit(EXIT_FAILURE)
         }
 
@@ -171,6 +260,42 @@ private enum InventoryIdentitySpike {
           + " — identity: \(identity) [\(item.identity.status.rawValue)]"
           + " — capability: \(item.manageability.status.rawValue)"
       )
+    }
+  }
+
+  private static func output(
+    _ report: AdditionValidationReport,
+    asJSON: Bool
+  ) throws {
+    if asJSON {
+      print(try json(report))
+      return
+    }
+
+    print("Scenario: \(report.scenario)")
+    print("Result: \(report.status.rawValue)")
+    print(
+      "Environment: \(report.environment.operatingSystem), "
+        + report.environment.architecture
+    )
+    print(
+      "Polling: \(Int(report.intervalMilliseconds)) ms; "
+        + "\(report.completedScanCount) completed scans"
+    )
+    print(
+      "Average scan: "
+        + String(format: "%.2f ms", report.averageScanMilliseconds)
+        + "; maximum: "
+        + String(format: "%.2f ms", report.maximumScanMilliseconds)
+    )
+    if let latency = report.markerToDetectionMilliseconds {
+      print(
+        "Marker-to-detection upper bound: "
+          + String(format: "%.2f ms", latency)
+      )
+    }
+    if let changeKind = report.detectedChangeKind {
+      print("Detected change: \(changeKind.rawValue)")
     }
   }
 
@@ -233,11 +358,17 @@ private enum InventoryIdentitySpike {
       Usage:
         traynook-inventory-spike scan [--json] [--prompt]
         traynook-inventory-spike watch [--samples N] [--interval SECONDS] [--json] [--prompt]
+        traynook-inventory-spike validate-addition [--bundle-id ID]
+          [--interval SECONDS] [--timeout SECONDS] [--json] [--prompt]
 
       --prompt asks macOS to show the Accessibility permission prompt.
       Without it, the spike only reads the current permission state.
       The command writes no inventory, titles, identifiers, or pixels to disk.
       """
     )
+  }
+
+  private static func writeToStandardError(_ text: String) {
+    FileHandle.standardError.write(Data(text.utf8))
   }
 }

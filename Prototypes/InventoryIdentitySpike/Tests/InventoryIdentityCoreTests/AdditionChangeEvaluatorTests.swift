@@ -1,0 +1,94 @@
+import Foundation
+import Testing
+
+@testable import InventoryIdentityCore
+
+@Suite("Gate A live addition evaluator")
+struct AdditionChangeEvaluatorTests {
+  private let evaluator = AdditionChangeEvaluator()
+
+  @Test("Matches a created provisional identity by target bundle")
+  func matchesCreatedIdentity() {
+    let change = SnapshotChange(
+      kind: .created,
+      identity: ProvisionalIdentityKey(
+        bundleIdentifier: "example.target"
+      ),
+      previousRuntimeID: nil,
+      currentRuntimeID: "100:0"
+    )
+
+    #expect(
+      evaluator.relevantAddition(
+        in: [change],
+        targetBundleIdentifier: "example.target"
+      ) == change
+    )
+    #expect(
+      evaluator.relevantAddition(
+        in: [change],
+        targetBundleIdentifier: "example.other"
+      ) == nil
+    )
+  }
+
+  @Test("Treats only an increasing Ambiguous group count as an addition")
+  func matchesAmbiguousCountIncrease() {
+    let group = RuntimeInventoryGroupKey(
+      bundleIdentifier: "example.target",
+      processIdentifierFallback: nil
+    )
+    let increase = SnapshotChange(
+      kind: .ambiguousInventoryChanged,
+      runtimeGroup: group,
+      previousRuntimeID: nil,
+      currentRuntimeID: nil,
+      previousCount: 1,
+      currentCount: 2
+    )
+    let replacement = SnapshotChange(
+      kind: .ambiguousInventoryChanged,
+      runtimeGroup: group,
+      previousRuntimeID: nil,
+      currentRuntimeID: nil,
+      previousCount: 2,
+      currentCount: 2
+    )
+
+    #expect(
+      evaluator.relevantAddition(
+        in: [replacement, increase],
+        targetBundleIdentifier: "example.target"
+      ) == increase
+    )
+  }
+
+  @Test("Sanitized report contains no target or inventory fields")
+  func reportEncodingIsSanitized() throws {
+    let report = AdditionValidationReport(
+      status: .detected,
+      environment: ValidationEnvironment(
+        operatingSystem: "macOS test",
+        architecture: "arm64"
+      ),
+      intervalMilliseconds: 250,
+      timeoutSeconds: 60,
+      completedScanCount: 3,
+      markerToDetectionMilliseconds: 200,
+      averageScanMilliseconds: 1,
+      maximumScanMilliseconds: 2,
+      detectedChangeKind: .created
+    )
+
+    let encoded = String(
+      decoding: try JSONEncoder().encode(report),
+      as: UTF8.self
+    )
+
+    #expect(!encoded.contains("bundleIdentifier"))
+    #expect(!encoded.contains("items"))
+    #expect(!encoded.contains("metadata"))
+    #expect(!encoded.contains("geometry"))
+    #expect(!encoded.contains("processIdentifier"))
+  }
+}
