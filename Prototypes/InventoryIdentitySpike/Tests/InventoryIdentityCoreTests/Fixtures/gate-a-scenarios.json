@@ -1,0 +1,134 @@
+{
+  "relaunchBefore": [
+    {
+      "runtimeID": "101:0",
+      "processIdentifier": 101,
+      "bundleIdentifier": "example.timer",
+      "applicationName": "Timer",
+      "role": "AXMenuBarItem",
+      "subrole": null,
+      "frame": {"x": 1000, "y": 0, "width": 24, "height": 24},
+      "actions": ["AXPress"],
+      "metadata": {
+        "identifierCandidate": "timer.primary",
+        "title": "01:00",
+        "label": "One minute",
+        "help": null,
+        "roleDescription": "menu bar item"
+      },
+      "observedOrder": 0
+    },
+    {
+      "runtimeID": "101:1",
+      "processIdentifier": 101,
+      "bundleIdentifier": "example.timer",
+      "applicationName": "Timer",
+      "role": "AXMenuBarItem",
+      "subrole": null,
+      "frame": {"x": 1024, "y": 0, "width": 36, "height": 24},
+      "actions": ["AXPress"],
+      "metadata": {
+        "identifierCandidate": "timer.secondary",
+        "title": "Work",
+        "label": "Work timer",
+        "help": null,
+        "roleDescription": "menu bar item"
+      },
+      "observedOrder": 1
+    }
+  ],
+  "relaunchAfter": [
+    {
+      "runtimeID": "202:0",
+      "processIdentifier": 202,
+      "bundleIdentifier": "example.timer",
+      "applicationName": "Timer",
+      "role": "AXMenuBarItem",
+      "subrole": null,
+      "frame": {"x": 960, "y": 0, "width": 52, "height": 24},
+      "actions": ["AXPress"],
+      "metadata": {
+        "identifierCandidate": "timer.primary",
+        "title": "59:59",
+        "label": "Almost one hour",
+        "help": null,
+        "roleDescription": "menu bar item"
+      },
+      "observedOrder": 0
+    },
+    {
+      "runtimeID": "202:1",
+      "processIdentifier": 202,
+      "bundleIdentifier": "example.timer",
+      "applicationName": "Timer",
+      "role": "AXMenuBarItem",
+      "subrole": null,
+      "frame": {"x": 1012, "y": 0, "width": 48, "height": 24},
+      "actions": ["AXPress"],
+      "metadata": {
+        "identifierCandidate": "timer.secondary",
+        "title": "Break",
+        "label": "Break timer",
+        "help": null,
+        "roleDescription": "menu bar item"
+      },
+      "observedOrder": 1
+    }
+  ],
+  "ambiguousDuplicates": [
+    {
+      "runtimeID": "303:0",
+      "processIdentifier": 303,
+      "bundleIdentifier": "example.indistinguishable",
+      "applicationName": "Indistinguishable",
+      "role": "AXMenuBarItem",
+      "subrole": null,
+      "frame": {"x": 1000, "y": 0, "width": 24, "height": 24},
+      "actions": ["AXPress"],
+      "metadata": {
+        "identifierCandidate": null,
+        "title": "A",
+        "label": null,
+        "help": null,
+        "roleDescription": "menu bar item"
+      },
+      "observedOrder": 0
+    },
+    {
+      "runtimeID": "303:1",
+      "processIdentifier": 303,
+      "bundleIdentifier": "example.indistinguishable",
+      "applicationName": "Indistinguishable",
+      "role": "AXMenuBarItem",
+      "subrole": null,
+      "frame": {"x": 1024, "y": 0, "width": 24, "height": 24},
+      "actions": ["AXPress"],
+      "metadata": {
+        "identifierCandidate": null,
+        "title": "B",
+        "label": null,
+        "help": null,
+        "roleDescription": "menu bar item"
+      },
+      "observedOrder": 1
+    }
+  ],
+  "createdItem": {
+    "runtimeID": "404:0",
+    "processIdentifier": 404,
+    "bundleIdentifier": "example.new-item",
+    "applicationName": "New Item",
+    "role": "AXMenuBarItem",
+    "subrole": null,
+    "frame": {"x": 936, "y": 0, "width": 24, "height": 24},
+    "actions": ["AXPress"],
+    "metadata": {
+      "identifierCandidate": null,
+      "title": "Ready",
+      "label": "New item",
+      "help": null,
+      "roleDescription": "menu bar item"
+    },
+    "observedOrder": 0
+  }
+}

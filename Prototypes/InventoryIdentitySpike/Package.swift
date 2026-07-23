@@ -25,5 +25,12 @@ let package = Package(
       name: "InventoryIdentitySpike",
       dependencies: ["InventoryIdentityCore"]
     ),
+    .testTarget(
+      name: "InventoryIdentityCoreTests",
+      dependencies: ["InventoryIdentityCore"],
+      resources: [
+        .copy("Fixtures")
+      ]
+    ),
   ]
 )
