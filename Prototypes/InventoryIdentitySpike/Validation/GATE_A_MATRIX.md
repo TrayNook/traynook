@@ -37,7 +37,8 @@ Run every row on every environment above.
 For the addition row, run:
 
 ```sh
-swift run traynook-inventory-spike validate-addition \
+.build/apps/TrayNook\ Inventory\ Spike.app/Contents/MacOS/traynook-inventory-spike \
+  validate-addition \
   --bundle-id <target-bundle-id> --interval 0.25 --timeout 60 --json
 ```
 

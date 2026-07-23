@@ -12,19 +12,26 @@ screen capture, persistence, private API, analytics, or network access.
 
 ```sh
 cd Prototypes/InventoryIdentitySpike
-swift run traynook-inventory-spike scan
+zsh Scripts/build-prototype-apps.sh
+.build/apps/TrayNook\ Inventory\ Spike.app/Contents/MacOS/traynook-inventory-spike scan
 ```
 
-The spike does not trigger the macOS Accessibility prompt by default. Use
-`scan --prompt` when you intentionally want the system prompt, grant the built
-executable or its parent terminal in **System Settings → Privacy & Security →
-Accessibility**, and rerun.
+The script creates ad-hoc-signed local app bundles with stable development bundle
+identifiers under `.build/apps`. Use these bundles for macOS privacy grants;
+granting a raw SwiftPM executable is unreliable because rebuilding can replace
+its ad-hoc identity.
+
+The spike does not trigger the macOS Accessibility prompt by default. Append
+`--prompt` when you intentionally want the system prompt, grant **TrayNook
+Inventory Spike** in **System Settings → Privacy & Security → Accessibility**,
+and rerun without rebuilding the app bundle.
 
 Watch for additions, removals, relaunches, order changes, and runtime metadata
 changes while measuring each scan:
 
 ```sh
-swift run traynook-inventory-spike watch --samples 30 --interval 1
+.build/apps/TrayNook\ Inventory\ Spike.app/Contents/MacOS/traynook-inventory-spike \
+  watch --samples 30 --interval 1
 ```
 
 Add `--json` to either command for machine-readable output. JSON can contain live
@@ -38,7 +45,8 @@ The sanitized addition harness continuously scans, accepts a `SIGUSR1` marker,
 and reports the marker-to-detection upper bound plus aggregate scan cost:
 
 ```sh
-swift run traynook-inventory-spike validate-addition \
+.build/apps/TrayNook\ Inventory\ Spike.app/Contents/MacOS/traynook-inventory-spike \
+  validate-addition \
   --bundle-id <target-bundle-id> --interval 0.25 --timeout 60 --json
 ```
 
@@ -57,7 +65,7 @@ The separate boundary executable is a disposable public-AppKit bridge for the
 next Gate A scenario:
 
 ```sh
-swift run traynook-boundary-spike
+.build/apps/TrayNook\ Boundary\ Spike.app/Contents/MacOS/traynook-boundary-spike
 ```
 
 It creates a Launcher and a visible separator using only `NSStatusItem`. The
@@ -77,7 +85,8 @@ process-owned items, but macOS may retain user-authored status-item ordering.
 Pass a target bundle to enable a one-shot dry run:
 
 ```sh
-swift run traynook-boundary-spike --target-bundle-id <target-bundle-id>
+.build/apps/TrayNook\ Boundary\ Spike.app/Contents/MacOS/traynook-boundary-spike \
+  --target-bundle-id <target-bundle-id>
 ```
 
 After positioning and expanding the boundary, choose **Arm Safe-Default Dry
