@@ -1,0 +1,9 @@
+---
+status: accepted
+---
+
+# Support every currently maintained stable macOS release
+
+Every TrayNook release candidate and stable release supports every stable macOS major version still receiving Apple security updates on that release date, using a Universal 2 build for Intel and Apple silicon wherever those systems support the hardware. Alpha and beta releases instead publish the exact tested subset and make no full-matrix claim. Within each claimed major, the guarantee covers the latest security-patched point release available on the TrayNook release date; release notes list exact tested builds, while older point releases are best-effort. The deployment target remains macOS 14.0 but does not certify every historical 14.x or later build. The exact matrix is re-evaluated and tested for every release candidate and stable release; as of July 2026 it is Sonoma 14, Sequoia 15, and Tahoe 26. Beta macOS versions may be tested to detect future breakage but are never part of the production compatibility guarantee. This policy favors a clear user promise over reducing the private-API and hardware test matrix.
+
+An OS version passes the Supported Baseline only when TrayNook can discover manageable items, move them among all three Placement Lanes through Settings, show usable Dropdown proxies with an app-icon fallback where needed, activate primary and secondary click through native handoff, and restore safely. Optional behavior such as direct cross-surface drag, simultaneous Dropdown visibility, exact or live imagery, and stable handling of indistinguishable duplicates may degrade behind visible capability gates. Because 1.0.0 explicitly promises every currently maintained stable macOS major, it does not ship while any such version fails the Supported Baseline; the app may not quietly narrow that launch matrix to avoid the failure.
