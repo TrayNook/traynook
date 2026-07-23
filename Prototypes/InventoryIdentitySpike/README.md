@@ -51,6 +51,29 @@ metadata, geometry, process IDs, and provisional identities.
 Record only non-identifying conclusions in
 [`Validation/GATE_A_MATRIX.md`](Validation/GATE_A_MATRIX.md).
 
+### Exercise an app-owned boundary
+
+The separate boundary executable is a disposable public-AppKit bridge for the
+next Gate A scenario:
+
+```sh
+swift run traynook-boundary-spike
+```
+
+It creates a Launcher and a visible separator using only `NSStatusItem`. The
+separator starts at square length, so launch does not deliberately conceal other
+items. AppKit does not provide a public API to set status-item order. Command-drag
+the Launcher to the right of the separator and place the separator at the desired
+test boundary. Expansion remains disabled until their live window geometry
+confirms that safe relationship on one screen. Then choose **Expand Boundary**
+explicitly from either prototype item's menu. Choose **Collapse Boundary** before
+rearranging the test setup. Termination synchronously collapses the boundary and
+removes both prototype status items before allowing Quit.
+
+The executable does not yet move foreign Source Items or claim that the boundary
+works across the compatibility matrix. Forced termination removes the
+process-owned items, but macOS may retain user-authored status-item ordering.
+
 ## Verify
 
 ```sh

@@ -16,6 +16,10 @@ let package = Package(
       name: "traynook-inventory-spike",
       targets: ["InventoryIdentitySpike"]
     ),
+    .executable(
+      name: "traynook-boundary-spike",
+      targets: ["BoundarySpike"]
+    ),
   ],
   targets: [
     .target(
@@ -23,6 +27,10 @@ let package = Package(
     ),
     .executableTarget(
       name: "InventoryIdentitySpike",
+      dependencies: ["InventoryIdentityCore"]
+    ),
+    .executableTarget(
+      name: "BoundarySpike",
       dependencies: ["InventoryIdentityCore"]
     ),
     .testTarget(
