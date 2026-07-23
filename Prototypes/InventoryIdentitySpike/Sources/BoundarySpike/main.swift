@@ -32,7 +32,7 @@ private final class BoundaryAppDelegate: NSObject, NSApplicationDelegate,
     return .terminateNow
   }
 
-  func menuWillOpen(_ menu: NSMenu) {
+  func menuNeedsUpdate(_ menu: NSMenu) {
     refreshToggleItems()
   }
 
@@ -71,6 +71,7 @@ private final class BoundaryAppDelegate: NSObject, NSApplicationDelegate,
   private func makeMenu() -> NSMenu {
     let menu = NSMenu()
     menu.delegate = self
+    menu.autoenablesItems = false
     let toggle = NSMenuItem(
       title: "Expand Boundary",
       action: #selector(toggleBoundary),
@@ -106,19 +107,40 @@ private final class BoundaryAppDelegate: NSObject, NSApplicationDelegate,
     boundary.length =
       isExpanded ? expandedWidth : NSStatusItem.squareLength
     refreshToggleItems()
+
+    if isExpanded {
+      Task { @MainActor [weak self] in
+        await Task.yield()
+        self?.verifyLauncherRemainedVisible()
+      }
+    }
   }
 
   private var launcherIsOnVerifiedSafeSide: Bool {
     guard
       let boundaryWindow = boundary?.button?.window,
       let launcherWindow = launcher?.button?.window,
-      boundaryWindow.screen == launcherWindow.screen
+      let boundaryScreen = boundaryWindow.screen,
+      let launcherScreen = launcherWindow.screen,
+      boundaryScreen === launcherScreen
     else {
       return false
     }
 
     let boundaryFrame = boundaryWindow.frame
     let launcherFrame = launcherWindow.frame
+    guard
+      !boundaryFrame.isEmpty,
+      !boundaryFrame.isNull,
+      boundaryFrame.minX.isFinite,
+      boundaryFrame.maxX.isFinite,
+      !launcherFrame.isEmpty,
+      !launcherFrame.isNull,
+      launcherFrame.minX.isFinite,
+      launcherFrame.maxX.isFinite
+    else {
+      return false
+    }
     return launcherFrame.minX >= boundaryFrame.maxX
   }
 
@@ -136,6 +158,33 @@ private final class BoundaryAppDelegate: NSObject, NSApplicationDelegate,
         toggleItem.isEnabled = false
       }
     }
+  }
+
+  private func verifyLauncherRemainedVisible() {
+    guard isExpanded else {
+      return
+    }
+    guard
+      let launcherWindow = launcher?.button?.window,
+      let screen = launcherWindow.screen,
+      isUsable(launcherWindow.frame),
+      launcherWindow.frame.intersects(screen.frame)
+    else {
+      boundary?.length = NSStatusItem.squareLength
+      isExpanded = false
+      refreshToggleItems()
+      NSSound.beep()
+      return
+    }
+  }
+
+  private func isUsable(_ frame: CGRect) -> Bool {
+    !frame.isEmpty
+      && !frame.isNull
+      && frame.minX.isFinite
+      && frame.maxX.isFinite
+      && frame.minY.isFinite
+      && frame.maxY.isFinite
   }
 
   @objc private func quit() {
