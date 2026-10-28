@@ -582,62 +582,25 @@ final class AppModel: ObservableObject {
     }
   }
 
-  func reorder(_ key: String, delta: Int) {
-    guard canEdit, let index = layout.items.firstIndex(where: { $0.id == key }) else { return }
-    let lane = layout.items.indices.filter { layout.items[$0].placement == layout.items[index].placement }
-    guard let position = lane.firstIndex(of: index), lane.indices.contains(position + delta) else { return }
-    var next = layout; next.items.swapAt(index, lane[position + delta])
-    replaceLayout(next, undoable: true)
-  }
-
-  /// Native list reordering inside one section.
-  func moveRows(in zone: Placement, from: IndexSet, to: Int) {
+  /// Live order of one lane's keys during a handle drag; the rest of the
+  /// layout keeps its positions.
+  func setOrder(_ keys: [String], undoable: Bool) {
     guard canEdit else { return }
-    var lane = layout.items.filter { $0.placement == zone }
-    lane.move(fromOffsets: from, toOffset: to)
+    let byKey = Dictionary(layout.items.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+    let lane = Set(keys)
+    var cursor = keys.makeIterator()
     var next = layout
-    var cursor = lane.makeIterator()
-    next.items = next.items.map { $0.placement == zone ? cursor.next()! : $0 }
-    replaceLayout(next, undoable: true)
+    next.items = next.items.compactMap { lane.contains($0.id) ? cursor.next().flatMap { byKey[$0] } : $0 }
+    guard next.items.count == layout.items.count else { return }
+    replaceLayout(next, undoable: undoable)
   }
 
-  /// A row dropped into a section at a position in that section's lane.
-  @discardableResult func insert(_ key: String, in zone: Placement, at laneIndex: Int) -> Bool {
-    guard canEdit, let from = layout.items.firstIndex(where: { $0.id == key }) else { return false }
-    var next = layout
-    var moved = next.items.remove(at: from)
-    let placementChanged = moved.placement != zone
-    if placementChanged {
-      guard let live = liveItem(key), isManageable(live) else { return false }
-      moved.placement = zone
-    }
-    let lane = next.items.indices.filter { next.items[$0].placement == zone }
-    let at = laneIndex < lane.count ? lane[laneIndex] : (lane.last.map { $0 + 1 } ?? next.items.count)
-    next.items.insert(moved, at: at)
-    guard replaceLayout(next, undoable: true) else { return false }
-    if placementChanged { applySavedLayout(restoringToMenuBar: zone == .menuBar ? key : nil) }
-    return true
-  }
-
-  /// Reorders within a section, or moves into the target row's section at
-  /// that position. Only the dropdown order has a visible effect; other
-  /// sections keep the list order for the user's own sense of it.
-  @discardableResult func move(_ key: String, before targetKey: String) -> Bool {
-    guard canEdit, key != targetKey,
-      let from = layout.items.firstIndex(where: { $0.id == key }),
-      let target = layout.items.first(where: { $0.id == targetKey }) else { return false }
-    var next = layout
-    var moved = next.items.remove(at: from)
-    let placementChanged = moved.placement != target.placement
-    if placementChanged {
-      guard let live = liveItem(key), isManageable(live) else { return false }
-      moved.placement = target.placement
-    }
-    guard let to = next.items.firstIndex(where: { $0.id == targetKey }) else { return false }
-    next.items.insert(moved, at: to)
-    guard replaceLayout(next, undoable: true) else { return false }
-    if placementChanged { applySavedLayout(restoringToMenuBar: target.placement == .menuBar ? key : nil) }
-    return true
+  /// One undo step for a whole drag, registered against the pre-drag layout.
+  func commitReorder(from start: SavedLayout?) {
+    guard let start, start != layout else { return }
+    let now = layout
+    layout = start
+    replaceLayout(now, undoable: true)
   }
 
   func forget(_ key: String) {

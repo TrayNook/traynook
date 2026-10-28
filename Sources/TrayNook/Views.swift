@@ -6,6 +6,78 @@ struct SettingsView: View {
   @ObservedObject var model: AppModel
   @State private var confirmReset = false
   @State private var showLocked = false
+  @State private var reorder = Reorder()
+  @State private var rowHeights: [String: CGFloat] = [:]
+  private let rowSpacing: CGFloat = 8
+
+  /// A handle drag in progress: the dragged row floats by `offset` while the
+  /// model's order is updated live, so the other rows animate out of the way.
+  private struct Reorder {
+    var draggedKey: String?
+    var startLane: [SavedItem] = []
+    var startIndex = 0
+    var currentIndex = 0
+    var offset: CGFloat = 0
+    var startLayout: SavedLayout?
+  }
+
+  /// Rows the user can reorder in a section: locked items are folded away.
+  private func laneItems(_ zone: Placement) -> [SavedItem] {
+    model.layout.items.filter { saved in
+      saved.placement == zone && !(model.liveItem(saved.id).map { !model.isManageable($0) } ?? false)
+    }
+  }
+
+  private func reorderHandle(for key: String, in zone: Placement) -> some View {
+    Image(systemName: "line.3.horizontal").foregroundStyle(.secondary)
+      .frame(width: 22, height: 26).contentShape(Rectangle())
+      .help(L("Drag to reorder"))
+      .gesture(DragGesture(minimumDistance: 2, coordinateSpace: .global)
+        .onChanged { value in dragChanged(key, in: zone, translation: value.translation.height) }
+        .onEnded { _ in dragEnded() })
+      .accessibilityHidden(true)
+  }
+
+  private func dragChanged(_ key: String, in zone: Placement, translation: CGFloat) {
+    if reorder.draggedKey != key {
+      let lane = laneItems(zone)
+      guard let index = lane.firstIndex(where: { $0.id == key }) else { return }
+      reorder = Reorder(draggedKey: key, startLane: lane, startIndex: index, currentIndex: index,
+        offset: 0, startLayout: model.layout)
+    }
+    func height(_ item: SavedItem) -> CGFloat { (rowHeights[item.id] ?? 44) + rowSpacing }
+    // Walk the rows in their pre-drag order; a row is passed once the pointer
+    // moved beyond its middle. The dragged row floats by what is left over.
+    let lane = reorder.startLane
+    var desired = reorder.startIndex
+    var passed: CGFloat = 0
+    if translation > 0 {
+      for index in lane.indices where index > reorder.startIndex {
+        let h = height(lane[index])
+        guard translation > passed + h / 2 else { break }
+        passed += h; desired = index
+      }
+    } else {
+      for index in lane.indices.reversed() where index < reorder.startIndex {
+        let h = height(lane[index])
+        guard -translation > passed + h / 2 else { break }
+        passed += h; desired = index
+      }
+    }
+    reorder.offset = translation - (translation > 0 ? passed : -passed)
+    guard desired != reorder.currentIndex else { return }
+    reorder.currentIndex = desired
+    var order = lane.map(\.id)
+    order.remove(at: reorder.startIndex)
+    order.insert(key, at: desired)
+    withAnimation(.snappy(duration: 0.2)) { model.setOrder(order, undoable: false) }
+  }
+
+  private func dragEnded() {
+    withAnimation(.snappy(duration: 0.2)) { reorder.offset = 0 }
+    model.commitReorder(from: reorder.startLayout)
+    reorder = Reorder()
+  }
 
   var body: some View {
     VStack(spacing: 0) {
@@ -70,69 +142,60 @@ struct SettingsView: View {
         Button(L("Restore All to Menu Bar")) { model.restoreAll() }
           .disabled(model.busy || model.recoveryRequired)
       }
-      // A List gives native row reordering (gap animation, drop indicator).
-      List {
-        LayoutPreviewView(model: model).listRowSeparator(.hidden)
-        ForEach(Placement.allCases) { zone in
-          let savedItems = model.layout.items.filter { $0.placement == zone }
-          // Locked items carry no decision; one row stands for all of them.
-          let locked = savedItems.filter { saved in model.liveItem(saved.id).map { !model.isManageable($0) } ?? false }
-          let shown = savedItems.filter { saved in !locked.contains { $0.id == saved.id } }
-          Section {
-            if savedItems.isEmpty {
-              Text(L("No items here yet")).foregroundStyle(.secondary)
-            }
-            ForEach(shown) { item in
-              itemRow(item).onDrag { NSItemProvider(object: item.id as NSString) }
-            }
-            .onMove { from, to in model.moveRows(in: zone, from: from, to: to) }
-            .onInsert(of: [.text]) { index, providers in
-              let sink = DragSink { key in model.insert(key, in: zone, at: index) }
-              for provider in providers {
-                _ = provider.loadObject(ofClass: NSString.self) { object, _ in
-                  guard let key = object as? String else { return }
-                  sink.deliver(key)
+      ScrollView {
+        VStack(alignment: .leading, spacing: 16) {
+          LayoutPreviewView(model: model)
+          ForEach(Placement.allCases) { zone in
+            let savedItems = model.layout.items.filter { $0.placement == zone }
+            let shown = laneItems(zone)
+            let locked = savedItems.filter { saved in !shown.contains { $0.id == saved.id } }
+            VStack(alignment: .leading, spacing: rowSpacing) {
+              HStack {
+                Text(zone.title).font(.headline)
+                Text("\(savedItems.count)").foregroundStyle(.secondary)
+                Spacer()
+                if zone == .menuBar { Label(L("TrayNook stays here"), systemImage: "tray.full").font(.caption).foregroundStyle(.secondary) }
+              }
+              if savedItems.isEmpty {
+                Text(L("No items here yet")).foregroundStyle(.secondary).padding(.vertical, 8)
+              }
+              // Rows slide apart live while one is dragged by its handle.
+              ForEach(shown) { item in
+                itemRow(item, handle: AnyView(reorderHandle(for: item.id, in: zone)))
+                  .offset(y: reorder.draggedKey == item.id ? reorder.offset : 0)
+                  .zIndex(reorder.draggedKey == item.id ? 1 : 0)
+                  .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { rowHeights[item.id] = $0 }
+              }
+              // Locked items carry no decision; one row stands for all of them.
+              if !locked.isEmpty {
+                DisclosureGroup(isExpanded: $showLocked) {
+                  ForEach(locked) { item in itemRow(item) }
+                } label: {
+                  HStack(spacing: 10) {
+                    Image(systemName: "lock").frame(width: 26)
+                    Text(L("System items")).lineLimit(1)
+                    Text("\(locked.count)").foregroundStyle(.secondary)
+                    Spacer()
+                    Text(L("Protected — kept visible")).font(.caption).foregroundStyle(.secondary)
+                  }
                 }
               }
             }
-            if !locked.isEmpty {
-              DisclosureGroup(isExpanded: $showLocked) {
-                ForEach(locked) { item in itemRow(item) }
-              } label: {
-                HStack(spacing: 10) {
-                  Image(systemName: "lock").frame(width: 26)
-                  Text(L("System items")).lineLimit(1)
-                  Text("\(locked.count)").foregroundStyle(.secondary)
-                  Spacer()
-                  Text(L("Protected — kept visible")).font(.caption).foregroundStyle(.secondary)
-                }
-              }
-            }
-          } header: {
-            HStack {
-              Text(zone.title).font(.headline)
-              Text("\(savedItems.count)").foregroundStyle(.secondary)
-              Spacer()
-              if zone == .menuBar { Label(L("TrayNook stays here"), systemImage: "tray.full").font(.caption).foregroundStyle(.secondary) }
-            }
+            .padding(12)
+            .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 10))
           }
-          .dropDestination(for: String.self) { keys, _ in
-            guard keys.count == 1, let key = keys.first else { return false }
-            return model.insert(key, in: zone, at: Int.max)
+          if model.layout.items.isEmpty {
+            Text(L("Grant Accessibility, then refresh to discover your menu-bar items."))
+              .foregroundStyle(.secondary).padding(.vertical, 12)
           }
-        }
-        if model.layout.items.isEmpty {
-          Text(L("Grant Accessibility, then refresh to discover your menu-bar items."))
-            .foregroundStyle(.secondary)
         }
       }
-      .listStyle(.inset)
       Text(L("Opening an item brings only that item into view. It returns when its menu closes. Other hidden items stay hidden."))
         .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
     }.padding(12)
   }
 
-  private func itemRow(_ saved: SavedItem) -> some View {
+  private func itemRow(_ saved: SavedItem, handle: AnyView = AnyView(EmptyView())) -> some View {
     HStack(spacing: 10) {
       Image(nsImage: model.icon(for: saved.id)).resizable().frame(width: 26, height: 26).accessibilityHidden(true)
       VStack(alignment: .leading, spacing: 2) {
@@ -152,6 +215,7 @@ struct SettingsView: View {
       } else {
         Image(systemName: "lock").accessibilityLabel(L("Protected — kept visible"))
       }
+      handle
     }
     .disabled(!model.canEdit)
     .padding(.vertical, 3)
@@ -313,9 +377,3 @@ struct DropdownIcons: View {
   }
 }
 
-/// Hands a dragged key from the item provider's background callback to the model.
-private final class DragSink: @unchecked Sendable {
-  private let deliverOnMain: @MainActor (String) -> Void
-  init(_ deliver: @escaping @MainActor (String) -> Void) { deliverOnMain = deliver }
-  func deliver(_ key: String) { Task { @MainActor in self.deliverOnMain(key) } }
-}

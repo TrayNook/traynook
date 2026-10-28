@@ -100,11 +100,14 @@ struct LayoutPreviewTests {
     #expect(model.dropdownItems.compactMap { $0.observation.bundleIdentifier } == dropdown)
     #expect(!Placement.allCases.flatMap { preview.items(in: $0) }.contains { $0.id == "example.missing" })
     let originalLayout = model.layout
-    model.reorder(applications[0].id, delta: 1)
     let reordered = [applications[1].id, applications[0].id, applications[2].id, applications[3].id]
+    model.setOrder(reordered, undoable: false)
     #expect(preview.items(in: .dropdown).map(\.id) == reordered)
     #expect(model.dropdownItems.compactMap { $0.observation.bundleIdentifier } == reordered)
-    model.reorder(applications[0].id, delta: -1)
+    model.setOrder(applications.map(\.id), undoable: false)
+    #expect(model.layout == originalLayout)
+    // A lane order with an unknown key or a missing key changes nothing.
+    model.setOrder(["example.unknown"] + applications.map(\.id), undoable: false)
     #expect(model.layout == originalLayout)
 
     let columns = DropdownView.columnCount(rowCapacity: model.layout.rowCapacity,
