@@ -30,13 +30,12 @@ Updated 2026-10-28 (evening). Build 18's measurements are in
   (`#ax:...audiovideo`) appearing and disappearing; a single incomplete scan
   (a launching app answers Accessibility late) now has to repeat three times
   before the section reveals, and the scan warning names the slow apps.
-- **Open:** switching the active window to the external display while
-  concealed revealed once with "An unassigned or protected item is behind
-  the separator". The next occurrence logs each unsafe item with its frame,
-  `isBehindBoundary` value, and assignment ("revealed: unsafe items"). Read
-  it, then fix `isBehindBoundary` for Menu Bar-placed items that were swept
-  behind the separator while clipped under the notch (on the external
-  display they are outside the display, not clipped).
+- Spurious "unassigned or protected item is behind the separator" reveals
+  came from one poll reading Control Centre's Now Playing item mid-relayout
+  (its frame overlapped the separator edge, `isBehindBoundary` was nil). The
+  section now reveals only when two consecutive scans agree; the log line
+  "unsafe once, waiting" shows each tolerated poll with frames and values.
+  Watch for a genuine case that needs the second poll to catch it.
 - A lazarus review of the two-display changes found five issues (panel
   windows becoming fake items, geometry read before the inventory, stale
   frames in placement, unsafe retry positions, over-eager re-key detection);

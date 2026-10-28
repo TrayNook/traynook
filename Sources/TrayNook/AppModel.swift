@@ -19,6 +19,7 @@ final class AppModel: ObservableObject {
   @Published var message: String?
   @Published var recoveryRequired = false
   private var incompleteScans = 0
+  private var unsafeScans = 0
   @Published var selectedTab = 0
   @Published var loginEnabled = SMAppService.mainApp.status == .enabled
   @Published var screenRecordingGranted = ProxyImageCapture.isAuthorized
@@ -282,9 +283,19 @@ final class AppModel: ObservableObject {
         let frame = item.observation.frame.map { "\(Int($0.x)),\(Int($0.y)) \(Int($0.width))x\(Int($0.height))" } ?? "no frame"
         return "\(item.identity.persistentKey ?? "nil")[\(frame) on=\(String(describing: item.observation.isOnscreen))] behind=\(String(describing: behind)) assigned=\(assigned)"
       }
+      // One poll can catch the bar mid-relayout (Control Centre's Now Playing
+      // changes width), leaving a frame across the separator edge. Reveal only
+      // when the next scan still finds the section unsafe.
+      unsafeScans += 1
+      guard unsafeScans >= 2 else {
+        modelLog.notice("unsafe once, waiting for the next scan: \(unsafe.joined(separator: " ; "), privacy: .public)")
+        return
+      }
       modelLog.error("revealed: unsafe items: \(unsafe.joined(separator: " ; "), privacy: .public)")
       reveal()
       message = L("An unassigned or protected item is behind the separator. Items have been revealed.")
+    } else {
+      unsafeScans = 0
     }
   }
 
