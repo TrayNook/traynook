@@ -251,13 +251,13 @@ struct DropdownIcons: View {
           Button { model.activate(item) } label: {
             proxy(item, bundle: bundle)
           }
-          .disabled(!model.canEdit || !model.isManageable(item) || model.native.hasPendingActivation)
+          .disabled(!model.canEdit || !model.isManageable(item))
           .help(model.proxyImages[bundle] != nil && item.observation.isOnscreen != true
             ? model.name(for: bundle) + " — " + L("as last seen in the menu bar") : model.name(for: bundle))
           .accessibilityLabel(model.name(for: bundle))
           .contextMenu {
             Button(L("Open Secondary Menu")) { model.activate(item, secondary: true) }
-              .disabled(!model.canEdit || !model.isManageable(item) || model.native.hasPendingActivation)
+              .disabled(!model.canEdit || !model.isManageable(item))
           }
         } else {
           Image(nsImage: model.icon(for: bundle)).resizable().frame(width: 26, height: 26).padding(4)

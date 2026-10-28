@@ -38,6 +38,18 @@ final class AppModel: ObservableObject {
   private var attemptedLaunchRestore = false
   private var launchRestoreRunning = false
   private var panelWatch: Task<Void, Never>?
+  /// True while the dropdown is open; a promoted item waits until it closes.
+  var dropdownShown = false
+
+  func dropdownClosed() {
+    dropdownShown = false
+    guard native.hasPendingActivation, !busy else { return }
+    modelLog.notice("dropdown closed; returning the promoted item")
+    runOperation(restoreSettingsFocus: false, revealOnFailure: false) {
+      try await self.native.restoreActivation()
+      self.message = nil
+    }
+  }
   /// A tray click that arrived while an operation ran; honored when it ends.
   private var queuedDropdown: (@MainActor () -> Void)?
   private var hasAcceptedSnapshot = false
@@ -395,14 +407,13 @@ final class AppModel: ObservableObject {
     // as soon as the running operation ends.
     guard !busy else { queuedDropdown = show; return }
     if native.hasPendingActivation {
-      runOperation(restoreSettingsFocus: false, revealOnFailure: false, completion: show) {
-        try await self.native.restoreActivation()
-        self.message = nil
-      }
+      // Show at once; the promoted item returns when the dropdown closes.
+      dropdownShown = true
+      show()
       return
     }
-    guard !concealed, canEdit else { show(); return }
-    runOperation(restoreSettingsFocus: false, completion: show) {
+    guard !concealed, canEdit else { dropdownShown = true; show(); return }
+    runOperation(restoreSettingsFocus: false, completion: { self.dropdownShown = true; show() }) {
       try await self.applyAndConceal(restoringToMenuBar: nil)
     }
   }
@@ -466,9 +477,10 @@ final class AppModel: ObservableObject {
   }
 
   func activate(_ item: ClassifiedSourceItem, secondary: Bool = false) {
-    guard canEdit, isManageable(item), !native.hasPendingActivation else { return }
+    guard canEdit, isManageable(item) else { return }
     runOperation(restoreSettingsFocus: false, revealOnFailure: false) {
       self.message = nil
+      if self.native.hasPendingActivation { try await self.native.restoreActivation() }
       try await self.native.waitForActivationReadiness(item, secondary: secondary)
       let prepared = try await self.native.prepareActivation(item)
       let pid = item.observation.processIdentifier
@@ -513,7 +525,7 @@ final class AppModel: ObservableObject {
         try? await Task.sleep(for: .milliseconds(500))
         guard let self, !Task.isCancelled, self.native.hasPendingActivation else { return }
         guard Self.panelWindows(of: pid).isDisjoint(with: opened) else { continue }
-        if self.busy { continue }
+        if self.busy || self.dropdownShown { continue }
         modelLog.notice("panel closed; returning the promoted item")
         self.runOperation(restoreSettingsFocus: false, revealOnFailure: false) {
           try await self.native.restoreActivation()

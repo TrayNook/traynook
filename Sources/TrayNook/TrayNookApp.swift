@@ -45,7 +45,7 @@ enum TrayNookApp {
 }
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverDelegate {
   private var launcher: NSStatusItem!
   private var model: AppModel!
   private var settingsWindow: NSWindow?
@@ -78,6 +78,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     model.showSettings = { [weak self] in self?.openSettings() }
     installMainMenu()
     popover.behavior = .transient
+    popover.delegate = self
     popover.animates = false
     NotificationCenter.default.addObserver(self, selector: #selector(environmentChanged), name: NSApplication.didChangeScreenParametersNotification, object: nil)
     NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(environmentChanged), name: NSWorkspace.willSleepNotification, object: nil)
@@ -112,6 +113,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
   }
 
   func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+  func popoverDidClose(_ notification: Notification) { model.dropdownClosed() }
   func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
     modelLog.notice("settings: reopen event")
     openSettings(); return true
