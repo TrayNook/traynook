@@ -38,6 +38,8 @@ final class AppModel: ObservableObject {
   private var attemptedLaunchRestore = false
   private var launchRestoreRunning = false
   private var panelWatch: Task<Void, Never>?
+  /// A tray click that arrived while an operation ran; honored when it ends.
+  private var queuedDropdown: (@MainActor () -> Void)?
   private var hasAcceptedSnapshot = false
   private var previousItems: [ClassifiedSourceItem] = []
 
@@ -389,7 +391,9 @@ final class AppModel: ObservableObject {
 
   func openDropdown(_ show: @escaping @MainActor () -> Void) {
     modelLog.notice("tray click: busy=\(self.busy) pending=\(self.native.hasPendingActivation) concealed=\(self.concealed)")
-    guard !busy else { return }
+    // A click during an activation or return is not lost: the dropdown opens
+    // as soon as the running operation ends.
+    guard !busy else { queuedDropdown = show; return }
     if native.hasPendingActivation {
       runOperation(restoreSettingsFocus: false, revealOnFailure: false, completion: show) {
         try await self.native.restoreActivation()
@@ -546,6 +550,10 @@ final class AppModel: ObservableObject {
       if restoreSettingsFocus && wasActive { NSApp.activate(ignoringOtherApps: true) }
       refresh()
       if !Task.isCancelled { completion?() }
+      if let queued = queuedDropdown {
+        queuedDropdown = nil
+        if !Task.isCancelled { openDropdown(queued) }
+      }
     }
   }
 

@@ -881,7 +881,8 @@ final class NativeMenuBarController: NSObject {
   private func accessibilityTarget(_ item: RawSourceItemObservation, token: Int,
     expectedFrame: ItemFrame? = nil) throws
     -> (element: AXUIElement, frame: ItemFrame) {
-    let failure = MenuBarFailure(L("The clipped item's native Accessibility action is unavailable. Free menu-bar space and try again."))
+    // Built only when thrown: constructing a failure logs it.
+    var failure: MenuBarFailure { MenuBarFailure(L("The clipped item's native Accessibility action is unavailable. Free menu-bar space and try again.")) }
     guard NSRunningApplication(processIdentifier: item.processIdentifier)?.bundleIdentifier == item.bundleIdentifier else {
       throw failure
     }
@@ -951,7 +952,8 @@ final class NativeMenuBarController: NSObject {
   }
 
   private func performAccessibilityAction(_ item: RawSourceItemObservation, secondary: Bool, token: Int) throws {
-    let failure = MenuBarFailure(L("The clipped item's native Accessibility action is unavailable. Free menu-bar space and try again."))
+    // Built only when thrown: constructing a failure logs it.
+    var failure: MenuBarFailure { MenuBarFailure(L("The clipped item's native Accessibility action is unavailable. Free menu-bar space and try again.")) }
     let (target, frame) = try accessibilityTarget(item, token: token)
     guard frame == item.frame else { throw failure }
     var actionNames: CFArray?
@@ -1371,7 +1373,8 @@ private final class TargetedMenuBarEventRelay {
       if let processTap { CFMachPortInvalidate(processTap) }
       if let sessionTap { CFMachPortInvalidate(sessionTap) }
     }
-    let failure = MenuBarFailure(L("macOS could not route this item's move. Other hidden items remain hidden."))
+    // Built only when thrown: constructing a failure logs it.
+    var failure: MenuBarFailure { MenuBarFailure(L("macOS could not route this item's move. Other hidden items remain hidden.")) }
     guard let processTap, let sessionTap,
       let processSource = CFMachPortCreateRunLoopSource(nil, processTap, 0),
       let sessionSource = CFMachPortCreateRunLoopSource(nil, sessionTap, 0),
