@@ -37,6 +37,9 @@ final class AppModel: ObservableObject {
   private var scanGeneration = 0
   private var attemptedLaunchRestore = false
   private var launchRestoreRunning = false
+  /// After sleep or a display change the section is revealed, then the saved
+  /// layout is applied again once things have settled.
+  private var reapplyNotBefore: Date?
   private var panelWatch: Task<Void, Never>?
   /// True while the dropdown is open; a promoted item waits until it closes.
   var dropdownShown = false
@@ -234,7 +237,11 @@ final class AppModel: ObservableObject {
       guard !Task.isCancelled, let self else { return }
       self.accept(snapshot)
       self.scanning = false
-      if !self.attemptedLaunchRestore && self.canEdit {
+      if let notBefore = self.reapplyNotBefore, Date() >= notBefore, self.canEdit, !self.concealed {
+        self.reapplyNotBefore = nil
+        modelLog.notice("re-applying the saved layout after an environment change")
+        self.applySavedLayout()
+      } else if !self.attemptedLaunchRestore && self.canEdit {
         self.attemptedLaunchRestore = true
         if self.layout.items.contains(where: { $0.placement != .menuBar }) {
           self.launchRestoreRunning = true
@@ -396,6 +403,9 @@ final class AppModel: ObservableObject {
     changes.contains { change in
       if change.change.kind == .ambiguousInventoryChanged { return true }
       guard let key = change.key else { return false } // runtime-only window rows
+      // System items are never hidden by TrayNook; one appearing (Control
+      // Centre's camera indicator) changes nothing about the hidden section.
+      if key.hasPrefix("com.apple.") && change.change.kind == .created { return false }
       // A ranked sibling leaving re-keys the survivors, and its window changing
       // within one process can swap ranks. Identifier-keyed siblings keep their
       // keys (Control Centre's camera indicator comes and goes); when one of
@@ -407,6 +417,15 @@ final class AppModel: ObservableObject {
       case .processReplaced: return !hidden.contains(key) && !verifiedVisible.contains(key)
       case .removed, .orderChanged, .runtimeMetadataChanged, .ambiguousInventoryChanged: return false
       }
+    }
+  }
+
+  func environmentChanged(_ reason: String) {
+    modelLog.notice("environment changed: \(reason, privacy: .public); revealing, re-applying in 10 s")
+    reveal()
+    message = L("Display or session changed. Items are revealed; the saved layout is applied again shortly.")
+    if layout.items.contains(where: { $0.placement != .menuBar }) {
+      reapplyNotBefore = Date().addingTimeInterval(10)
     }
   }
 

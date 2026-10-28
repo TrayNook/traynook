@@ -127,8 +127,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
   @objc private func environmentChanged(_ notification: Notification) {
     dropdownRequest += 1
     popover.performClose(nil)
-    model.reveal()
-    model.message = L("Display or session changed. Items are revealed; review your layout before hiding.")
+    model.environmentChanged(notification.name.rawValue)
   }
 
   @objc private func launcherClicked() {

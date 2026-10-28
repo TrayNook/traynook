@@ -28,7 +28,7 @@
 "Currently in Menu Bar — retry placement" = "Currently in Menu Bar — retry placement";
 "Diagnostics copied. No app inventory or item labels included." = "Diagnostics copied. No app inventory or item labels included.";
 "Discovery is taking too long. Items are revealed until a fresh scan completes." = "Discovery is taking too long. Items are revealed until a fresh scan completes.";
-"Display or session changed. Items are revealed; review your layout before hiding." = "Display or session changed. Items are revealed; review your layout before hiding.";
+"Display or session changed. Items are revealed; the saved layout is applied again shortly." = "Display or session changed. Items are revealed; the saved layout is applied again shortly.";
 "Dropdown and Always Hidden share one hidden section. Native menus reveal it temporarily and hide it again after dismissal. Custom panels may need Hide Items afterward. If placement fails, Command-drag the item across the separator and retry." = "Dropdown and Always Hidden share one hidden section. Native menus reveal it temporarily and hide it again after dismissal. Custom panels may need Hide Items afterward. If placement fails, Command-drag the item across the separator and retry.";
 "Dropdown" = "Dropdown";
 "Edit" = "Edit";

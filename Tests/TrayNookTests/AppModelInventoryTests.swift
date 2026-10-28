@@ -136,6 +136,8 @@ struct AppModelInventoryTests {
     let systemKeys = Set(trio.compactMap(\.identity.persistentKey))
     #expect(!AppModel.inventoryRequiresReveal(AppModel.keyedChanges(from: trio, to: duo), known: systemKeys, hidden: [], verifiedVisible: []))
     #expect(!AppModel.inventoryRequiresReveal(AppModel.keyedChanges(from: duo, to: trio), known: systemKeys, hidden: [], verifiedVisible: systemKeys))
+    // Even unknown and not yet verified visible: a system item cannot be hidden by us.
+    #expect(!AppModel.inventoryRequiresReveal(AppModel.keyedChanges(from: duo, to: trio), known: [], hidden: [], verifiedVisible: []))
   }
 
   @Test("Runtime-only status windows never trigger a reveal by themselves")
