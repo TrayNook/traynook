@@ -3,6 +3,9 @@ import ApplicationServices
 import Combine
 import InventoryIdentityCore
 import ServiceManagement
+import os
+
+let modelLog = Logger(subsystem: Bundle.main.bundleIdentifier ?? "io.github.mahenzon.TrayNook", category: "model")
 
 @MainActor
 final class AppModel: ObservableObject {
@@ -197,6 +200,7 @@ final class AppModel: ObservableObject {
   }
 
   func accept(_ snapshot: InventorySnapshot) {
+    native.noteInventory(snapshot)
     let wasGranted = permissionGranted
     let firstSnapshot = !hasAcceptedSnapshot
     hasAcceptedSnapshot = true
@@ -240,6 +244,7 @@ final class AppModel: ObservableObject {
       if Self.inventoryRequiresReveal(changes, known: known, hidden: hidden, verifiedVisible: verifiedVisible) {
         reveal()
         message = L("Menu-bar items changed. Review the layout before hiding again.")
+        modelLog.info("inventory change revealed: \(changes.map { "\($0.change.kind):\($0.key ?? "nil")" }.joined(separator: " "), privacy: .public)")
       }
     }
     previousItems = observed
@@ -389,6 +394,7 @@ final class AppModel: ObservableObject {
       guard let item = liveItem(saved.id), isManageable(item) else { continue }
       let hidden = saved.placement != .menuBar
       let behind = native.isBehindBoundary(item)
+      modelLog.info("apply \(saved.id, privacy: .public) toHidden=\(hidden) behind=\(String(describing: behind), privacy: .public) clipped=\(self.native.isClipped(item.observation))")
       if hidden && native.isClipped(item.observation) { continue }
       // Already-clipped, unassigned items cannot be dragged. The native guard
       // still rejects any visible protected/unassigned item in the hidden section.
@@ -445,6 +451,7 @@ final class AppModel: ObservableObject {
       catch {
         if revealOnFailure { native.reveal() }
         message = error.localizedDescription
+        modelLog.error("operation failed: \(error.localizedDescription, privacy: .public)")
       }
       concealed = native.isConcealed
       busy = false

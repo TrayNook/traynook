@@ -172,6 +172,22 @@ struct AccessibilityErrorClassificationTests {
     #expect(IdentityAssessor().classify([raw]).first?.manageability.status == .protected)
   }
 
+  @Test("Status windows on another display's menu bar are not unexposed sources")
+  func ignoresOtherDisplayStatusWindows() throws {
+    var secondDisplay = windowMetadata(owner: 200, identifier: 2, x: 1300)
+    secondDisplay[kCGWindowBounds as String] = CGRect(x: 1300, y: -1440, width: 24, height: 24).dictionaryRepresentation
+    let windows = try #require(statusWindowObservations(in: [
+      windowMetadata(owner: 100, identifier: 1), secondDisplay,
+    ]))
+    let known = RawSourceItemObservation(
+      runtimeID: "100:0", processIdentifier: 100, bundleIdentifier: "example.known",
+      applicationName: "Known", role: "AXMenuBarItem",
+      frame: ItemFrame(x: 1000, y: 0, width: 24, height: 24), actions: ["AXPress"],
+      metadata: LiveAccessibilityMetadata(), observedOrder: 0)
+    #expect(unrepresentedStatusWindows(windows, comparedTo: [known]).isEmpty)
+    #expect(unrepresentedStatusWindows(windows, comparedTo: []).map(\.windowIdentifier) == [1, 2])
+  }
+
   @Test("Opening our own status-level popover cannot change source owners, fallbacks, or runtime IDs")
   func excludesOwnPopoverFromInventory() throws {
     let ownOwner = Int(ProcessInfo.processInfo.processIdentifier)
@@ -218,9 +234,12 @@ struct AccessibilityErrorClassificationTests {
       applicationName: "Source", role: "AXMenuBarItem",
       frame: ItemFrame(x: 1000, y: 0, width: 24, height: 24), actions: ["AXPress"],
       metadata: LiveAccessibilityMetadata(), observedOrder: 0)
+    var panel = windowMetadata(owner: 100, identifier: 5) // Same app, display-sized status-level panel.
+    panel[kCGWindowBounds as String] = CGRect(x: 0, y: 0, width: 1700, height: 1000).dictionaryRepresentation
     let unrelated = [
       windowMetadata(owner: 200, identifier: 2), // Same position, different app.
       windowMetadata(owner: 100, identifier: 3, x: 3000), // Same app, another display.
+      panel,
     ]
     let offscreen = try #require(statusWindowObservations(in:
       [windowMetadata(owner: 100, identifier: 1, onscreen: false)] + unrelated))

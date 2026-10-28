@@ -113,7 +113,7 @@
 "Undo" = "Undo";
 "macOS could not create a pointer event." = "macOS could not create a pointer event.";
 "macOS could not hide this section while keeping TrayNook accessible. The section has been revealed." = "macOS could not hide this section while keeping TrayNook accessible. The section has been revealed.";
-"macOS could not place the separator safely beside protected items." = "macOS could not place the separator safely beside protected items.";
+"macOS could not place the separator to the left of %@. Command-drag them to the right of the │ separator." = "macOS could not place the separator to the left of %@. Command-drag them to the right of the │ separator.";
 "macOS could not prepare the pointer release." = "macOS could not prepare the pointer release.";
 "macOS did not move this item across the separator. Hold Command and drag it manually, then refresh." = "macOS did not move this item across the separator. Hold Command and drag it manually, then refresh.";
 "macOS has clipped this item. Free some menu-bar space, then retry moving it to Menu Bar." = "macOS has clipped this item. Free some menu-bar space, then retry moving it to Menu Bar.";

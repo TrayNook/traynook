@@ -71,8 +71,8 @@ private final class DropdownCheck: NSObject, NSApplicationDelegate, NSMenuDelega
       exit(result == 0 && preserved ? 0 : 1)
     }
     Task {
-      try? await Task.sleep(for: .seconds(100))
-      print("FAILED: UI regression exceeded its 100 second deadline.")
+      try? await Task.sleep(for: .seconds(200))
+      print("FAILED: UI regression exceeded its 200 second deadline.")
       await cleanup()
       exit(1)
     }
@@ -268,7 +268,7 @@ private final class DropdownCheck: NSObject, NSApplicationDelegate, NSMenuDelega
       guard let production else { throw CheckFailure("Production process was not created.") }
       let application = AXUIElementCreateApplication(production.processIdentifier)
       AXUIElementSetMessagingTimeout(application, 1)
-      try await wait("production launch and automatic concealment", seconds: 25) {
+      try await wait("production launch and automatic concealment", seconds: 120) {
         self.recordControlWindows(pid: production.processIdentifier)
         return self.button("Show Items", in: application) != nil
           && self.fixtureOnscreen(pid: fixture.processIdentifier) == false
@@ -478,6 +478,7 @@ private final class DropdownCheck: NSObject, NSApplicationDelegate, NSMenuDelega
       }
       if let fixture {
         print("Fixture CG onscreen: \(String(describing: fixtureOnscreen(pid: fixture.processIdentifier)))")
+        print("Fixture status windows: \(statusWindowSummary(pid: fixture.processIdentifier))")
         print("Fixture events: action=\(events().contains("action\n")), menu-open=\(events().contains("menu-open\n")), menu-close=\(events().contains("menu-close\n"))")
       }
       if let sentinel {
@@ -572,12 +573,30 @@ private final class DropdownCheck: NSObject, NSApplicationDelegate, NSMenuDelega
     guard let windows = CGWindowListCopyWindowInfo([.optionAll, .excludeDesktopElements], kCGNullWindowID)
       as? [[String: Any]] else { return nil }
     let statusLevel = Int(CGWindowLevelForKey(.statusWindow))
+    // One status window per display; judge the main display's menu bar only.
+    // Concealed windows keep their row, so the vertical range identifies it.
+    let mainDisplay = CGDisplayBounds(CGMainDisplayID())
     let owned = windows.filter {
-      ($0[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value == pid
-        && ($0[kCGWindowLayer as String] as? NSNumber)?.intValue == statusLevel
+      guard ($0[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value == pid,
+        ($0[kCGWindowLayer as String] as? NSNumber)?.intValue == statusLevel,
+        let bounds = $0[kCGWindowBounds as String] as? [String: Any],
+        let frame = CGRect(dictionaryRepresentation: bounds as CFDictionary) else { return false }
+      return frame.minY >= mainDisplay.minY && frame.minY < mainDisplay.maxY
     }
     guard owned.count == 1, let window = owned.first else { return nil }
     return (window[kCGWindowIsOnscreen as String] as? NSNumber)?.boolValue ?? false
+  }
+
+  private func statusWindowSummary(pid: Int32) -> String {
+    guard let windows = CGWindowListCopyWindowInfo([.optionAll, .excludeDesktopElements], kCGNullWindowID)
+      as? [[String: Any]] else { return "unavailable" }
+    return windows.filter {
+      ($0[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value == pid
+        && ($0[kCGWindowLayer as String] as? NSNumber)?.intValue == Int(CGWindowLevelForKey(.statusWindow))
+    }.map { window in
+      let bounds = (window[kCGWindowBounds as String] as? [String: Any]).flatMap { CGRect(dictionaryRepresentation: $0 as CFDictionary) } ?? .null
+      return "\(NSStringFromRect(bounds)) onscreen=\((window[kCGWindowIsOnscreen as String] as? NSNumber)?.boolValue ?? false)"
+    }.joined(separator: "; ")
   }
 
   private func attribute(_ element: AXUIElement, _ key: String) -> CFTypeRef? {

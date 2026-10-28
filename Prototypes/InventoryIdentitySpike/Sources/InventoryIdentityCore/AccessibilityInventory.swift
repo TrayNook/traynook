@@ -90,7 +90,10 @@ func statusWindowObservations(in windows: [[String: Any]]?) -> [StatusWindowObse
 
 private func statusWindow(_ window: StatusWindowObservation, overlaps item: RawSourceItemObservation) -> Bool {
   guard item.processIdentifier == window.processIdentifier,
-    let frame = item.frame, frame.isUsable, window.frame.isUsable else { return false }
+    let frame = item.frame, frame.isUsable, window.frame.isUsable,
+    // Apps also open panels at the status level (DockDoor's preview spans the
+    // display). Only a menu-bar-row-sized window can be the item's own.
+    window.frame.height <= 2 * frame.height else { return false }
   return frame.x < window.frame.maxX && frame.maxX > window.frame.x
     && frame.y < window.frame.maxY && frame.maxY > window.frame.y
 }
@@ -113,8 +116,12 @@ func statusWindowIdentifier(
 func unrepresentedStatusWindows(
   _ windows: [StatusWindowObservation], comparedTo items: [RawSourceItemObservation]
 ) -> [StatusWindowObservation] {
-  windows.filter { window in
+  let rows = items.compactMap(\.frame).filter(\.isUsable)
+  return windows.filter { window in
     window.isOnscreen && !items.contains { statusWindow(window, overlaps: $0) }
+      // Every status item owns one window per display. Windows on another
+      // display's menu bar share no row with any AX item and are duplicates.
+      && (rows.isEmpty || rows.contains { $0.y < window.frame.maxY && $0.maxY > window.frame.y })
   }.map { window in
     // Status-window bounds include vertical padding outside the AX menu row.
     // Retain horizontal extent; unknown rows keep their full protected frame.
