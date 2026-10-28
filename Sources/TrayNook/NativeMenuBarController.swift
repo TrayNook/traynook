@@ -125,7 +125,7 @@ final class NativeMenuBarController: NSObject {
   }
 
   func reveal() {
-    nativeLog.info("reveal (was concealed: \(self.isConcealed))")
+    nativeLog.notice("reveal (was concealed: \(self.isConcealed))")
     generation += 1
     releasePointer()
     showCursor()
@@ -238,7 +238,7 @@ final class NativeMenuBarController: NSObject {
           let now = try await freshInventory(token: token)
           blocking = keptVisible(now, positioned)
             .filter { $0.fixed && $0.frame.minX < positioned.boundary.maxX - 1 }.map(\.name)
-          nativeLog.info("prepareLayout leftmost=\(String(describing: leftmost), privacy: .public) position=\(position, privacy: .public) boundary=\(String(describing: positioned.boundary), privacy: .public) kept=\(kept.count) blocking=\(blocking.count)")
+          nativeLog.notice("prepareLayout leftmost=\(String(describing: leftmost), privacy: .public) position=\(position, privacy: .public) boundary=\(String(describing: positioned.boundary), privacy: .public) kept=\(kept.count) blocking=\(blocking.count)")
           if blocking.isEmpty { placed = true; break }
           // A crowded bar can land the separator one slot right of the
           // requested position. Ask for a slot further left and retry.
@@ -348,7 +348,7 @@ final class NativeMenuBarController: NSObject {
       // Hidden items must leave every menu bar, so grow to the widest display.
       let widestDisplay = NSScreen.screens.map { Double($0.frame.width) }.max() ?? before.displayWidth
       separator?.length = max(before.displayWidth, widestDisplay) + compactWidth
-      nativeLog.info("conceal allowed=\(allowedKeys.count) sources=\(self.concealedSourcePIDs.count) displayWidth=\(before.displayWidth, privacy: .public) widest=\(widestDisplay, privacy: .public) screens=\(NSScreen.screens.map { Double($0.frame.width) }.description, privacy: .public) length=\(self.separator?.length ?? 0, privacy: .public)")
+      nativeLog.notice("conceal allowed=\(allowedKeys.count) sources=\(self.concealedSourcePIDs.count) displayWidth=\(before.displayWidth, privacy: .public) widest=\(widestDisplay, privacy: .public) screens=\(NSScreen.screens.map { Double($0.frame.width) }.description, privacy: .public) length=\(self.separator?.length ?? 0, privacy: .public)")
       isConcealed = true
       try await pause(0.25, token: token)
       guard let after = environment(), before.display == after.display,
@@ -604,7 +604,7 @@ final class NativeMenuBarController: NSObject {
     guard matches.count == 1, let match = matches.first,
       match.binding.bundle == item.bundleIdentifier,
       !requiringOnscreen || match.isOnscreen else {
-      nativeLog.info("no window for \(item.bundleIdentifier ?? "?", privacy: .public) frame=\(String(describing: frame), privacy: .public) matches=\(matches.map { String(describing: $0.frame) }.joined(separator: " "), privacy: .public)")
+      nativeLog.notice("no window for \(item.bundleIdentifier ?? "?", privacy: .public) frame=\(String(describing: frame), privacy: .public) matches=\(matches.map { String(describing: $0.frame) }.joined(separator: " "), privacy: .public)")
       throw MenuBarFailure(L("This item's native window cannot be identified safely. Other hidden items remain hidden."))
     }
     return match.binding
@@ -770,7 +770,7 @@ final class NativeMenuBarController: NSObject {
       let target = prepared.item
       let environment = prepared.environment
       let frame = target.observation.frame!
-      nativeLog.info("interact \(original.identity.persistentKey ?? "?", privacy: .public) toHidden=\(String(describing: movingToHidden), privacy: .public) frame=\(String(describing: frame), privacy: .public) boundary=\(String(describing: environment.boundary), privacy: .public)")
+      nativeLog.notice("interact \(original.identity.persistentKey ?? "?", privacy: .public) toHidden=\(String(describing: movingToHidden), privacy: .public) frame=\(String(describing: frame), privacy: .public) boundary=\(String(describing: environment.boundary), privacy: .public)")
       try requireIdleInput(checkingPointer: !accessibilityAction)
       if movingToHidden == nil && (accessibilityAction || Self.isClipped(target.observation,
         boundary: environment.boundary, displayFrame: environment.displayFrame,
@@ -815,7 +815,7 @@ final class NativeMenuBarController: NSObject {
           (secondary ? .rightMouseUp : .leftMouseUp, source, false)]
       }
       try await post(events, secondary: secondary, token: token)
-      nativeLog.info("posted \(events.count) events for \(original.identity.persistentKey ?? "?", privacy: .public)")
+      nativeLog.notice("posted \(events.count) events for \(original.identity.persistentKey ?? "?", privacy: .public)")
       if let toHidden = movingToHidden {
         try await pause(0.25, token: token)
         // In a crowded bar the hidden side is under the notch, so an item
@@ -1139,7 +1139,7 @@ final class NativeMenuBarController: NSObject {
     let point = CGPoint(x: sample.midX, y: sample.midY)
     for screen in NSScreen.screens {
       guard let display = Self.displayID(of: screen), CGDisplayBounds(display).contains(point) else { continue }
-      if activeDisplay != display { nativeLog.info("menu-bar row now on display \(display)") }
+      if activeDisplay != display { nativeLog.notice("menu-bar row now on display \(display)") }
       activeDisplay = display
       return
     }

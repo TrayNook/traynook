@@ -217,7 +217,7 @@ final class AppModel: ObservableObject {
     // the next complete scan diffs against the last complete one.
     if permissionGranted, !scanComplete, concealed, !busy, incompleteScans < 3 {
       incompleteScans += 1
-      modelLog.info("incomplete scan \(self.incompleteScans) of 3 while concealed: \(snapshot.warnings.joined(separator: " | "), privacy: .public)")
+      modelLog.notice("incomplete scan \(self.incompleteScans) of 3 while concealed: \(snapshot.warnings.joined(separator: " | "), privacy: .public)")
       return
     }
     incompleteScans = 0
@@ -257,7 +257,7 @@ final class AppModel: ObservableObject {
       if Self.inventoryRequiresReveal(changes, known: known, hidden: hidden, verifiedVisible: verifiedVisible) {
         reveal()
         message = L("Menu-bar items changed. Review the layout before hiding again.")
-        modelLog.info("inventory change revealed: \(changes.map { "\($0.change.kind):\($0.key ?? "nil")" }.joined(separator: " "), privacy: .public)")
+        modelLog.notice("inventory change revealed: \(changes.map { "\($0.change.kind):\($0.key ?? "nil")" }.joined(separator: " "), privacy: .public)")
       }
     }
     previousItems = observed
@@ -274,13 +274,17 @@ final class AppModel: ObservableObject {
       if !added.isEmpty { persist() }
     }
     if concealed && !canSafelyConceal() {
+      // Diagnose before revealing: reveal() resets the geometry these depend on.
+      let unsafe = items.compactMap { item -> String? in
+        let behind = native.isBehindBoundary(item)
+        let assigned = isManageable(item) && layout.items.contains { $0.id == item.identity.persistentKey && $0.placement != .menuBar }
+        guard behind == nil || (behind == true && !assigned) else { return nil }
+        let frame = item.observation.frame.map { "\(Int($0.x)),\(Int($0.y)) \(Int($0.width))x\(Int($0.height))" } ?? "no frame"
+        return "\(item.identity.persistentKey ?? "nil")[\(frame) on=\(String(describing: item.observation.isOnscreen))] behind=\(String(describing: behind)) assigned=\(assigned)"
+      }
+      modelLog.error("revealed: unsafe items: \(unsafe.joined(separator: " ; "), privacy: .public)")
       reveal()
       message = L("An unassigned or protected item is behind the separator. Items have been revealed.")
-      let unsafe = items.filter { item in
-        guard let behind = native.isBehindBoundary(item) else { return true }
-        return behind && !(isManageable(item) && layout.items.contains { $0.id == item.identity.persistentKey && $0.placement != .menuBar })
-      }
-      modelLog.error("revealed: unsafe items \(unsafe.map { "\($0.identity.persistentKey ?? "nil")@\(String(describing: $0.observation.frame))=\(String(describing: self.native.isBehindBoundary($0)))" }.joined(separator: " "), privacy: .public)")
     }
   }
 
@@ -420,7 +424,7 @@ final class AppModel: ObservableObject {
       guard let item = liveItem(saved.id), isManageable(item) else { continue }
       let hidden = saved.placement != .menuBar
       let behind = native.isBehindBoundary(item)
-      modelLog.info("apply \(saved.id, privacy: .public) toHidden=\(hidden) behind=\(String(describing: behind), privacy: .public) clipped=\(self.native.isClipped(item.observation))")
+      modelLog.notice("apply \(saved.id, privacy: .public) toHidden=\(hidden) behind=\(String(describing: behind), privacy: .public) clipped=\(self.native.isClipped(item.observation))")
       if hidden && native.isClipped(item.observation) { continue }
       // Already-clipped, unassigned items cannot be dragged. The native guard
       // still rejects any visible protected/unassigned item in the hidden section.

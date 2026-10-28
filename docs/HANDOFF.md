@@ -26,8 +26,21 @@ Updated 2026-10-28 (evening). Build 18's measurements are in
   that are already clipped cannot be dragged out (status says "Offscreen —
   menu bar is full"); on the wider external display they are visible and
   draggable, so arranging with a window active there works better.
-- Known false reveal fixed: Control Centre's camera indicator
-  (`#ax:...audiovideo`) appearing and disappearing no longer reveals.
+- Known false reveals fixed: Control Centre's camera indicator
+  (`#ax:...audiovideo`) appearing and disappearing; a single incomplete scan
+  (a launching app answers Accessibility late) now has to repeat three times
+  before the section reveals, and the scan warning names the slow apps.
+- **Open:** switching the active window to the external display while
+  concealed revealed once with "An unassigned or protected item is behind
+  the separator". The next occurrence logs each unsafe item with its frame,
+  `isBehindBoundary` value, and assignment ("revealed: unsafe items"). Read
+  it, then fix `isBehindBoundary` for Menu Bar-placed items that were swept
+  behind the separator while clipped under the notch (on the external
+  display they are outside the display, not clipped).
+- A lazarus review of the two-display changes found five issues (panel
+  windows becoming fake items, geometry read before the inventory, stale
+  frames in placement, unsafe retry positions, over-eager re-key detection);
+  all fixed in the "review findings" commit.
 
 ## Native harness status
 
