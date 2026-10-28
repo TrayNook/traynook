@@ -16,6 +16,10 @@ enum ProxyImageCapture {
 
   /// Shows the system prompt once per process; later calls only open System Settings.
   static func request() {
+    // TCC lists an app under Screen Recording only after it actually attempts a
+    // capture; the request call alone did not register the ad-hoc build. One
+    // onscreen pixel is enough and nothing is kept.
+    _ = CGWindowListCreateImage(CGRect(x: 0, y: 0, width: 1, height: 1), .optionOnScreenOnly, kCGNullWindowID, [])
     if !CGRequestScreenCaptureAccess() {
       NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")!)
     }
