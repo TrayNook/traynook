@@ -102,10 +102,23 @@ public struct IdentityAssessor: Sendable {
   private func manageability(
     for observation: RawSourceItemObservation
   ) -> ManageabilityAssessment {
-    guard normalized(observation.bundleIdentifier) != nil else {
+    guard observation.role == "AXMenuBarItem" else {
+      return ManageabilityAssessment(
+        status: .protected,
+        reason: "The visible status window has no verified Accessibility Source Item. Keep it visible."
+      )
+    }
+    guard let bundleIdentifier = normalized(observation.bundleIdentifier) else {
       return ManageabilityAssessment(
         status: .protected,
         reason: "Ownership cannot be attributed to a source bundle without mutation."
+      )
+    }
+
+    guard !bundleIdentifier.hasPrefix("com.apple.") else {
+      return ManageabilityAssessment(
+        status: .protected,
+        reason: "Apple system items have no validated safe movement path."
       )
     }
 

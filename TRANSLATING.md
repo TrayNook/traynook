@@ -1,6 +1,8 @@
 # Translating TrayNook
 
-TrayNook 1.0.0 ships in US English. Community translations are welcome once the application target and its string catalog exist.
+The local TrayNook preview bundles US English. Its strings live in
+`Sources/TrayNook/Resources/en.lproj/Localizable.strings`; SwiftUI and AppKit use
+the same localization helper. Community translations are welcome.
 
 ## Translation principles
 
@@ -14,12 +16,14 @@ TrayNook 1.0.0 ships in US English. Community translations are welcome once the 
 ## Adding or updating a language
 
 1. Fork the repository and use the current stable Xcode version documented for the project.
-2. Add or select the language in TrayNook's Xcode String Catalog (`Localizable.xcstrings`) after that application resource exists.
+2. Copy `en.lproj/Localizable.strings` into a new `<locale>.lproj` resource directory. Keep the English keys and translate their values.
 3. Translate every entry marked for localization and preserve all placeholders.
 4. Build and inspect Settings, onboarding, permission states, the Launcher menu, the Dropdown, errors, and recovery actions at narrow and wide window sizes.
 5. Run the project checks documented in the repository and open a pull request describing the locale and what was manually verified.
 
-Do not edit generated build output or introduce a parallel translation file format.
+Run `Scripts/test.sh` and `Scripts/build-app.sh`. Do not edit generated build
+output or introduce a parallel translation format. The MVP has not yet passed
+pseudolocalization or RTL acceptance; record these checks explicitly.
 
 ## Right-to-left languages
 

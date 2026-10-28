@@ -1,5 +1,9 @@
 # Product design
 
+This document describes the complete target product. The implemented local
+preview has a narrower scope; see [MVP report](MVP_REPORT.md) for current behavior
+and remaining release gates.
+
 Status: research draft for discussion  
 Target first public version: **1.0.0**  
 Product name: **TrayNook** (selected, pending final clearance)

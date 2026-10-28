@@ -8,6 +8,8 @@ public enum AccessibilityInventoryTuning {
   public static let defaultMessagingTimeoutSeconds = 0.2
   public static let minimumMessagingTimeoutSeconds = 0.01
   public static let maximumMessagingTimeoutSeconds = 2.0
+  public static let defaultScanBudgetSeconds = 2.0
+  public static let allowedScanBudgetSeconds = 0.01...10.0
   public static let maximumDescendantCount = 512
 }
 
@@ -45,12 +47,102 @@ func accessibilityTraversalCanAppend(
     <= AccessibilityInventoryTuning.maximumDescendantCount - currentCount
 }
 
+struct StatusWindowObservation: Equatable {
+  let processIdentifier: Int32
+  let windowIdentifier: UInt32
+  let frame: ItemFrame
+  let isOnscreen: Bool
+}
+
+func statusWindowObservations(in windows: [[String: Any]]?) -> [StatusWindowObservation]? {
+  guard let windows else { return nil }
+  var result: [StatusWindowObservation] = []
+  for window in windows {
+    guard let level = window[kCGWindowLayer as String] as? Int else { return nil }
+    guard level == Int(CGWindowLevelForKey(.statusWindow)) else { continue }
+    guard let rawOwner = window[kCGWindowOwnerPID as String] as? Int,
+      let owner = Int32(exactly: rawOwner), owner > 0 else { return nil }
+    // Our own controls and popover also use the status-window level. They are
+    // managed directly and must not become sources or invalidate concealment.
+    guard owner != ProcessInfo.processInfo.processIdentifier else { continue }
+    guard let rawIdentifier = window[kCGWindowNumber as String] as? Int,
+      let identifier = UInt32(exactly: rawIdentifier), identifier > 0,
+      let bounds = window[kCGWindowBounds as String] as? [String: Any],
+      let rectangle = CGRect(dictionaryRepresentation: bounds as CFDictionary)
+    else { return nil }
+    let frame = ItemFrame(x: rectangle.minX, y: rectangle.minY,
+      width: rectangle.width, height: rectangle.height)
+    guard frame.isUsable else { return nil }
+    // CGWindow.h explicitly defines an absent visibility key as offscreen.
+    // A present value must be a real Boolean, not malformed metadata.
+    var isOnscreen = false
+    if let value = window[kCGWindowIsOnscreen as String] {
+      guard CFGetTypeID(value as CFTypeRef) == CFBooleanGetTypeID(),
+        let visibility = value as? Bool else { return nil }
+      isOnscreen = visibility
+    }
+    result.append(StatusWindowObservation(
+      processIdentifier: owner, windowIdentifier: identifier,
+      frame: frame, isOnscreen: isOnscreen))
+  }
+  return result
+}
+
+private func statusWindow(_ window: StatusWindowObservation, overlaps item: RawSourceItemObservation) -> Bool {
+  guard item.processIdentifier == window.processIdentifier,
+    let frame = item.frame, frame.isUsable, window.frame.isUsable else { return false }
+  return frame.x < window.frame.maxX && frame.maxX > window.frame.x
+    && frame.y < window.frame.maxY && frame.maxY > window.frame.y
+}
+
+func statusWindowVisibility(
+  of item: RawSourceItemObservation, in windows: [StatusWindowObservation]
+) -> Bool? {
+  let matching = windows.filter { statusWindow($0, overlaps: item) }
+  guard !matching.isEmpty else { return nil }
+  return matching.contains(where: \.isOnscreen)
+}
+
+func unrepresentedStatusWindows(
+  _ windows: [StatusWindowObservation], comparedTo items: [RawSourceItemObservation]
+) -> [StatusWindowObservation] {
+  windows.filter { window in
+    window.isOnscreen && !items.contains { statusWindow(window, overlaps: $0) }
+  }.map { window in
+    // Status-window bounds include vertical padding outside the AX menu row.
+    // Retain horizontal extent; unknown rows keep their full protected frame.
+    let row = items.compactMap(\.frame).first {
+      $0.isUsable && $0.y < window.frame.maxY && $0.maxY > window.frame.y
+    }
+    let y = max(window.frame.y, row?.y ?? window.frame.y)
+    let maxY = min(window.frame.maxY, row?.maxY ?? window.frame.maxY)
+    return StatusWindowObservation(processIdentifier: window.processIdentifier,
+      windowIdentifier: window.windowIdentifier,
+      frame: ItemFrame(x: window.frame.x, y: y, width: window.frame.width, height: maxY - y),
+      isOnscreen: true)
+  }
+}
+
 final class AccessibilityScanIssueTracker {
+  private let deadline: UInt64
+  private let uptimeNanoseconds: () -> UInt64
   private var currentProcessIdentifier: Int32?
   private var incompleteProcessIdentifiers = Set<Int32>()
   private var cannotCompleteProcessIdentifiers = Set<Int32>()
 
   private(set) var maximumApplicationScanMilliseconds = 0.0
+
+  init(
+    deadline: UInt64 = .max,
+    uptimeNanoseconds: @escaping () -> UInt64 = { DispatchTime.now().uptimeNanoseconds }
+  ) {
+    self.deadline = deadline
+    self.uptimeNanoseconds = uptimeNanoseconds
+  }
+
+  var scanBudgetExceeded: Bool { uptimeNanoseconds() >= deadline }
+
+  var snapshotIsComplete: Bool { !scanBudgetExceeded && incompleteApplicationCount == 0 }
 
   var incompleteApplicationCount: Int {
     incompleteProcessIdentifiers.count
@@ -61,6 +153,10 @@ final class AccessibilityScanIssueTracker {
   }
 
   var currentApplicationIsComplete: Bool {
+    guard !scanBudgetExceeded else {
+      markCurrentApplicationIncomplete()
+      return false
+    }
     guard let currentProcessIdentifier else {
       return false
     }
@@ -116,11 +212,13 @@ public protocol InventoryScanning: Sendable {
 public struct AccessibilityInventoryScanner: InventoryScanning, Sendable {
   private let assessor: IdentityAssessor
   private let messagingTimeoutSeconds: Double
+  private let scanBudgetSeconds: Double
 
   public init(
     assessor: IdentityAssessor = IdentityAssessor(),
     messagingTimeoutSeconds: Double =
-      AccessibilityInventoryTuning.defaultMessagingTimeoutSeconds
+      AccessibilityInventoryTuning.defaultMessagingTimeoutSeconds,
+    scanBudgetSeconds: Double = AccessibilityInventoryTuning.defaultScanBudgetSeconds
   ) {
     precondition(
       messagingTimeoutSeconds
@@ -128,23 +226,32 @@ public struct AccessibilityInventoryScanner: InventoryScanning, Sendable {
         && messagingTimeoutSeconds
           <= AccessibilityInventoryTuning.maximumMessagingTimeoutSeconds
     )
+    precondition(AccessibilityInventoryTuning.allowedScanBudgetSeconds.contains(scanBudgetSeconds))
     self.assessor = assessor
     self.messagingTimeoutSeconds = messagingTimeoutSeconds
+    self.scanBudgetSeconds = scanBudgetSeconds
   }
 
   public func scan(promptForPermission: Bool = false) -> InventorySnapshot {
     let startedAt = DispatchTime.now().uptimeNanoseconds
     let trusted = accessibilityIsTrusted(prompt: promptForPermission)
     let capturedAt = Date()
+    // All windows includes concealed/offscreen status items. Only metadata is
+    // read; there is no window capture and no Screen Recording requirement.
+    let statusWindows = trusted ? statusWindowObservations(
+      in: CGWindowListCopyWindowInfo(.optionAll, kCGNullWindowID) as? [[String: Any]]
+    ) : nil
 
-    guard trusted else {
+    guard trusted, let statusWindows else {
       return InventorySnapshot(
         capturedAt: capturedAt,
-        permission: .denied,
+        permission: trusted ? .granted : .denied,
         completeness: .incomplete,
         items: [],
         warnings: [
-          "Accessibility is not granted. No Source Items were inspected."
+          trusted
+            ? "Status-window ownership is unavailable. This snapshot must not drive changes."
+            : "Accessibility is not granted. No Source Items were inspected."
         ],
         metrics: ScanMetrics(
           durationMilliseconds: elapsedMilliseconds(since: startedAt),
@@ -156,16 +263,23 @@ public struct AccessibilityInventoryScanner: InventoryScanning, Sendable {
       )
     }
 
-    let applications = NSWorkspace.shared.runningApplications
-      .filter { $0.processIdentifier > 0 }
-      .sorted { $0.processIdentifier < $1.processIdentifier }
     var rawItems: [RawSourceItemObservation] = []
     var warnings: [String] = []
-    let issueTracker = AccessibilityScanIssueTracker()
+    var inspectedApplicationCount = 0
+    let issueTracker = AccessibilityScanIssueTracker(
+      deadline: startedAt + UInt64(scanBudgetSeconds * 1_000_000_000)
+    )
 
-    for application in applications {
+    for processIdentifier in Set(statusWindows.map(\.processIdentifier)).sorted() {
+      guard !issueTracker.scanBudgetExceeded else { break }
+      inspectedApplicationCount += 1
       let applicationStartedAt = DispatchTime.now().uptimeNanoseconds
-      issueTracker.beginApplication(application.processIdentifier)
+      issueTracker.beginApplication(processIdentifier)
+      guard let application = NSRunningApplication(processIdentifier: processIdentifier) else {
+        issueTracker.markCurrentApplicationIncomplete()
+        issueTracker.finishApplication(durationMilliseconds: elapsedMilliseconds(since: applicationStartedAt))
+        continue
+      }
       let result = observations(
         for: application,
         issueTracker: issueTracker
@@ -179,6 +293,17 @@ public struct AccessibilityInventoryScanner: InventoryScanning, Sendable {
       if let warning = result.warning {
         warnings.append(warning)
       }
+    }
+
+    for window in unrepresentedStatusWindows(statusWindows, comparedTo: rawItems) {
+      let application = NSRunningApplication(processIdentifier: window.processIdentifier)
+      rawItems.append(RawSourceItemObservation(
+        runtimeID: "\(window.processIdentifier):window:\(window.windowIdentifier)",
+        processIdentifier: window.processIdentifier,
+        bundleIdentifier: application?.bundleIdentifier,
+        applicationName: application?.localizedName,
+        role: "UnverifiedStatusWindow", frame: window.frame,
+        actions: [], metadata: LiveAccessibilityMetadata(), observedOrder: rawItems.count))
     }
 
     if issueTracker.incompleteApplicationCount > 0 {
@@ -202,23 +327,28 @@ public struct AccessibilityInventoryScanner: InventoryScanning, Sendable {
           frame: item.frame,
           actions: item.actions,
           metadata: item.metadata,
-          observedOrder: index
+          observedOrder: index,
+          isOnscreen: statusWindowVisibility(of: item, in: statusWindows)
         )
       }
     let classifiedItems = assessor.classify(orderedItems)
+    if issueTracker.scanBudgetExceeded {
+      warnings.append("The inventory scan exceeded its time budget; this snapshot must not drive changes.")
+    }
 
     return InventorySnapshot(
       capturedAt: capturedAt,
       permission: .granted,
       completeness:
-        issueTracker.incompleteApplicationCount == 0
+        issueTracker.snapshotIsComplete
         ? .complete
         : .incomplete,
       items: classifiedItems,
+      statusWindowRuntimeIDs: Set(statusWindows.map(\.windowIdentifier)),
       warnings: warnings,
       metrics: ScanMetrics(
         durationMilliseconds: elapsedMilliseconds(since: startedAt),
-        inspectedApplicationCount: applications.count,
+        inspectedApplicationCount: inspectedApplicationCount,
         sourceItemCount: classifiedItems.count,
         incompleteApplicationCount:
           issueTracker.incompleteApplicationCount,

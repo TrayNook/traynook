@@ -1,5 +1,8 @@
 # Technical feasibility
 
+For implemented behavior and current verification, see the
+[MVP report](MVP_REPORT.md). The gates below describe the broader release target.
+
 Status: research conclusion and prototype plan; not an implementation specification.
 
 ## Executive conclusion

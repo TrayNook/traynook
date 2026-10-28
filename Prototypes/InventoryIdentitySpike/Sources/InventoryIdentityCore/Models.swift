@@ -20,6 +20,8 @@ public struct ItemFrame: Codable, Equatable, Sendable {
       && height.isFinite
       && width > 0
       && height > 0
+      && (x + width).isFinite
+      && (y + height).isFinite
   }
 }
 
@@ -58,6 +60,8 @@ public struct RawSourceItemObservation: Codable, Equatable, Sendable {
   public let actions: [String]
   public let metadata: LiveAccessibilityMetadata
   public let observedOrder: Int
+  /// Runtime window visibility. AX geometry alone can describe an offscreen item.
+  public let isOnscreen: Bool?
 
   public init(
     runtimeID: String,
@@ -69,7 +73,8 @@ public struct RawSourceItemObservation: Codable, Equatable, Sendable {
     frame: ItemFrame?,
     actions: [String],
     metadata: LiveAccessibilityMetadata,
-    observedOrder: Int
+    observedOrder: Int,
+    isOnscreen: Bool? = nil
   ) {
     self.runtimeID = runtimeID
     self.processIdentifier = processIdentifier
@@ -81,6 +86,7 @@ public struct RawSourceItemObservation: Codable, Equatable, Sendable {
     self.actions = actions
     self.metadata = metadata
     self.observedOrder = observedOrder
+    self.isOnscreen = isOnscreen
   }
 }
 
@@ -200,6 +206,8 @@ public struct InventorySnapshot: Codable, Equatable, Sendable {
   public let permission: AccessibilityPermissionStatus
   public let completeness: InventoryScanCompleteness
   public let items: [ClassifiedSourceItem]
+  /// Runtime window-server identity only; never store in Desired Layout or diagnostics.
+  public let statusWindowRuntimeIDs: Set<UInt32>
   public let warnings: [String]
   public let metrics: ScanMetrics
 
@@ -208,6 +216,7 @@ public struct InventorySnapshot: Codable, Equatable, Sendable {
     permission: AccessibilityPermissionStatus,
     completeness: InventoryScanCompleteness = .complete,
     items: [ClassifiedSourceItem],
+    statusWindowRuntimeIDs: Set<UInt32> = [],
     warnings: [String],
     metrics: ScanMetrics
   ) {
@@ -215,6 +224,7 @@ public struct InventorySnapshot: Codable, Equatable, Sendable {
     self.permission = permission
     self.completeness = completeness
     self.items = items
+    self.statusWindowRuntimeIDs = statusWindowRuntimeIDs
     self.warnings = warnings
     self.metrics = metrics
   }

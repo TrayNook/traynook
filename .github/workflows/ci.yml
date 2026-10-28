@@ -1,0 +1,12 @@
+name: Build and test
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  macos:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - run: Scripts/test.sh
+      - run: Scripts/build-app.sh
+      - run: Scripts/smoke-test.sh

@@ -144,6 +144,48 @@ struct IdentityAssessorTests {
     #expect(item?.manageability.status == .protected)
   }
 
+  @Test("Apple system controls remain Protected even with geometry and AXPress")
+  func systemControlsAreProtected() throws {
+    let raw = RawSourceItemObservation(
+      runtimeID: "500:0",
+      processIdentifier: 500,
+      bundleIdentifier: "com.apple.controlcenter",
+      applicationName: "Control Center",
+      role: "AXMenuBarItem",
+      frame: ItemFrame(x: 800, y: 0, width: 24, height: 24),
+      actions: ["AXPress"],
+      metadata: LiveAccessibilityMetadata(identifierCandidate: "system.control"),
+      observedOrder: 0
+    )
+    let items = assessor.classify([raw])
+    let identity = try #require(items.first?.identity.provisionalKey)
+
+    #expect(items.first?.manageability.status == .protected)
+    #expect(throws: SafeDefaultCorrectionPlanningError.targetProtected) {
+      try SafeDefaultCorrectionPlanner().plan(
+        target: identity,
+        in: items,
+        boundaryFrame: ItemFrame(x: 900, y: 0, width: 24, height: 24),
+        launcherFrame: ItemFrame(x: 924, y: 0, width: 24, height: 24),
+        safeMenuBarFrame: ItemFrame(x: 700, y: 0, width: 300, height: 24)
+      )
+    }
+  }
+
+  @Test("Finite coordinates whose edges overflow are not usable geometry")
+  func overflowingGeometryIsProtected() {
+    let frame = ItemFrame(
+      x: .greatestFiniteMagnitude,
+      y: 0,
+      width: .greatestFiniteMagnitude,
+      height: 24
+    )
+    let items = assessor.classify([observation(runtimeID: "500:0", frame: frame)])
+
+    #expect(!frame.isUsable)
+    #expect(items.first?.manageability.status == .protected)
+  }
+
   private func observation(
     runtimeID: String,
     frame: ItemFrame?

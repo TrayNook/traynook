@@ -1,11 +1,19 @@
 # Gate A live compatibility matrix
 
-Status: partially run.
+Status: partially run. Production MVP native acceptance updated on 2026-09-18; full Gate A is still open.
 
 Use this file to record sanitized conclusions only. Do not paste raw `scan`,
 `watch`, or Accessibility output. In particular, never record Source Item titles,
 labels, identifier candidates, geometry, process/window IDs, hashes of
 content-bearing strings, or a source-application inventory.
+
+The 2026-09-16 crowded-control blocker below is historical. On 2026-09-18,
+automatic own-control positioning, native drags in both directions, native menu
+handoff/dismissal, and clipped-item AXPress passed live checks. The actual saved
+MVP layout also concealed six selected sources while eleven Menu Bar sources
+stayed onscreen. This does not close the broader identity/platform matrix; see
+[the current MVP report](../../../docs/MVP_REPORT.md) and the repeatable native
+checks in `Scripts/` at the repository root.
 
 ## Test environments
 
@@ -72,5 +80,13 @@ do not currently define numeric acceptance limits.
   it remains unaccepted until the live matrix verifies both insertion sides,
   restoration, collateral order, and fail-visible behavior.
 - The first granted Sequoia scan proved public Accessibility enumeration but
-  exposed an unacceptable 41.49-second synchronous scan. Further live rows are
-  blocked until bounded Accessibility messaging is rebuilt and remeasured.
+  exposed an unacceptable 41.49-second synchronous scan.
+- On 2026-09-16 the MVP shared scanner was rebuilt and remeasured. A live local
+  diagnostic returned a complete 19-item inventory in 674 ms, then 478 ms on the final build, with zero incomplete
+  apps, after selecting actual public status-window owners and adding a global
+  scan budget. These are local samples, not an accepted performance budget.
+- A disposable owned fixture was discovered uniquely in a complete inventory.
+  Its native click/drag/conceal run was blocked because macOS placed the new
+  controls offscreen in the crowded menu bar. No existing items were manipulated.
+  Source restart, insertion correction, and the remaining OS matrix still need
+  live acceptance. See [MVP report](../../../docs/MVP_REPORT.md).

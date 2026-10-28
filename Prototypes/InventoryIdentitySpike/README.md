@@ -5,6 +5,14 @@ This disposable Swift package implements the first TrayNook prototype phase from
 metadata, assess identity conservatively, detect inventory changes, and measure
 the cost of metadata polling.
 
+Discovery first uses public window-server metadata to find owners of windows at
+the status-window level, including offscreen windows. Accessibility queries then
+inspect those owners rather than unrelated apps and XPC services. No pixels are
+captured. Visible status windows without a matching Accessibility item are
+reported as Protected. Offscreen unexposed windows contribute runtime-only window
+IDs so the app can reveal its section when that inventory changes; this does not
+claim to reveal windows that were already offscreen before TrayNook started.
+
 It deliberately contains no production UI, placement mutation, synthesized input,
 screen capture, persistence, private API, analytics, or network access.
 
@@ -28,7 +36,13 @@ and rerun without rebuilding the app bundle.
 
 Every synchronous Accessibility message is bounded to 0.2 seconds by default.
 Use `--ax-timeout SECONDS` to measure another value from 0.01 through 2.0
-seconds. If any application times out or otherwise returns a transient
+seconds. The shared scanner also has a two-second whole-scan budget, checked
+before messages and between applications. One in-flight message may finish after
+that deadline, bounded by its configured messaging timeout. Budget exhaustion,
+unreadable status-window metadata, or an unresolved window owner produces an
+incomplete snapshot. Library callers can configure `scanBudgetSeconds` from
+0.01 through 10; the CLI uses the default. If any inspected application times
+out or otherwise returns a transient
 Accessibility failure, the whole snapshot is marked `incomplete`, and that
 sample never replaces the last complete baseline or drives correction. `scan`
 exits unsuccessfully; `watch` retains the last complete baseline and exits
