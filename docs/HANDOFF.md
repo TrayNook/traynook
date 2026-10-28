@@ -1,57 +1,54 @@
-# TrayNook: build 19, awaiting native acceptance
+# TrayNook: build 19, first native run done on two displays
 
-Updated 2026-10-28. Build 18's measurements and verified checks are in
-[MVP_REPORT.md](MVP_REPORT.md); the decisions behind build 19 are in
-[ADR 0009](adr/0009-hidden-pointer-sibling-keys-and-session-image-cache.md).
+Updated 2026-10-28 (evening). Build 18's measurements are in
+[MVP_REPORT.md](MVP_REPORT.md); build 19's decisions are in
+[ADR 0009](adr/0009-hidden-pointer-sibling-keys-and-session-image-cache.md) and
+[ADR 0010](adr/0010-geometry-follows-the-active-menu-bar-row.md).
 
 ## Current state
 
-- Development app: `dist/TrayNook Dev.app`, **1.0.0 (19)**, ad-hoc signed.
-  Unit suite (69 tests), packaged smoke test, and both manual harnesses compile
-  and pass. **No native check has been run on build 19**: the user asked that
-  no synthesized input touch the pointer until they say so.
-- Pointer: hidden with `CGDisplayHideCursor` during synthesized moves and
-  clicks, warped back, then shown. The jump still happens; it is meant to be
-  invisible. The 200 ms settle window stays; the wait for released buttons and
-  keys is at most one second instead of ten.
-- Proxies: with Screen Recording, each Dropdown item shows its last onscreen
-  capture (`CGWindowListCreateImage` returns nil for offscreen windows on
-  15.7; `--diagnose` prints the capture counts). Without it, app icons.
-- Identity: `bundle` for an app's only item; `bundle#ax:<id>` or
-  `bundle#w<rank>` for siblings. Restarted hidden sources rebind their PID
-  instead of revealing. Menu Bar sources, unknown bundles, ambiguous groups,
-  and ranked siblings whose set or window changes still reveal.
-- Work is committed on `master` (baseline `74f0dc7`, then one commit per step
-  and one for the review fixes).
+- Development app: `dist/TrayNook Dev.app`, **1.0.0 (19)**, signed with the
+  user's `TrayNook Dev` certificate (README "Development signing and
+  permissions"). Unit suite (72 tests), packaged smoke test, and both manual
+  harnesses compile.
+- **Verified on device (2026-10-28, notch MacBook + external display):**
+  launch → automatic layout → two Command-drags (Macs Fan Control, Handy)
+  → concealment with the separator at 2578 pt covering the wider display.
+  Concealment held until the user interacted. Read the run with
+  `/usr/bin/log show --last 5m --info --predicate 'subsystem == "io.github.mahenzon.TrayNook.dev"'`
+  (`log` alone is a zsh builtin).
+- Geometry follows the display of the latest inventory: the AX menu-bar row
+  jumps to the display that holds the active app's key window, so any click
+  on the other display used to break every decision (ADR 0010).
+- Crowded bar: items left of the notch's safe area are offscreen; brand-new
+  status items get no CG window at all. A drag to the hidden side may end
+  clipped under the notch and is accepted as success. Menu Bar-placed items
+  that are already clipped cannot be dragged out (status says "Offscreen —
+  menu bar is full"); on the wider external display they are visible and
+  draggable, so arranging with a window active there works better.
+- Known false reveal fixed: Control Centre's camera indicator
+  (`#ax:...audiovideo`) appearing and disappearing no longer reveals.
 
-## Native acceptance to run first (needs the user's go-ahead)
+## Native harness status
 
-Every harness checks `AXIsProcessTrusted()` for the process that launches it
-and refuses to post input otherwise. On 2026-10-28 no terminal on the machine
-(Terminal.app, iTerm, the Claude app shell) had Accessibility, so the checks
-below could not start. Grant Accessibility to the terminal that runs them
-(System Settings > Privacy & Security > Accessibility, add Terminal.app) and
-quit Hidden Bar first: its expanded separator and TrayNook's compete for the
-same menu-bar space.
+Every harness needs `AXIsProcessTrusted()` in the launching process. Grant
+Accessibility to Terminal.app and run each script through
+`open -a Terminal x.command` with output redirected to a file (the Claude app
+shell, its Terminal panel, and iTerm had no Accessibility). Quit Hidden Bar
+and the real TrayNook first.
 
-1. `Scripts/test-dropdown-ui.sh --layout "$HOME/Library/Application Support/io.github.mahenzon.TrayNook.dev/layout.json" --invalid-positions "dist/TrayNook Dev.app"`.
-   Its cursor witness samples pointer **position**, so displacement is expected;
-   watch the screen for a visible pointer during promotion. If the pointer is
-   visible, `CGDisplayHideCursor` is being ignored for a non-frontmost process.
-   Next option: keep TrayNook active across `moveTargeted` (drop the early
-   `NSApp.deactivate()` in `runOperation`/`interact` for the move only). Do not
-   use a private connection property.
-2. `Scripts/test-native-cancellation.sh` and `Scripts/test-native-menu.sh`:
-   release paths must still show the pointer (every `hideCursor` is paired in a
-   `defer`, and `reveal()` shows it).
-3. Grant Screen Recording to the rebuilt app, quit and reopen it, open the
-   dropdown: proxies should be captured glyphs on a dark or light backdrop.
-   Run `--diagnose` to confirm "Captured onscreen: N of N".
-4. A multi-item app (two `AXMenuBarItem`s in one process): both appear in
-   Layout with distinct keys; promoting one moves only that one. Quit and
-   relaunch the app while concealed: the proxies keep working, no reveal.
-5. Restart a Menu Bar-placed app while concealed: it must either be visible or
-   the section must reveal.
+- `Scripts/test-native-menu.sh`: **passes**.
+- `Scripts/test-native-cancellation.sh`: setup and `queued-down`,
+  `delivered-down`, `delivered-up` pass; the `*-motion` phases compare the
+  pointer with a fixed position and need an idle machine (the user was
+  working during the run). One earlier run failed setup with an incomplete
+  scan; it prints the setup scan now.
+- `Scripts/test-dropdown-ui.sh --layout ...`: cannot complete on this bar.
+  Its fixture and sentinel are brand-new items that get no status window in
+  an overfull bar, and its final order check fails by design whenever Apply
+  reorders the user's real items. Run it on a bar with free space, or
+  without `--layout` after quitting a few menu-bar apps.
+- Multi-item app and Menu Bar-restart checks (ADR 0009 §2) still unverified.
 
 ## Read before changing interaction
 
