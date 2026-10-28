@@ -292,7 +292,11 @@ final class AppModel: ObservableObject {
       for key in additions where added.insert(key).inserted {
         layout.items.append(SavedItem(id: key))
       }
-      if !added.isEmpty { persist() }
+      // System items are never manageable; a transient one (Control Centre's
+      // camera indicator) is forgotten as soon as it is gone.
+      let stale = layout.items.filter { Self.bundle(ofKey: $0.id).hasPrefix("com.apple.") && liveItem($0.id) == nil }
+      layout.items.removeAll { saved in stale.contains { $0.id == saved.id } }
+      if !added.isEmpty || !stale.isEmpty { persist() }
     }
     if concealed && !canSafelyConceal() {
       // Diagnose before revealing: reveal() resets the geometry these depend on.

@@ -5,6 +5,7 @@ import InventoryIdentityCore
 struct SettingsView: View {
   @ObservedObject var model: AppModel
   @State private var confirmReset = false
+  @State private var showLocked = false
 
   var body: some View {
     VStack(spacing: 0) {
@@ -81,10 +82,25 @@ struct SettingsView: View {
                 if zone == .menuBar { Label(L("TrayNook stays here"), systemImage: "tray.full").font(.caption).foregroundStyle(.secondary) }
               }
               let savedItems = model.layout.items.filter { $0.placement == zone }
+              // Locked items carry no decision; one row stands for all of them.
+              let locked = savedItems.filter { saved in model.liveItem(saved.id).map { !model.isManageable($0) } ?? false }
               if savedItems.isEmpty {
                 Text(L("No items here yet")).foregroundStyle(.secondary).padding(.vertical, 8)
               }
-              ForEach(savedItems) { item in itemRow(item) }
+              ForEach(savedItems.filter { saved in !locked.contains { $0.id == saved.id } }) { item in itemRow(item) }
+              if !locked.isEmpty {
+                DisclosureGroup(isExpanded: $showLocked) {
+                  ForEach(locked) { item in itemRow(item) }
+                } label: {
+                  HStack(spacing: 10) {
+                    Image(systemName: "lock").frame(width: 26)
+                    Text(L("System items")).lineLimit(1)
+                    Text("\(locked.count)").foregroundStyle(.secondary)
+                    Spacer()
+                    Text(L("Protected — kept visible")).font(.caption).foregroundStyle(.secondary)
+                  }
+                }
+              }
             }
             .padding(12)
             .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 10))

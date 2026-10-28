@@ -114,6 +114,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
 
   func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
   func popoverDidClose(_ notification: Notification) { model.dropdownClosed() }
+  func windowWillClose(_ notification: Notification) {
+    guard (notification.object as? NSWindow) === settingsWindow else { return }
+    NSApp.setActivationPolicy(.accessory)
+  }
   func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
     modelLog.notice("settings: reopen event")
     openSettings(); return true
@@ -172,6 +176,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
       if !smokeTest { window.setFrameAutosaveName("TrayNookSettings") }
       settingsWindow = window
     }
+    // Visible in Cmd-Tab and the Dock only while Settings is open.
+    NSApp.setActivationPolicy(.regular)
     settingsWindow?.deminiaturize(nil)
     settingsWindow?.collectionBehavior.insert(.moveToActiveSpace)
     settingsWindow?.makeKeyAndOrderFront(nil)
