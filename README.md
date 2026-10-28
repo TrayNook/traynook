@@ -116,13 +116,42 @@ requesting permissions, changing layout, or writing app preferences. `--diagnose
 is read-only and prints permission state, aggregate scan metrics, and how many
 status windows Screen Recording can capture; no image is kept.
 
-Development builds use `io.github.mahenzon.TrayNook.dev` and ad-hoc signing.
-Rebuilding invalidates macOS Accessibility and Screen Recording approval even
-though the toggles stay on; remove the old entry with − and add the newly built
-app with +. To keep grants across rebuilds, create a self-signed code-signing
-certificate once (Keychain Access → Certificate Assistant → Create a
-Certificate, type **Code Signing**, name it for example `TrayNook Dev`) and build
-with `TRAYNOOK_DEV_SIGNING_IDENTITY='TrayNook Dev' Scripts/build-app.sh`. The saved layout is local, at
+### Development signing and permissions
+
+Development builds use `io.github.mahenzon.TrayNook.dev`. Sign them with a
+self-signed certificate so macOS keeps Accessibility and Screen Recording grants
+across rebuilds; an ad-hoc signature changes with every build, and macOS then
+shows the old toggles as on while trusting nothing.
+
+One-time certificate setup:
+
+1. Keychain Access → Certificate Assistant → Create a Certificate. Name
+   `TrayNook Dev`, identity type Self Signed Root, certificate type **Code Signing**.
+2. If it landed in the System keychain, double-click it there → Trust → Code
+   Signing: **Always Trust**. `security find-identity -v -p codesigning` must
+   list it as valid.
+
+Every build:
+
+```sh
+TRAYNOOK_DEV_SIGNING_IDENTITY='TrayNook Dev' TRAYNOOK_BUILD=19 Scripts/build-app.sh
+```
+
+First grant after switching signatures (also the recovery when the app says
+**Not granted** while System Settings shows the toggle on):
+
+1. Quit TrayNook. Purge the stale rows, which still point at the old signature:
+   ```sh
+   tccutil reset Accessibility io.github.mahenzon.TrayNook.dev
+   tccutil reset ScreenCapture io.github.mahenzon.TrayNook.dev
+   ```
+2. Open `dist/TrayNook Dev.app`. Permissions → **Grant Accessibility…**, then in
+   System Settings click **+** and pick the app (toggling an existing row does
+   nothing).
+3. **Grant Screen Recording…** and allow the prompt. The app appears in that
+   list only after this button's one-pixel capture attempt.
+4. Quit and reopen TrayNook once; macOS applies Screen Recording to a fresh
+   process. Both now read Granted and survive later builds with the same identity. The saved layout is local, at
 `~/Library/Application Support/io.github.mahenzon.TrayNook.dev/layout.json`.
 Unreadable or newer state is preserved and disables management until Reset Layout.
 
