@@ -37,6 +37,7 @@ final class AppModel: ObservableObject {
   private var scanGeneration = 0
   private var attemptedLaunchRestore = false
   private var launchRestoreRunning = false
+  private var panelWatch: Task<Void, Never>?
   private var hasAcceptedSnapshot = false
   private var previousItems: [ClassifiedSourceItem] = []
 
@@ -169,7 +170,7 @@ final class AppModel: ObservableObject {
   }
 
   func stop() {
-    pollTask?.cancel(); scanTask?.cancel(); operationTask?.cancel()
+    pollTask?.cancel(); scanTask?.cancel(); operationTask?.cancel(); panelWatch?.cancel()
     native.remove()
   }
 
@@ -387,6 +388,7 @@ final class AppModel: ObservableObject {
   }
 
   func openDropdown(_ show: @escaping @MainActor () -> Void) {
+    modelLog.notice("tray click: busy=\(self.busy) pending=\(self.native.hasPendingActivation) concealed=\(self.concealed)")
     guard !busy else { return }
     if native.hasPendingActivation {
       runOperation(restoreSettingsFocus: false, revealOnFailure: false, completion: show) {
@@ -465,8 +467,10 @@ final class AppModel: ObservableObject {
       self.message = nil
       try await self.native.waitForActivationReadiness(item, secondary: secondary)
       let prepared = try await self.native.prepareActivation(item)
-      let interaction = NativeMenuInteraction(processIdentifier: item.observation.processIdentifier)
+      let pid = item.observation.processIdentifier
+      let interaction = NativeMenuInteraction(processIdentifier: pid)
       defer { interaction?.cancel() }
+      let windowsBefore = Self.panelWindows(of: pid)
       var responseTimedOut = false
       do { try await self.native.activatePrepared(prepared, secondary: secondary) }
       catch NativeMenuActionError.responseTimedOut { responseTimedOut = true }
@@ -477,6 +481,41 @@ final class AppModel: ObservableObject {
         try await self.native.restoreActivation()
       } else {
         self.message = L("This app stays visible while its panel is in use. Open TrayNook again to return it to the hidden section.")
+        self.watchPanel(of: pid, before: windowsBefore)
+      }
+    }
+  }
+
+  /// Onscreen windows of a source other than its status items: the panel or
+  /// popover it opened instead of a menu.
+  private static func panelWindows(of pid: Int32) -> Set<UInt32> {
+    let windows = CGWindowListCopyWindowInfo(.optionOnScreenOnly, kCGNullWindowID) as? [[String: Any]] ?? []
+    return Set(windows.compactMap { window in
+      guard (window[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value == pid,
+        (window[kCGWindowLayer as String] as? NSNumber)?.intValue != Int(CGWindowLevelForKey(.statusWindow)),
+        let id = (window[kCGWindowNumber as String] as? NSNumber)?.uint32Value else { return nil }
+      return id
+    })
+  }
+
+  /// Once the panel the activation opened is gone, return the item on its own
+  /// so the next click on the tray icon opens the dropdown directly.
+  private func watchPanel(of pid: Int32, before: Set<UInt32>) {
+    let opened = Self.panelWindows(of: pid).subtracting(before)
+    guard !opened.isEmpty else { return }
+    panelWatch?.cancel()
+    panelWatch = Task { [weak self] in
+      while !Task.isCancelled {
+        try? await Task.sleep(for: .milliseconds(500))
+        guard let self, !Task.isCancelled, self.native.hasPendingActivation else { return }
+        guard Self.panelWindows(of: pid).isDisjoint(with: opened) else { continue }
+        if self.busy { continue }
+        modelLog.notice("panel closed; returning the promoted item")
+        self.runOperation(restoreSettingsFocus: false, revealOnFailure: false) {
+          try await self.native.restoreActivation()
+          self.message = nil
+        }
+        return
       }
     }
   }
