@@ -100,8 +100,9 @@ public struct IdentityAssessor: Sendable {
           observation: observation,
           identity: IdentityAssessment(
             status: .provisionalDiscriminator,
-            // Runtime identity keeps the raw identifier so a single item that
-            // gains a sibling is not reported as removed and created.
+            // Runtime identity uses the identifier itself (not the #ax: key)
+            // so a single item that gains a sibling is not reported as
+            // removed and created.
             provisionalKey: ProvisionalIdentityKey(
               bundleIdentifier: bundleIdentifier,
               discriminatorCandidate: uniqueIdentifier

@@ -242,6 +242,26 @@ final class NativeMenuBarController: NSObject {
     return behind
   }
 
+  /// True only when the item is fully inside the safe status area, on the
+  /// visible side of the boundary, onscreen, and not clipped. "Not behind the
+  /// boundary" is weaker: an untrusted offscreen item is also not behind it.
+  func isVerifiedVisible(_ classified: ClassifiedSourceItem) -> Bool {
+    guard let environment = environment(),
+      Self.launcherIsSafe(environment.launcher, boundary: environment.boundary,
+        safeFrame: environment.safeFrame, expanded: isConcealed) else { return false }
+    return Self.isVerifiedVisible(classified.observation, boundary: environment.boundary,
+      safeFrame: environment.safeFrame, displayFrame: environment.displayFrame,
+      occlusionFrame: environment.occlusionFrame)
+  }
+
+  static func isVerifiedVisible(_ item: RawSourceItemObservation, boundary: ItemFrame,
+    safeFrame: ItemFrame, displayFrame: ItemFrame, occlusionFrame: ItemFrame? = nil) -> Bool {
+    guard let frame = item.frame, item.isOnscreen != false,
+      !isClipped(item, boundary: boundary, displayFrame: displayFrame, occlusionFrame: occlusionFrame)
+    else { return false }
+    return safeFrame.contains(frame) && hiddenSide(frame, boundary: boundary) == false
+  }
+
   /// Reports sources whose pointer target is clipped by WindowServer or the
   /// camera cutout. Partial cutout overlap still needs assignment validation.
   func isClipped(_ item: RawSourceItemObservation) -> Bool {

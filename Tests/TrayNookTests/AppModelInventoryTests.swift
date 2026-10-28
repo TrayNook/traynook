@@ -109,6 +109,20 @@ struct AppModelInventoryTests {
     #expect(AppModel.inventoryRequiresReveal(growth, known: ["example.pair"], hidden: ["example.pair"], verifiedVisible: []))
   }
 
+  @Test("An identifier-keyed sibling leaving reveals, since the survivor is re-keyed")
+  func identifierSiblingRemovalReveals() {
+    let assessor = IdentityAssessor()
+    let pair = assessor.classify([
+      item(bundle: "example.pair", pid: 40, index: 0, identifier: "foo", window: 10),
+      item(bundle: "example.pair", pid: 40, index: 1, identifier: "bar", window: 11),
+    ])
+    let keys: Set<String> = ["example.pair#ax:foo", "example.pair#ax:bar"]
+    let survivor = assessor.classify([item(bundle: "example.pair", pid: 40, index: 0, identifier: "foo", window: 10)])
+    #expect(survivor[0].identity.persistentKey == "example.pair")
+    let removal = AppModel.keyedChanges(from: pair, to: survivor)
+    #expect(AppModel.inventoryRequiresReveal(removal, known: keys, hidden: keys, verifiedVisible: []))
+  }
+
   @Test("Runtime-only status windows never trigger a reveal by themselves")
   func unverifiedWindowsAreIgnored() {
     let assessor = IdentityAssessor()

@@ -33,10 +33,15 @@ persisted and fall back to the rank. Status-level windows without a verified
 item are runtime-only and never rank siblings or get a key.
 
 Rank can shift when an application creates or destroys items dynamically. The
-section is revealed whenever a ranked sibling is removed or its status window
-changes while concealed, so a shifted rank cannot silently swap placements. An
-application growing from one item to two re-keys its first item; the old entry
-stays as Not Running until the user forgets it. This replaces "indistinguishable
+section is revealed whenever any sibling is removed or a ranked sibling's
+status window changes within one process while concealed, so such a shift
+cannot silently swap placements. Ranks are assumed stable across a relaunch
+(an application creates its items in code order), so a relaunched multi-item
+application rebinds its hidden siblings without revealing; an application that
+creates items in a different order on each launch would swap keys, and that
+case is accepted as unlikely until seen. An application growing from one item
+to two re-keys its first item; the old entry stays as Not Running until the
+user forgets it. This replaces "indistinguishable
 siblings stay Ambiguous" for the rank case; truly indistinguishable siblings
 (no window identity) remain Ambiguous.
 

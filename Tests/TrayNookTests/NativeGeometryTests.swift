@@ -87,6 +87,20 @@ struct NativeGeometryTests {
     }
   }
 
+  @Test("Verified visibility excludes offscreen, clipped, hidden-side, and unsafe items")
+  func verifiedVisibility() {
+    let display = ItemFrame(x: 0, y: 0, width: 1440, height: 900)
+    func visible(_ item: RawSourceItemObservation) -> Bool {
+      NativeMenuBarController.isVerifiedVisible(item, boundary: boundary, safeFrame: safeFrame, displayFrame: display)
+    }
+    #expect(visible(observation(bundle: "example.bar", x: 1300)))
+    #expect(!visible(observation(bundle: "example.bar", x: -4096)))
+    #expect(!visible(observation(bundle: "example.bar", x: 1300, isOnscreen: false)))
+    #expect(!visible(observation(bundle: "example.bar", x: 1100)))
+    #expect(!visible(observation(bundle: "example.bar", x: 880)))
+    #expect(!visible(observation(bundle: "example.bar", x: 1230)))
+  }
+
   @Test("Each hidden sibling needs its own assignment")
   func siblingsNeedIndividualAssignments() {
     let assessor = IdentityAssessor()

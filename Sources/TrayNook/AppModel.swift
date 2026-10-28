@@ -229,7 +229,7 @@ final class AppModel: ObservableObject {
       let known = Set(layout.items.map(\.id))
       let hidden = Set(layout.items.filter { $0.placement != .menuBar }.map(\.id))
       let verifiedVisible = Set(observed.compactMap { item in
-        native.isBehindBoundary(item) == false ? item.identity.persistentKey : nil
+        native.isVerifiedVisible(item) ? item.identity.persistentKey : nil
       })
       for change in changes where Self.rebindsProcess(change, hidden: hidden) {
         if let key = change.key,
@@ -269,6 +269,7 @@ final class AppModel: ObservableObject {
     /// sibling may have taken over another sibling's key.
     let windowReplaced: Bool
 
+    var isSibling: Bool { key?.contains("#") == true }
     var isRankedSibling: Bool { key?.contains("#w") == true }
   }
 
@@ -295,13 +296,17 @@ final class AppModel: ObservableObject {
 
   /// Reveal when something could be hidden that the user did not place there:
   /// an unknown source, a Menu Bar source that is not verified visible, an
-  /// ambiguous group change, or ranked siblings whose set or windows changed.
+  /// ambiguous group change, a sibling leaving, or a ranked sibling's window
+  /// changing. Ranks are assumed stable across a relaunch (ADR 0009).
   static func inventoryRequiresReveal(_ changes: [KeyedChange], known: Set<String>,
     hidden: Set<String>, verifiedVisible: Set<String>) -> Bool {
     changes.contains { change in
       if change.change.kind == .ambiguousInventoryChanged { return true }
       guard let key = change.key else { return false } // runtime-only window rows
-      if change.isRankedSibling && (change.windowReplaced || change.change.kind == .removed) { return true }
+      // A sibling leaving can re-key the survivors; a ranked sibling's window
+      // changing within one process can swap ranks.
+      if change.isSibling && change.change.kind == .removed { return true }
+      if change.isRankedSibling && change.windowReplaced { return true }
       switch change.change.kind {
       case .created: return !known.contains(key) || (!hidden.contains(key) && !verifiedVisible.contains(key))
       case .processReplaced: return !hidden.contains(key) && !verifiedVisible.contains(key)
