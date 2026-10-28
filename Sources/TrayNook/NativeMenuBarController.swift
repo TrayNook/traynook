@@ -502,6 +502,14 @@ final class NativeMenuBarController: NSObject {
     pendingActivation = nil
   }
 
+  /// Runtime window identity and bounds for proxy capture. nil when the item's
+  /// native window cannot be identified unambiguously.
+  func statusWindowGeometry(for item: RawSourceItemObservation) -> (id: UInt32, frame: ItemFrame)? {
+    guard let binding = try? statusWindow(for: item),
+      let frame = try? statusWindowFrame(binding) else { return nil }
+    return (binding.id, frame)
+  }
+
   private func statusWindow(for item: RawSourceItemObservation,
     requiringOnscreen: Bool = false) throws -> StatusWindowBinding {
     guard let frame = item.frame, frame.isUsable else {

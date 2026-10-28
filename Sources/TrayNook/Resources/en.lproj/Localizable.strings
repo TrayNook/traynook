@@ -5,6 +5,7 @@
 "Accessibility" = "Accessibility";
 "Add items to Dropdown in Settings." = "Add items to Dropdown in Settings.";
 "Add this whole app in Privacy & Security → Accessibility. After rebuilding an ad-hoc development app, you may need to remove the old entry and grant the new build. Then click Refresh." = "Add this whole app in Privacy & Security → Accessibility. After rebuilding an ad-hoc development app, you may need to remove the old entry and grant the new build. Then click Refresh.";
+"After granting Screen Recording, quit and reopen TrayNook so macOS applies it." = "After granting Screen Recording, quit and reopen TrayNook so macOS applies it.";
 "All items are revealed. Saved placements are now Menu Bar." = "All items are revealed. Saved placements are now Menu Bar.";
 "Allow TrayNook in System Settings → Privacy & Security → Accessibility, then try again." = "Allow TrayNook in System Settings → Privacy & Security → Accessibility, then try again.";
 "Always Hidden" = "Always Hidden";
@@ -36,6 +37,7 @@
 "Grant Accessibility to discover and organize menu-bar items." = "Grant Accessibility to discover and organize menu-bar items.";
 "Grant Accessibility, then refresh to discover your menu-bar items." = "Grant Accessibility, then refresh to discover your menu-bar items.";
 "Grant Accessibility…" = "Grant Accessibility…";
+"Grant Screen Recording…" = "Grant Screen Recording…";
 "Granted" = "Granted";
 "Hidden — available in dropdown" = "Hidden — available in dropdown";
 "Hidden" = "Hidden";
@@ -61,6 +63,7 @@
 "Open Settings" = "Open Settings";
 "Open System Settings…" = "Open System Settings…";
 "Open TrayNook" = "Open TrayNook";
+"Optional. With Screen Recording, the dropdown shows each item's real menu-bar icon. Without it, TrayNook shows application icons. Captured pixels stay in memory only while the dropdown is open and are never saved." = "Optional. With Screen Recording, the dropdown shows each item's real menu-bar icon. Without it, TrayNook shows application icons. Captured pixels stay in memory only while the dropdown is open and are never saved.";
 "Permissions" = "Permissions";
 "Physical input interrupted the action. The section remains revealed." = "Physical input interrupted the action. The section remains revealed.";
 "Placement" = "Placement";
@@ -78,7 +81,7 @@
 "Reveal every item and cancel any action in progress" = "Reveal every item and cancel any action in progress";
 "Running" = "Running";
 "Saved layout cannot be read safely. Reset Layout to start again; the original file is preserved until then." = "Saved layout cannot be read safely. Reset Layout to start again; the original file is preserved until then.";
-"Screen Recording is not required" = "Screen Recording is not required";
+"Screen Recording" = "Screen Recording";
 "Select All" = "Select All";
 "Selected" = "Selected";
 "Show Items" = "Show Items";
@@ -98,7 +101,6 @@
 "This item cannot be reached safely at its reported position." = "This item cannot be reached safely at its reported position.";
 "This item is unavailable, ambiguous, or outside the visible menu bar. Reveal it manually and refresh." = "This item is unavailable, ambiguous, or outside the visible menu bar. Reveal it manually and refresh.";
 "This item's position overlaps the separator. Move it manually first." = "This item's position overlaps the separator. Move it manually first.";
-"This preview uses application icons. It does not capture your screen, read menu contents, or upload data." = "This preview uses application icons. It does not capture your screen, read menu contents, or upload data.";
 "To uninstall, turn off Launch at Login, quit TrayNook, and move the app to Trash. Quit removes TrayNook’s separator and reveals items. You can remove its Accessibility entry in System Settings." = "To uninstall, turn off Launch at Login, quit TrayNook, and move the app to Trash. Quit removes TrayNook’s separator and reveals items. You can remove its Accessibility entry in System Settings.";
 "TrayNook Settings" = "TrayNook Settings";
 "TrayNook hidden section separator" = "TrayNook hidden section separator";
@@ -115,7 +117,6 @@
 "macOS could not prepare the pointer release." = "macOS could not prepare the pointer release.";
 "macOS did not move this item across the separator. Hold Command and drag it manually, then refresh." = "macOS did not move this item across the separator. Hold Command and drag it manually, then refresh.";
 "macOS has clipped this item. Free some menu-bar space, then retry moving it to Menu Bar." = "macOS has clipped this item. Free some menu-bar space, then retry moving it to Menu Bar.";
-
 /* Settings layout preview. */
 "Kept out of the menu bar and dropdown until you choose Show Items." = "Kept out of the menu bar and dropdown until you choose Show Items.";
 "Application icons; menu-bar order and spacing may differ." = "Application icons; menu-bar order and spacing may differ.";
@@ -138,5 +139,6 @@
 "This item's native window cannot be identified safely. Other hidden items remain hidden." = "This item's native window cannot be identified safely. Other hidden items remain hidden.";
 "This item's original position cannot be restored safely. Other hidden items remain hidden." = "This item's original position cannot be restored safely. Other hidden items remain hidden.";
 "TrayNook's native controls are unavailable." = "TrayNook's native controls are unavailable.";
+"macOS applies Screen Recording after TrayNook is quit and reopened." = "macOS applies Screen Recording after TrayNook is quit and reopened.";
 "macOS could not route this item's move. Other hidden items remain hidden." = "macOS could not route this item's move. Other hidden items remain hidden.";
 "macOS could not show this item safely. Its return position is retained; other hidden items remain hidden." = "macOS could not show this item safely. Its return position is retained; other hidden items remain hidden.";

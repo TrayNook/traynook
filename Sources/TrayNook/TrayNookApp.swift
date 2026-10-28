@@ -13,6 +13,22 @@ enum TrayNookApp {
       print("Items: \(snapshot.metrics.sourceItemCount)")
       print("Incomplete apps: \(snapshot.metrics.incompleteApplicationCount)")
       print("Scan milliseconds: \(Int(snapshot.metrics.durationMilliseconds))")
+      print("Screen Recording: \(ProxyImageCapture.isAuthorized ? "granted" : "not granted")")
+      if ProxyImageCapture.isAuthorized {
+        let windows = CGWindowListCopyWindowInfo(.optionAll, kCGNullWindowID) as? [[String: Any]] ?? []
+        let status = windows.filter { ($0[kCGWindowLayer as String] as? Int) == Int(CGWindowLevelForKey(.statusWindow)) }
+        var captured = 0, offscreenCaptured = 0
+        for window in status {
+          guard let id = window[kCGWindowNumber as String] as? UInt32,
+            let bounds = window[kCGWindowBounds as String] as? [String: Any],
+            let rect = CGRect(dictionaryRepresentation: bounds as CFDictionary) else { continue }
+          let frame = ItemFrame(x: rect.minX, y: rect.minY, width: rect.width, height: rect.height)
+          guard ProxyImageCapture.capture(windowID: id, frame: frame) != nil else { continue }
+          captured += 1
+          if window[kCGWindowIsOnscreen as String] as? Bool != true { offscreenCaptured += 1 }
+        }
+        print("Status windows captured: \(captured) of \(status.count) (\(offscreenCaptured) offscreen)")
+      }
       return
     }
     let app = NSApplication.shared

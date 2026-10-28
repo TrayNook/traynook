@@ -155,10 +155,17 @@ struct SettingsView: View {
       Text(L("Add this whole app in Privacy & Security → Accessibility. After rebuilding an ad-hoc development app, you may need to remove the old entry and grant the new build. Then click Refresh."))
         .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
       Divider()
-      Label(L("Screen Recording is not required"), systemImage: "app")
-        .font(.headline)
-      Text(L("This preview uses application icons. It does not capture your screen, read menu contents, or upload data."))
-        .foregroundStyle(.secondary)
+      Label(L("Screen Recording"), systemImage: model.screenRecordingGranted ? "checkmark.shield" : "rectangle.dashed.badge.record")
+        .font(.title3.bold())
+      Text(L("Optional. With Screen Recording, the dropdown shows each item's real menu-bar icon. Without it, TrayNook shows application icons. Captured pixels stay in memory only while the dropdown is open and are never saved."))
+        .fixedSize(horizontal: false, vertical: true)
+      Text(model.screenRecordingGranted ? L("Granted") : L("Not granted")).font(.headline)
+      HStack {
+        Button(L("Grant Screen Recording…")) { model.requestScreenRecording() }
+        Button(L("Open System Settings…")) { model.openScreenRecordingSettings() }
+      }
+      Text(L("macOS applies Screen Recording after TrayNook is quit and reopened."))
+        .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
       Spacer()
     }.padding(20)
   }
@@ -238,7 +245,7 @@ struct DropdownIcons: View {
         let bundle = item.observation.bundleIdentifier ?? ""
         if interactive {
           Button { model.activate(item) } label: {
-            Image(nsImage: model.icon(for: bundle)).resizable().frame(width: 26, height: 26).padding(4)
+            proxy(item, bundle: bundle)
           }
           .disabled(!model.canEdit || !model.isManageable(item) || model.native.hasPendingActivation)
           .help(model.name(for: bundle)).accessibilityLabel(model.name(for: bundle))
@@ -254,5 +261,29 @@ struct DropdownIcons: View {
         }
       }
     }.buttonStyle(.borderless).padding(2)
+    .task(id: interactive) {
+      guard interactive else { return }
+      defer { model.purgeProxyImages() }
+      while !Task.isCancelled {
+        model.refreshProxyImages()
+        try? await Task.sleep(for: .seconds(1))
+      }
+    }
+  }
+
+  /// The real menu-bar pixels when Screen Recording allows it, on a backdrop
+  /// matching the menu bar the glyph was drawn for; otherwise the app icon.
+  @ViewBuilder private func proxy(_ item: ClassifiedSourceItem, bundle: String) -> some View {
+    if let captured = model.proxyImages[item.observation.runtimeID] {
+      // ponytail: fixed 34pt cell; wide text items scale down. Variable-width
+      // cells if that reads badly on real bars.
+      Image(nsImage: captured.image).resizable().aspectRatio(contentMode: .fit)
+        .frame(maxWidth: 30, maxHeight: 22)
+        .frame(width: 34, height: 34)
+        .background(captured.hasLightGlyphs ? Color.black.opacity(0.78) : Color.white.opacity(0.9),
+          in: RoundedRectangle(cornerRadius: 7))
+    } else {
+      Image(nsImage: model.icon(for: bundle)).resizable().frame(width: 26, height: 26).padding(4)
+    }
   }
 }

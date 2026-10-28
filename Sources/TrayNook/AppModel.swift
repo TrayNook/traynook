@@ -17,6 +17,9 @@ final class AppModel: ObservableObject {
   @Published var recoveryRequired = false
   @Published var selectedTab = 0
   @Published var loginEnabled = SMAppService.mainApp.status == .enabled
+  @Published var screenRecordingGranted = ProxyImageCapture.isAuthorized
+  /// Keyed by runtime ID. Filled only while the dropdown is open; purged after.
+  @Published var proxyImages: [String: ProxyImage] = [:]
   let native: NativeMenuBarController
   let undoManager = UndoManager()
   var closeDropdown: (() -> Void)?
@@ -75,6 +78,34 @@ final class AppModel: ObservableObject {
       return NSWorkspace.shared.icon(forFile: url.path)
     }
     return NSImage(systemSymbolName: "app.dashed", accessibilityDescription: nil)!
+  }
+
+  /// Capture the real menu-bar pixels of every dropdown item. Without Screen
+  /// Recording this clears the cache and the views fall back to app icons.
+  func refreshProxyImages() {
+    screenRecordingGranted = ProxyImageCapture.isAuthorized
+    guard screenRecordingGranted else { proxyImages = [:]; return }
+    var next: [String: ProxyImage] = [:]
+    for item in dropdownItems {
+      guard let window = native.statusWindowGeometry(for: item.observation) else { continue }
+      if let captured = ProxyImageCapture.capture(windowID: window.id, frame: window.frame) {
+        next[item.observation.runtimeID] = captured
+      } else if let previous = proxyImages[item.observation.runtimeID] {
+        next[item.observation.runtimeID] = previous // transient capture failure
+      }
+    }
+    proxyImages = next
+  }
+
+  func purgeProxyImages() { proxyImages = [:] }
+
+  func requestScreenRecording() {
+    ProxyImageCapture.request()
+    message = L("After granting Screen Recording, quit and reopen TrayNook so macOS applies it.")
+  }
+
+  func openScreenRecordingSettings() {
+    NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")!)
   }
 
   func status(for saved: SavedItem) -> String {
@@ -147,6 +178,7 @@ final class AppModel: ObservableObject {
     let firstSnapshot = !hasAcceptedSnapshot
     hasAcceptedSnapshot = true
     loginEnabled = SMAppService.mainApp.status == .enabled
+    screenRecordingGranted = ProxyImageCapture.isAuthorized
     concealed = native.isConcealed
     permissionGranted = snapshot.permission == .granted
     scanComplete = snapshot.completeness == .complete
@@ -459,7 +491,7 @@ final class AppModel: ObservableObject {
 
   func copyDiagnostics() {
     let info = Bundle.main.infoDictionary ?? [:]
-    let summary = "TrayNook \(info["CFBundleShortVersionString"] ?? "development") (\(info["CFBundleVersion"] ?? "0"))\nmacOS \(ProcessInfo.processInfo.operatingSystemVersionString)\nAccessibility: \(permissionGranted)\nInventory complete: \(scanComplete)\nLayout recovery: \(recoveryRequired)\nNative section concealed: \(concealed)\nPrivate APIs: none\nProxy imagery: app icons"
+    let summary = "TrayNook \(info["CFBundleShortVersionString"] ?? "development") (\(info["CFBundleVersion"] ?? "0"))\nmacOS \(ProcessInfo.processInfo.operatingSystemVersionString)\nAccessibility: \(permissionGranted)\nInventory complete: \(scanComplete)\nLayout recovery: \(recoveryRequired)\nNative section concealed: \(concealed)\nPrivate APIs: none\nScreen Recording: \(screenRecordingGranted)\nProxy imagery: \(screenRecordingGranted ? "captured menu-bar items" : "app icons")"
     NSPasteboard.general.clearContents()
     NSPasteboard.general.setString(summary, forType: .string)
     message = L("Diagnostics copied. No app inventory or item labels included.")
