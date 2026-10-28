@@ -66,6 +66,7 @@
 "Optional. With Screen Recording, the dropdown shows each item's real menu-bar icon as last seen while it was visible. Without it, TrayNook shows application icons. Captured pixels stay in memory for this session only and are never saved." = "Optional. With Screen Recording, the dropdown shows each item's real menu-bar icon as last seen while it was visible. Without it, TrayNook shows application icons. Captured pixels stay in memory for this session only and are never saved.";
 "Permissions" = "Permissions";
 "Physical input interrupted the action. The section remains revealed." = "Physical input interrupted the action. The section remains revealed.";
+"Drag to reorder or move between sections" = "Drag to reorder or move between sections";
 "Placement" = "Placement";
 "Protected — kept visible" = "Protected — kept visible";
 "Quit TrayNook" = "Quit TrayNook";

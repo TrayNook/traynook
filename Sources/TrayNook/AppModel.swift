@@ -590,6 +590,27 @@ final class AppModel: ObservableObject {
     replaceLayout(next, undoable: true)
   }
 
+  /// Reorders within a section, or moves into the target row's section at
+  /// that position. Only the dropdown order has a visible effect; other
+  /// sections keep the list order for the user's own sense of it.
+  @discardableResult func move(_ key: String, before targetKey: String) -> Bool {
+    guard canEdit, key != targetKey,
+      let from = layout.items.firstIndex(where: { $0.id == key }),
+      let target = layout.items.first(where: { $0.id == targetKey }) else { return false }
+    var next = layout
+    var moved = next.items.remove(at: from)
+    let placementChanged = moved.placement != target.placement
+    if placementChanged {
+      guard let live = liveItem(key), isManageable(live) else { return false }
+      moved.placement = target.placement
+    }
+    guard let to = next.items.firstIndex(where: { $0.id == targetKey }) else { return false }
+    next.items.insert(moved, at: to)
+    guard replaceLayout(next, undoable: true) else { return false }
+    if placementChanged { applySavedLayout(restoringToMenuBar: target.placement == .menuBar ? key : nil) }
+    return true
+  }
+
   func forget(_ key: String) {
     guard !busy, !recoveryRequired, liveItem(key) == nil else { return }
     var next = layout; next.items.removeAll { $0.id == key }

@@ -151,10 +151,18 @@ struct SettingsView: View {
       } else {
         Image(systemName: "lock").accessibilityLabel(L("Protected — kept visible"))
       }
+      Image(systemName: "line.3.horizontal").foregroundStyle(.secondary)
+        .help(L("Drag to reorder or move between sections")).accessibilityHidden(true)
     }
     .disabled(!model.canEdit)
     .padding(.vertical, 3)
+    .contentShape(Rectangle())
     .draggable(saved.id)
+    // Dropping on a row inserts before it, in that row's section.
+    .dropDestination(for: String.self) { keys, _ in
+      guard keys.count == 1, let key = keys.first, key != saved.id else { return false }
+      return model.move(key, before: saved.id)
+    }
   }
 
   private var permissions: some View {
