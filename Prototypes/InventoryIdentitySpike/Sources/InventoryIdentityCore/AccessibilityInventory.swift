@@ -109,7 +109,8 @@ func statusWindowVisibility(
 func statusWindowIdentifier(
   of item: RawSourceItemObservation, in windows: [StatusWindowObservation]
 ) -> UInt32? {
-  let matching = windows.filter { statusWindow($0, overlaps: item) }
+  var matching = windows.filter { statusWindow($0, overlaps: item) }
+  if matching.count > 1 { matching = matching.filter(\.isOnscreen) } // stale offscreen duplicates
   return matching.count == 1 ? matching[0].windowIdentifier : nil
 }
 
@@ -120,8 +121,11 @@ func unrepresentedStatusWindows(
   return windows.filter { window in
     window.isOnscreen && !items.contains { statusWindow(window, overlaps: $0) }
       // Every status item owns one window per display. Windows on another
-      // display's menu bar share no row with any AX item and are duplicates.
-      && (rows.isEmpty || rows.contains { $0.y < window.frame.maxY && $0.maxY > window.frame.y })
+      // display's menu bar share no row with any AX item and are duplicates;
+      // status-level panels taller than the row are not items either.
+      && (rows.isEmpty || rows.contains {
+        $0.y < window.frame.maxY && $0.maxY > window.frame.y && window.frame.height <= 2 * $0.height
+      })
   }.map { window in
     // Status-window bounds include vertical padding outside the AX menu row.
     // Retain horizontal extent; unknown rows keep their full protected frame.
@@ -141,7 +145,7 @@ final class AccessibilityScanIssueTracker {
   private let deadline: UInt64
   private let uptimeNanoseconds: () -> UInt64
   private var currentProcessIdentifier: Int32?
-  private var incompleteProcessIdentifiers = Set<Int32>()
+  private(set) var incompleteProcessIdentifiers = Set<Int32>()
   private var cannotCompleteProcessIdentifiers = Set<Int32>()
 
   private(set) var maximumApplicationScanMilliseconds = 0.0
@@ -322,9 +326,12 @@ public struct AccessibilityInventoryScanner: InventoryScanning, Sendable {
     }
 
     if issueTracker.incompleteApplicationCount > 0 {
+      let names = issueTracker.incompleteProcessIdentifiers.sorted().map {
+        NSRunningApplication(processIdentifier: $0)?.bundleIdentifier ?? "pid \($0)"
+      }
       warnings.append(
         "\(issueTracker.incompleteApplicationCount) applications could not be "
-          + "scanned completely; this snapshot must not drive changes."
+          + "scanned completely (\(names.joined(separator: ", "))); this snapshot must not drive changes."
       )
     }
 

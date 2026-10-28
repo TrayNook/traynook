@@ -186,6 +186,12 @@ struct AccessibilityErrorClassificationTests {
       metadata: LiveAccessibilityMetadata(), observedOrder: 0)
     #expect(unrepresentedStatusWindows(windows, comparedTo: [known]).isEmpty)
     #expect(unrepresentedStatusWindows(windows, comparedTo: []).map(\.windowIdentifier) == [1, 2])
+
+    // A display-sized status-level panel of a known app is not an unexposed item.
+    var panel = windowMetadata(owner: 100, identifier: 5)
+    panel[kCGWindowBounds as String] = CGRect(x: 0, y: 0, width: 1700, height: 1000).dictionaryRepresentation
+    let withPanel = try #require(statusWindowObservations(in: [windowMetadata(owner: 100, identifier: 1), panel]))
+    #expect(unrepresentedStatusWindows(withPanel, comparedTo: [known]).isEmpty)
   }
 
   @Test("Opening our own status-level popover cannot change source owners, fallbacks, or runtime IDs")

@@ -18,6 +18,7 @@ final class AppModel: ObservableObject {
   @Published var concealed = false
   @Published var message: String?
   @Published var recoveryRequired = false
+  private var incompleteScans = 0
   @Published var selectedTab = 0
   @Published var loginEnabled = SMAppService.mainApp.status == .enabled
   @Published var screenRecordingGranted = ProxyImageCapture.isAuthorized
@@ -182,6 +183,7 @@ final class AppModel: ObservableObject {
           self.scanning, self.concealed, !self.busy else { return }
         self.reveal(cancelLaunchRestore: false)
         self.message = L("Discovery is taking too long. Items are revealed until a fresh scan completes.")
+        modelLog.error("revealed: discovery exceeded 3 s")
       }
       defer { deadline.cancel() }
       let snapshot = await Task.detached(priority: .utility) {
@@ -209,11 +211,22 @@ final class AppModel: ObservableObject {
     concealed = native.isConcealed
     permissionGranted = snapshot.permission == .granted
     scanComplete = snapshot.completeness == .complete
+    // One app answering Accessibility late (a launching app, a busy main
+    // thread) makes a scan incomplete every few minutes on a crowded bar.
+    // Nothing moved, so the section stays hidden through a few such scans;
+    // the next complete scan diffs against the last complete one.
+    if permissionGranted, !scanComplete, concealed, !busy, incompleteScans < 3 {
+      incompleteScans += 1
+      modelLog.info("incomplete scan \(self.incompleteScans) of 3 while concealed: \(snapshot.warnings.joined(separator: " | "), privacy: .public)")
+      return
+    }
+    incompleteScans = 0
     guard permissionGranted, scanComplete else {
       // A preparation error must reach the operation's completion UI. Only an
       // external reveal cancels that task; failing its own scan is an error.
       if busy { native.reveal(); concealed = false }
       else { reveal(cancelLaunchRestore: false) }
+      modelLog.error("revealed: scan permission=\(snapshot.permission.rawValue, privacy: .public) completeness=\(snapshot.completeness.rawValue, privacy: .public) warnings=\(snapshot.warnings.joined(separator: " | "), privacy: .public)")
       guard !recoveryRequired else { return }
       if !permissionGranted {
         if firstSnapshot || wasGranted { selectedTab = 1 }
@@ -263,6 +276,11 @@ final class AppModel: ObservableObject {
     if concealed && !canSafelyConceal() {
       reveal()
       message = L("An unassigned or protected item is behind the separator. Items have been revealed.")
+      let unsafe = items.filter { item in
+        guard let behind = native.isBehindBoundary(item) else { return true }
+        return behind && !(isManageable(item) && layout.items.contains { $0.id == item.identity.persistentKey && $0.placement != .menuBar })
+      }
+      modelLog.error("revealed: unsafe items \(unsafe.map { "\($0.identity.persistentKey ?? "nil")@\(String(describing: $0.observation.frame))=\(String(describing: self.native.isBehindBoundary($0)))" }.joined(separator: " "), privacy: .public)")
     }
   }
 
@@ -291,7 +309,7 @@ final class AppModel: ObservableObject {
           && before!.observation.processIdentifier == after!.observation.processIdentifier
           && before!.observation.statusWindowIdentifier != after!.observation.statusWindowIdentifier,
         survivorsRekeyed: change.kind == .removed && bundle != nil
-          && current.filter { $0.observation.bundleIdentifier == bundle && $0.identity.persistentKey != nil }.count < 2)
+          && current.contains { $0.observation.bundleIdentifier == bundle && $0.identity.persistentKey == bundle })
     }
   }
 

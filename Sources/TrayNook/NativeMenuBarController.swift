@@ -200,36 +200,52 @@ final class NativeMenuBarController: NSObject {
         Self.restorePosition(of: separator, name: "TrayNook.HiddenBoundary", fallback: initialBoundaryPosition, force: true)
         try await pause(0.25, token: token)
       }
-      let environment = try checkedEnvironment()
       let snapshot = try await freshInventory(token: token)
+      let environment = try checkedEnvironment()
       // Items that stay visible: protected ones are never dragged, so they
       // must end up right of the separator here. Menu Bar items are only a
       // preference for the position; Apply drags any left behind to the right.
-      let keptVisible = snapshot.items.compactMap { item -> (name: String, frame: ItemFrame, fixed: Bool)? in
-        guard item.observation.processIdentifier != ProcessInfo.processInfo.processIdentifier,
-          item.observation.isOnscreen != false,
-          let frame = item.observation.frame, environment.safeFrame.contains(frame) else { return nil }
-        let fixed = item.manageability.status == .protected || item.identity.persistentKey == nil
-        guard fixed || keepingVisible.contains(item.identity.persistentKey ?? "") else { return nil }
-        return (item.observation.applicationName ?? item.observation.bundleIdentifier ?? "?", frame, fixed)
+      func keptVisible(_ snapshot: InventorySnapshot, _ environment: MenuBarEnvironment)
+        -> [(name: String, frame: ItemFrame, fixed: Bool)] {
+        snapshot.items.compactMap { item in
+          guard item.observation.processIdentifier != ProcessInfo.processInfo.processIdentifier,
+            item.observation.isOnscreen != false,
+            let frame = item.observation.frame, environment.safeFrame.contains(frame) else { return nil }
+          let fixed = item.manageability.status == .protected || item.identity.persistentKey == nil
+          guard fixed || keepingVisible.contains(item.identity.persistentKey ?? "") else { return nil }
+          return (item.observation.applicationName ?? item.observation.bundleIdentifier ?? "?", frame, fixed)
+        }
       }
-      if let leftmost = keptVisible.map(\.frame).min(by: { $0.minX < $1.minX }),
+      let kept = keptVisible(snapshot, environment)
+      if let leftmost = kept.map(\.frame).min(by: { $0.minX < $1.minX }),
         leftmost.minX < environment.boundary.maxX, let separator {
-        var position = environment.safeFrame.maxX - leftmost.minX + compactWidth / 2 + 16
-        var blocking: [(name: String, frame: ItemFrame, fixed: Bool)] = []
-        for _ in 0..<3 {
+        let firstPosition = environment.safeFrame.maxX - leftmost.minX + compactWidth / 2 + 16
+        var position = firstPosition
+        var blocking: [String] = []
+        var placed = false
+        for attempt in 0..<3 {
           Self.restorePosition(of: separator, name: "TrayNook.HiddenBoundary", fallback: position, force: true)
           try await pause(0.25, token: token)
-          let positioned = try checkedEnvironment()
-          blocking = keptVisible.filter { $0.fixed && $0.frame.minX < positioned.boundary.maxX - 1 }
-          nativeLog.info("prepareLayout leftmost=\(String(describing: leftmost), privacy: .public) position=\(position, privacy: .public) boundary=\(String(describing: positioned.boundary), privacy: .public) kept=\(keptVisible.count) blocking=\(blocking.count)")
-          if blocking.isEmpty { break }
-          // In a crowded bar macOS can land the separator one slot right of
-          // the requested position. Ask for a slot further left and retry.
+          // Items shift when the separator is inserted; judge fresh frames.
+          guard let positioned = try? checkedEnvironment() else {
+            // Shifted off the safe area (under the notch): put it back and report.
+            if attempt > 0 {
+              Self.restorePosition(of: separator, name: "TrayNook.HiddenBoundary", fallback: firstPosition, force: true)
+              try await pause(0.25, token: token)
+            }
+            break
+          }
+          let now = try await freshInventory(token: token)
+          blocking = keptVisible(now, positioned)
+            .filter { $0.fixed && $0.frame.minX < positioned.boundary.maxX - 1 }.map(\.name)
+          nativeLog.info("prepareLayout leftmost=\(String(describing: leftmost), privacy: .public) position=\(position, privacy: .public) boundary=\(String(describing: positioned.boundary), privacy: .public) kept=\(kept.count) blocking=\(blocking.count)")
+          if blocking.isEmpty { placed = true; break }
+          // A crowded bar can land the separator one slot right of the
+          // requested position. Ask for a slot further left and retry.
           position += 24
         }
-        guard blocking.isEmpty else {
-          let names = Set(blocking.map(\.name)).sorted().joined(separator: ", ")
+        guard placed else {
+          let names = Set(blocking).sorted().joined(separator: ", ")
           throw MenuBarFailure(String(format: L("macOS could not place the separator to the left of %@. Command-drag them to the right of the │ separator."), names))
         }
       }
@@ -304,8 +320,8 @@ final class NativeMenuBarController: NSObject {
     do {
       try await pause(0.25, token: token)
       try await waitForIdleInput(token: token, checkingKeys: false)
-      let before = try checkedEnvironment()
       let snapshot = try await freshInventory(token: token)
+      let before = try checkedEnvironment()
       let items = snapshot.items.filter {
         $0.observation.processIdentifier != ProcessInfo.processInfo.processIdentifier
       }
@@ -577,11 +593,14 @@ final class NativeMenuBarController: NSObject {
       throw MenuBarFailure(L("Item geometry is unavailable."))
     }
     // Status-level panels (DockDoor's preview spans the display) are not row windows.
-    let matches = statusWindows().filter {
+    var matches = statusWindows().filter {
       $0.binding.pid == item.processIdentifier && $0.frame.height <= 2 * frame.height
         && $0.frame.x < frame.maxX && $0.frame.maxX > frame.x
         && $0.frame.y < frame.maxY && $0.frame.maxY > frame.y
     }
+    // Some apps keep a stale offscreen duplicate at the same spot after a
+    // display change; the onscreen window is the one the user sees.
+    if matches.count > 1 { matches = matches.filter(\.isOnscreen) }
     guard matches.count == 1, let match = matches.first,
       match.binding.bundle == item.bundleIdentifier,
       !requiringOnscreen || match.isOnscreen else {
@@ -1157,7 +1176,10 @@ final class NativeMenuBarController: NSObject {
     if screen !== homeScreen {
       guard let mirroredLauncher = Self.mirroredButtonRect(of: launcherWindow, button: launcherRect, on: screen),
         let mirroredBoundary = Self.mirroredButtonRect(of: boundaryWindow, button: boundaryRect, on: screen)
-      else { return nil }
+      else {
+        nativeLog.error("no mirrored controls on display \(display): \(NSApp.windows.map { "\(type(of: $0)) \(NSStringFromRect($0.frame)) visible=\($0.isVisible) screen=\($0.screen.map { NSStringFromRect($0.frame) } ?? "nil")" }.joined(separator: "; "), privacy: .public)")
+        return nil
+      }
       launcherRect = mirroredLauncher
       boundaryRect = mirroredBoundary
     }

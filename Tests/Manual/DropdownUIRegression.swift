@@ -581,7 +581,7 @@ private final class DropdownCheck: NSObject, NSApplicationDelegate, NSMenuDelega
         ($0[kCGWindowLayer as String] as? NSNumber)?.intValue == statusLevel,
         let bounds = $0[kCGWindowBounds as String] as? [String: Any],
         let frame = CGRect(dictionaryRepresentation: bounds as CFDictionary) else { return false }
-      return frame.minY >= mainDisplay.minY && frame.minY < mainDisplay.maxY
+      return frame.midY >= mainDisplay.minY && frame.midY < mainDisplay.maxY
     }
     guard owned.count == 1, let window = owned.first else { return nil }
     return (window[kCGWindowIsOnscreen as String] as? NSNumber)?.boolValue ?? false
