@@ -29,7 +29,6 @@ final class AppModel: ObservableObject {
   private var attemptedLaunchRestore = false
   private var hasAcceptedSnapshot = false
   private var previousItems: [ClassifiedSourceItem] = []
-  private var previousStatusWindows: Set<UInt32> = []
 
   init(native: NativeMenuBarController, store: LayoutStore?) {
     self.native = native
@@ -167,15 +166,25 @@ final class AppModel: ObservableObject {
     }
     if !wasGranted && !recoveryRequired { selectedTab = 0; message = nil }
     let observed = snapshot.items.filter { $0.observation.bundleIdentifier != ownBundle }
-    // ponytail: conservative polling; any new/restarted/replaced source reveals
-    // the section. Add AX event observers only if measured idle cost requires it.
-    if concealed && Self.inventoryRequiresReveal(previous: previousItems, current: observed,
-      previousWindows: previousStatusWindows, currentWindows: snapshot.statusWindowRuntimeIDs) {
-      reveal()
-      message = L("Menu-bar items changed. Review the layout before hiding again.")
+    // ponytail: polling diff. A restarted or relaunched known source keeps the
+    // section hidden and just rebinds its process; only an unknown bundle or an
+    // ambiguous group change reveals. Add AX observers only if idle cost demands.
+    if concealed {
+      let changes = SnapshotDiffer().changes(from: previousItems, to: observed)
+      let known = Set(layout.items.map(\.id))
+      let hidden = Set(layout.items.filter { $0.placement != .menuBar }.map(\.id))
+      for change in changes where Self.rebindsProcess(change, known: hidden) {
+        if let bundle = change.identity?.bundleIdentifier,
+          let item = observed.first(where: { $0.observation.runtimeID == change.currentRuntimeID }) {
+          native.adoptProcess(bundle: bundle, pid: item.observation.processIdentifier)
+        }
+      }
+      if Self.inventoryRequiresReveal(changes, known: known) {
+        reveal()
+        message = L("Menu-bar items changed. Review the layout before hiding again.")
+      }
     }
     previousItems = observed
-    previousStatusWindows = snapshot.statusWindowRuntimeIDs
     items = observed
     if !recoveryRequired {
       let known = Set(layout.items.map(\.id))
@@ -193,14 +202,30 @@ final class AppModel: ObservableObject {
     }
   }
 
-  static func inventoryRequiresReveal(previous: [ClassifiedSourceItem], current: [ClassifiedSourceItem],
-    previousWindows: Set<UInt32>, currentWindows: Set<UInt32>) -> Bool {
-    previousWindows != currentWindows || SnapshotDiffer().changes(from: previous, to: current).contains {
-      switch $0.kind {
-      case .created, .removed, .processReplaced, .ambiguousInventoryChanged: true
-      case .orderChanged, .runtimeMetadataChanged: false
+  /// A source the user already placed may restart or relaunch without
+  /// reopening the hidden section; the controller just adopts its new process.
+  static func rebindsProcess(_ change: SnapshotChange, known: Set<String>) -> Bool {
+    guard let bundle = change.identity?.bundleIdentifier else { return false }
+    switch change.kind {
+    case .processReplaced: return true
+    case .created: return known.contains(bundle)
+    default: return false
+    }
+  }
+
+  static func inventoryRequiresReveal(_ changes: [SnapshotChange], known: Set<String>) -> Bool {
+    changes.contains { change in
+      switch change.kind {
+      case .ambiguousInventoryChanged: true
+      case .created: !known.contains(change.identity?.bundleIdentifier ?? "")
+      case .removed, .processReplaced, .orderChanged, .runtimeMetadataChanged: false
       }
     }
+  }
+
+  static func inventoryRequiresReveal(previous: [ClassifiedSourceItem], current: [ClassifiedSourceItem],
+    known: Set<String>) -> Bool {
+    inventoryRequiresReveal(SnapshotDiffer().changes(from: previous, to: current), known: known)
   }
 
   func reveal(cancelLaunchRestore: Bool = true) {

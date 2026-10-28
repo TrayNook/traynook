@@ -119,6 +119,13 @@ final class NativeMenuBarController: NSObject {
     onReveal?()
   }
 
+  /// A concealed source restarted. Trust its new process for the same bundle
+  /// so its proxy keeps working without reopening the whole section.
+  func adoptProcess(bundle: String, pid: Int32) {
+    guard isConcealed else { return }
+    concealedSourcePIDs[bundle] = pid
+  }
+
   func remove() {
     reveal()
     NotificationCenter.default.removeObserver(self)
