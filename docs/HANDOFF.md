@@ -41,6 +41,19 @@ Updated 2026-10-28 (evening). Build 18's measurements are in
   frames in placement, unsafe retry positions, over-eager re-key detection);
   all fixed in the "review findings" commit.
 
+## Interaction changes verified by the user (2026-10-28 evening)
+
+- Settings opens at launch only when Accessibility is missing, nothing is
+  hidden yet, or the launch restore fails; TrayNook joins Cmd-Tab and the
+  Dock only while Settings is open.
+- Apps that open a panel instead of a menu: the promoted item returns on its
+  own once the panel's windows are gone; a tray click during an operation is
+  queued; the dropdown opens at once and the item returns when it closes.
+- Layout tab: locked system items fold into one row; stale system entries
+  are forgotten; rows reorder live by their handle (gesture, one undo step);
+  dropdown shows app icons, menu-bar glyphs behind a Permissions toggle;
+  system menu extras use SF Symbols.
+
 ## Native harness status
 
 Every harness needs `AXIsProcessTrusted()` in the launching process. Grant
