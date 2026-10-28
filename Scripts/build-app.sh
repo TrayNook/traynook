@@ -69,6 +69,10 @@ cp "$root/Support/AppIcon.icns" "$contents/Resources/AppIcon.icns"
 if [[ "$mode" == release ]]; then
     /usr/bin/codesign --force --sign "$TRAYNOOK_SIGNING_IDENTITY" --options runtime --timestamp "$staging/$app_name.app"
     /usr/bin/codesign --verify --strict -R='anchor apple generic and certificate leaf[field.1.2.840.113635.100.6.1.13] exists' "$staging/$app_name.app"
+elif [[ -n "${TRAYNOOK_DEV_SIGNING_IDENTITY:-}" ]]; then
+    # A self-signed code-signing certificate keeps macOS privacy grants across
+    # rebuilds; ad-hoc signatures change with every build. See README.
+    /usr/bin/codesign --force --sign "$TRAYNOOK_DEV_SIGNING_IDENTITY" "$staging/$app_name.app"
 else
     /usr/bin/codesign --force --sign - "$staging/$app_name.app"
 fi

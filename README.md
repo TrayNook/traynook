@@ -117,8 +117,12 @@ is read-only and prints permission state, aggregate scan metrics, and how many
 status windows Screen Recording can capture; no image is kept.
 
 Development builds use `io.github.mahenzon.TrayNook.dev` and ad-hoc signing.
-Rebuilding may invalidate macOS Accessibility approval; remove the old entry and
-add the newly built app when needed. The saved layout is local, at
+Rebuilding invalidates macOS Accessibility and Screen Recording approval even
+though the toggles stay on; remove the old entry with − and add the newly built
+app with +. To keep grants across rebuilds, create a self-signed code-signing
+certificate once (Keychain Access → Certificate Assistant → Create a
+Certificate, type **Code Signing**, name it for example `TrayNook Dev`) and build
+with `TRAYNOOK_DEV_SIGNING_IDENTITY='TrayNook Dev' Scripts/build-app.sh`. The saved layout is local, at
 `~/Library/Application Support/io.github.mahenzon.TrayNook.dev/layout.json`.
 Unreadable or newer state is preserved and disables management until Reset Layout.
 
