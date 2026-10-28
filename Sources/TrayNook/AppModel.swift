@@ -36,6 +36,7 @@ final class AppModel: ObservableObject {
   private var operationTask: Task<Void, Never>?
   private var scanGeneration = 0
   private var attemptedLaunchRestore = false
+  private var launchRestoreRunning = false
   private var hasAcceptedSnapshot = false
   private var previousItems: [ClassifiedSourceItem] = []
 
@@ -196,7 +197,10 @@ final class AppModel: ObservableObject {
       if !self.attemptedLaunchRestore && self.canEdit {
         self.attemptedLaunchRestore = true
         if self.layout.items.contains(where: { $0.placement != .menuBar }) {
+          self.launchRestoreRunning = true
           self.applySavedLayout()
+        } else {
+          self.showSettings?() // nothing to hide yet: let the user arrange
         }
       }
     }
@@ -230,7 +234,7 @@ final class AppModel: ObservableObject {
       modelLog.error("revealed: scan permission=\(snapshot.permission.rawValue, privacy: .public) completeness=\(snapshot.completeness.rawValue, privacy: .public) warnings=\(snapshot.warnings.joined(separator: " | "), privacy: .public)")
       guard !recoveryRequired else { return }
       if !permissionGranted {
-        if firstSnapshot || wasGranted { selectedTab = 1 }
+        if firstSnapshot || wasGranted { selectedTab = 1; showSettings?() }
         message = L("Grant Accessibility to discover and organize menu-bar items.")
       } else {
         message = L("Some apps did not respond. Items are revealed; retry when those apps respond.")
@@ -493,7 +497,9 @@ final class AppModel: ObservableObject {
         if revealOnFailure { native.reveal() }
         message = error.localizedDescription
         modelLog.error("operation failed: \(error.localizedDescription, privacy: .public)")
+        if launchRestoreRunning { showSettings?() } // the launch restore needs the user
       }
+      launchRestoreRunning = false
       concealed = native.isConcealed
       busy = false
       operationTask = nil

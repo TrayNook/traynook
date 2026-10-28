@@ -149,11 +149,13 @@ struct SettingsView: View {
         .fixedSize(horizontal: false, vertical: true)
       Text(model.permissionGranted ? L("Granted") : L("Not granted")).font(.headline)
       HStack {
-        Button(L("Grant Accessibility…")) { model.requestAccessibility() }
+        if !model.permissionGranted { Button(L("Grant Accessibility…")) { model.requestAccessibility() } }
         Button(L("Open System Settings…")) { model.openAccessibilitySettings() }
       }
-      Text(L("Add this whole app in Privacy & Security → Accessibility. After rebuilding an ad-hoc development app, you may need to remove the old entry and grant the new build. Then click Refresh."))
-        .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+      if !model.permissionGranted {
+        Text(L("Add this whole app in Privacy & Security → Accessibility. After rebuilding an ad-hoc development app, you may need to remove the old entry and grant the new build. Then click Refresh."))
+          .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+      }
       Divider()
       Label(L("Screen Recording"), systemImage: model.screenRecordingGranted ? "checkmark.shield" : "rectangle.dashed.badge.record")
         .font(.title3.bold())
@@ -161,11 +163,13 @@ struct SettingsView: View {
         .fixedSize(horizontal: false, vertical: true)
       Text(model.screenRecordingGranted ? L("Granted") : L("Not granted")).font(.headline)
       HStack {
-        Button(L("Grant Screen Recording…")) { model.requestScreenRecording() }
+        if !model.screenRecordingGranted { Button(L("Grant Screen Recording…")) { model.requestScreenRecording() } }
         Button(L("Open System Settings…")) { model.openScreenRecordingSettings() }
       }
-      Text(L("macOS applies Screen Recording after TrayNook is quit and reopened."))
-        .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+      if !model.screenRecordingGranted {
+        Text(L("macOS applies Screen Recording after TrayNook is quit and reopened."))
+          .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+      }
       Spacer()
     }.padding(20)
   }

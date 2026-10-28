@@ -99,10 +99,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         NSApp.terminate(nil)
       }
     } else {
+      // Settings opens only when something needs the user: a missing
+      // permission, nothing hidden yet, or a failed launch restore (AppModel).
       model.start()
-      let launchedAtLogin = NSAppleEventManager.shared().currentAppleEvent?
-        .paramDescriptor(forKeyword: keyAEPropData)?.enumCodeValue == keyAELaunchedAsLogInItem
-      if !launchedAtLogin { openSettings() }
     }
   }
 
