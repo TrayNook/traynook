@@ -50,11 +50,10 @@ shell, its Terminal panel, and iTerm had no Accessibility). Quit Hidden Bar
 and the real TrayNook first.
 
 - `Scripts/test-native-menu.sh`: **passes**.
-- `Scripts/test-native-cancellation.sh`: setup and `queued-down`,
-  `delivered-down`, `delivered-up` pass; the `*-motion` phases compare the
-  pointer with a fixed position and need an idle machine (the user was
-  working during the run). One earlier run failed setup with an incomplete
-  scan; it prints the setup scan now.
+- `Scripts/test-native-cancellation.sh`: **passes** (all nine phases, idle
+  machine, 2026-10-28). The `*-motion` phases compare the pointer with a
+  fixed position, so any real input during the run fails them. One earlier
+  run failed setup with an incomplete scan; it prints the setup scan now.
 - `Scripts/test-dropdown-ui.sh --layout ...`: cannot complete on this bar.
   Its fixture and sentinel are brand-new items that get no status window in
   an overfull bar, and its final order check fails by design whenever Apply
