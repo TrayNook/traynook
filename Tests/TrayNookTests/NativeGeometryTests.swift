@@ -87,6 +87,22 @@ struct NativeGeometryTests {
     }
   }
 
+  @Test("Each hidden sibling needs its own assignment")
+  func siblingsNeedIndividualAssignments() {
+    let assessor = IdentityAssessor()
+    let siblings = assessor.classify([
+      observation(bundle: "example.pair", x: 1150, window: 10),
+      observation(bundle: "example.pair", x: 1180, window: 11),
+    ])
+    #expect(siblings.compactMap(\.identity.persistentKey) == ["example.pair#w0", "example.pair#w1"])
+    #expect(NativeMenuBarController.canConceal(siblings,
+      allowedKeys: ["example.pair#w0", "example.pair#w1"], boundary: boundary, safeFrame: safeFrame))
+    #expect(!NativeMenuBarController.canConceal(siblings,
+      allowedKeys: ["example.pair#w1"], boundary: boundary, safeFrame: safeFrame))
+    #expect(!NativeMenuBarController.canConceal(siblings,
+      allowedKeys: ["example.pair"], boundary: boundary, safeFrame: safeFrame))
+  }
+
   @Test("Already offscreen sources do not block concealment, but visible unsafe geometry does")
   func distinguishesOffscreenSources() {
     let display = ItemFrame(x: 0, y: 0, width: 1440, height: 900)
@@ -202,11 +218,12 @@ struct NativeGeometryTests {
 
   private func observation(bundle: String, x: Double, y: Double = 0, width: Double = 24,
     role: String = "AXMenuBarItem",
-    isOnscreen: Bool? = nil) -> RawSourceItemObservation {
+    isOnscreen: Bool? = nil, window: UInt32? = nil) -> RawSourceItemObservation {
     RawSourceItemObservation(
       runtimeID: "fixture:\(x)", processIdentifier: 100, bundleIdentifier: bundle,
       applicationName: "Fixture", role: role,
       frame: ItemFrame(x: x, y: y, width: width, height: 24), actions: ["AXPress"],
-      metadata: LiveAccessibilityMetadata(), observedOrder: 0, isOnscreen: isOnscreen)
+      metadata: LiveAccessibilityMetadata(), observedOrder: 0, isOnscreen: isOnscreen,
+      statusWindowIdentifier: window)
   }
 }

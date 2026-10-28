@@ -6,66 +6,128 @@ import Testing
 @Suite("Concealed inventory monitoring")
 @MainActor
 struct AppModelInventoryTests {
-  private let known: Set<String> = ["example.timer", "example.known"]
+  private let known: Set<String> = ["example.timer", "example.known", "example.bar"]
+  private let hidden: Set<String> = ["example.timer", "example.known"]
+
+  private func reveals(_ changes: [AppModel.KeyedChange], visible: Set<String> = []) -> Bool {
+    AppModel.inventoryRequiresReveal(changes, known: known, hidden: hidden, verifiedVisible: visible)
+  }
 
   @Test("An unchanged multi-item system app does not reopen the hidden section")
   func stableSystemItemsRemainConcealed() {
     let inventory = IdentityAssessor().classify([
       item(),
-      item(bundle: "com.apple.controlcenter", pid: 20, index: 0, identifier: "clock"),
-      item(bundle: "com.apple.controlcenter", pid: 20, index: 1, identifier: "wifi"),
+      item(bundle: "com.apple.controlcenter", pid: 20, index: 0, identifier: "clock", window: 1),
+      item(bundle: "com.apple.controlcenter", pid: 20, index: 1, identifier: "wifi", window: 2),
     ])
-    #expect(!AppModel.inventoryRequiresReveal(previous: inventory, current: inventory, known: known))
+    #expect(!reveals(AppModel.keyedChanges(from: inventory, to: inventory)))
   }
 
-  @Test("Dynamic titles, geometry, ordering, and window churn do not change source identity")
+  @Test("Dynamic titles, geometry, and ordering do not change source identity")
   func metadataChangesRemainConcealed() {
-    let before = IdentityAssessor().classify([item(identifier: "primary")])
+    let before = IdentityAssessor().classify([item(identifier: "primary", window: 1)])
     let after = IdentityAssessor().classify([
-      item(index: 2, identifier: "primary", title: "updated", x: -300),
+      item(index: 2, identifier: "primary", title: "updated", x: -300, window: 1),
     ])
-    #expect(!AppModel.inventoryRequiresReveal(previous: before, current: after, known: known))
+    #expect(!reveals(AppModel.keyedChanges(from: before, to: after)))
   }
 
-  @Test("A restarted or relaunched known source rebinds its process instead of revealing")
-  func knownSourcesRebind() {
+  @Test("A restarted or relaunched hidden source rebinds its process instead of revealing")
+  func hiddenSourcesRebind() {
     let assessor = IdentityAssessor()
     let original = assessor.classify([item(identifier: "primary")])
-    let restarted = assessor.classify([item(pid: 30, identifier: "primary")])
-    let restartChanges = AppModel.keyedChanges(from: original, to: restarted)
-    #expect(!AppModel.inventoryRequiresReveal(restartChanges, known: known))
-    #expect(restartChanges.contains { AppModel.rebindsProcess($0, known: known) })
+    let restartChanges = AppModel.keyedChanges(from: original, to: assessor.classify([item(pid: 30, identifier: "primary")]))
+    #expect(!reveals(restartChanges))
+    #expect(restartChanges.contains { AppModel.rebindsProcess($0, hidden: hidden) })
 
-    let relaunched = assessor.classify([item(bundle: "example.known", pid: 31)])
-    let relaunchChanges = AppModel.keyedChanges(from: [], to: relaunched)
-    #expect(!AppModel.inventoryRequiresReveal(relaunchChanges, known: known))
-    #expect(relaunchChanges.contains { AppModel.rebindsProcess($0, known: known) })
-    #expect(!relaunchChanges.contains { AppModel.rebindsProcess($0, known: []) })
+    let relaunchChanges = AppModel.keyedChanges(from: [], to: assessor.classify([item(bundle: "example.known", pid: 31)]))
+    #expect(!reveals(relaunchChanges))
+    #expect(relaunchChanges.contains { AppModel.rebindsProcess($0, hidden: hidden) })
+    #expect(!relaunchChanges.contains { AppModel.rebindsProcess($0, hidden: []) })
 
-    #expect(!AppModel.inventoryRequiresReveal(previous: original, current: [], known: known))
+    #expect(!reveals(AppModel.keyedChanges(from: original, to: [])))
+  }
 
-    // A known second sibling (ranked by window creation order) rebinds too.
-    let siblings = assessor.classify([
-      item(bundle: "example.pair", pid: 40, index: 0, window: 10),
-      item(bundle: "example.pair", pid: 40, index: 1, window: 11),
-    ])
-    let siblingChanges = AppModel.keyedChanges(from: [], to: siblings)
-    #expect(siblingChanges.compactMap(\.key).sorted() == ["example.pair", "example.pair#w1"])
-    #expect(AppModel.inventoryRequiresReveal(siblingChanges, known: ["example.pair"]))
-    #expect(!AppModel.inventoryRequiresReveal(siblingChanges, known: ["example.pair", "example.pair#w1"]))
+  @Test("A Menu Bar source that restarts or relaunches is never trusted as hidden")
+  func menuBarSourcesAreNotTrusted() {
+    let assessor = IdentityAssessor()
+    let before = assessor.classify([item(bundle: "example.bar", pid: 50)])
+    let restarted = AppModel.keyedChanges(from: before, to: assessor.classify([item(bundle: "example.bar", pid: 51)]))
+    #expect(!restarted.contains { AppModel.rebindsProcess($0, hidden: hidden) })
+    #expect(reveals(restarted))
+    #expect(!reveals(restarted, visible: ["example.bar"]))
+
+    let relaunched = AppModel.keyedChanges(from: [], to: assessor.classify([item(bundle: "example.bar", pid: 52)]))
+    #expect(!relaunched.contains { AppModel.rebindsProcess($0, hidden: hidden) })
+    #expect(reveals(relaunched))
+    #expect(!reveals(relaunched, visible: ["example.bar"]))
   }
 
   @Test("An unknown bundle or an ambiguous group change requests a reveal")
   func realInventoryChangesReveal() {
     let assessor = IdentityAssessor()
     let original = assessor.classify([item(identifier: "primary")])
-    #expect(AppModel.inventoryRequiresReveal(previous: original,
-      current: assessor.classify([item(identifier: "primary"), item(bundle: "example.new", pid: 30)]),
-      known: known))
-    #expect(AppModel.inventoryRequiresReveal(
-      previous: assessor.classify([item(index: 0), item(index: 1)]),
-      current: assessor.classify([item(index: 0), item(index: 1), item(index: 2)]),
-      known: known))
+    #expect(reveals(AppModel.keyedChanges(from: original,
+      to: assessor.classify([item(identifier: "primary"), item(bundle: "example.new", pid: 30)]))))
+    #expect(reveals(AppModel.keyedChanges(
+      from: assessor.classify([item(index: 0), item(index: 1)]),
+      to: assessor.classify([item(index: 0), item(index: 1), item(index: 2)]))))
+  }
+
+  @Test("Ranked siblings reveal whenever their set or windows change")
+  func rankedSiblingsRevealOnShift() {
+    let assessor = IdentityAssessor()
+    let pair = assessor.classify([
+      item(bundle: "example.pair", pid: 40, index: 0, window: 10),
+      item(bundle: "example.pair", pid: 40, index: 1, window: 11),
+    ])
+    let pairKeys: Set<String> = ["example.pair#w0", "example.pair#w1"]
+    let appearing = AppModel.keyedChanges(from: [], to: pair)
+    #expect(Set(appearing.compactMap(\.key)) == pairKeys)
+    #expect(AppModel.inventoryRequiresReveal(appearing, known: pairKeys, hidden: [], verifiedVisible: pairKeys) == false)
+    #expect(AppModel.inventoryRequiresReveal(appearing, known: ["example.pair#w0"], hidden: [], verifiedVisible: pairKeys))
+    #expect(appearing.allSatisfy { AppModel.rebindsProcess($0, hidden: pairKeys) })
+
+    // One sibling goes away: the survivor would silently take rank 0.
+    let survivor = assessor.classify([item(bundle: "example.pair", pid: 40, index: 1, window: 11)])
+    let removal = AppModel.keyedChanges(from: pair, to: survivor)
+    #expect(AppModel.inventoryRequiresReveal(removal, known: pairKeys.union(["example.pair"]), hidden: pairKeys, verifiedVisible: []))
+
+    // A sibling is recreated with a newer window: ranks swap with no created/removed change.
+    let recreated = assessor.classify([
+      item(bundle: "example.pair", pid: 40, index: 0, window: 12),
+      item(bundle: "example.pair", pid: 40, index: 1, window: 11),
+    ])
+    let swap = AppModel.keyedChanges(from: pair, to: recreated)
+    #expect(swap.contains { $0.windowReplaced })
+    #expect(AppModel.inventoryRequiresReveal(swap, known: pairKeys, hidden: pairKeys, verifiedVisible: []))
+    #expect(!swap.contains { AppModel.rebindsProcess($0, hidden: pairKeys) })
+
+    // From one item to two: the plain key disappears and two unknown keys appear.
+    let single = assessor.classify([item(bundle: "example.pair", pid: 40, index: 0, window: 10)])
+    let growth = AppModel.keyedChanges(from: single, to: pair)
+    #expect(AppModel.inventoryRequiresReveal(growth, known: ["example.pair"], hidden: ["example.pair"], verifiedVisible: []))
+  }
+
+  @Test("Runtime-only status windows never trigger a reveal by themselves")
+  func unverifiedWindowsAreIgnored() {
+    let assessor = IdentityAssessor()
+    let before = assessor.classify([item(window: 1)])
+    let panel = RawSourceItemObservation(runtimeID: "10:window:7", processIdentifier: 10,
+      bundleIdentifier: "example.timer", applicationName: "Fixture", role: "UnverifiedStatusWindow",
+      frame: ItemFrame(x: 1300, y: 0, width: 200, height: 24), actions: [],
+      metadata: LiveAccessibilityMetadata(), observedOrder: 1, statusWindowIdentifier: 7)
+    let changes = AppModel.keyedChanges(from: before, to: assessor.classify([item(window: 1), panel]))
+    #expect(changes.contains { $0.change.kind == .created && $0.key == nil })
+    #expect(!reveals(changes))
+  }
+
+  @Test("Saved keys reduce to their bundle identifier")
+  func bundleOfKey() {
+    #expect(AppModel.bundle(ofKey: "a.b") == "a.b")
+    #expect(AppModel.bundle(ofKey: "a.b#w1") == "a.b")
+    #expect(AppModel.bundle(ofKey: "a.b#ax:x#y") == "a.b")
+    #expect(AppModel.bundle(ofKey: "#x") == "")
   }
 
   private func item(bundle: String = "example.timer", pid: Int32 = 10,

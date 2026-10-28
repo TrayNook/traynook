@@ -116,7 +116,7 @@ struct IdentityAssessorTests {
     #expect(Set(items.compactMap(\.identity.persistentKey)).count == 2)
     let keys = items.sorted { $0.observation.statusWindowIdentifier! < $1.observation.statusWindowIdentifier! }
       .map(\.identity.persistentKey)
-    #expect(keys == ["example.indistinguishable", "example.indistinguishable#w1"])
+    #expect(keys == ["example.indistinguishable#w0", "example.indistinguishable#w1"])
 
     let relaunched = duplicates.enumerated().map { index, raw in
       sibling(raw, window: UInt32(900 - index), x: Double(100 * index), pid: 77)
@@ -127,16 +127,79 @@ struct IdentityAssessorTests {
 
     let partial = [withWindows[0], sibling(duplicates[1], window: nil, x: 100)]
     #expect(assessor.classify(partial).allSatisfy { $0.identity.status == .ambiguous })
+    let duplicateWindows = [withWindows[0], sibling(duplicates[1], window: 200, x: 100)]
+    #expect(assessor.classify(duplicateWindows).allSatisfy { $0.identity.status == .ambiguous })
+  }
+
+  @Test("Identifier and rank keys are namespaced, unique, and never alias the plain bundle key")
+  func mixedSiblingKeys() throws {
+    let duplicates = try loadFixture().ambiguousDuplicates
+    let named = sibling(duplicates[0], window: 5, x: 0, identifier: "w1")
+    let unnamed = sibling(duplicates[1], window: 6, x: 100)
+    let spaced = sibling(duplicates[1], window: 7, x: 200, identifier: "has space", runtimeID: "303:7")
+    let items = assessor.classify([named, unnamed, spaced])
+    let keys = Dictionary(uniqueKeysWithValues: items.map { ($0.observation.runtimeID, $0.identity.persistentKey) })
+    #expect(keys[named.runtimeID] == "example.indistinguishable#ax:w1")
+    #expect(keys[unnamed.runtimeID] == "example.indistinguishable#w1")
+    #expect(keys[spaced.runtimeID] == "example.indistinguishable#w2")
+    #expect(Set(keys.values.compactMap { $0 }).count == 3)
+    #expect(!keys.values.contains("example.indistinguishable"))
+
+    // Two siblings sharing one identifier fall back to rank; a third unique one keeps its identifier.
+    let shared = assessor.classify([
+      sibling(duplicates[0], window: 5, x: 0, identifier: "same"),
+      sibling(duplicates[1], window: 6, x: 100, identifier: "same"),
+      sibling(duplicates[1], window: 7, x: 200, identifier: "other", runtimeID: "303:7"),
+    ])
+    #expect(Set(shared.compactMap(\.identity.persistentKey)) == [
+      "example.indistinguishable#w0", "example.indistinguishable#w1", "example.indistinguishable#ax:other",
+    ])
+
+    // A missing window on the identifier-bearing sibling leaves the others Ambiguous.
+    let missing = assessor.classify([
+      sibling(duplicates[0], window: nil, x: 0, identifier: "named"),
+      sibling(duplicates[1], window: 6, x: 100),
+    ])
+    #expect(missing.map(\.identity.persistentKey) == ["example.indistinguishable#ax:named", nil])
+
+    // An alone item keeps the plain bundle key even with an identifier; overlong identifiers are not persisted.
+    let alone = assessor.classify([sibling(duplicates[0], window: 5, x: 0, identifier: String(repeating: "a", count: 65))])
+    #expect(alone[0].identity.persistentKey == "example.indistinguishable")
+    #expect(assessor.persistableIdentifier(String(repeating: "a", count: 65)) == nil)
+    #expect(assessor.persistableIdentifier(" ok.id-1_ ") == "ok.id-1_")
+    #expect(assessor.persistableIdentifier("naïve") == nil)
+  }
+
+  @Test("Status windows without a verified AX item neither rank siblings nor get a saved key")
+  func unverifiedWindowsStayRuntimeOnly() throws {
+    let duplicates = try loadFixture().ambiguousDuplicates
+    let item = sibling(duplicates[0], window: 9, x: 0)
+    let panel = RawSourceItemObservation(runtimeID: "303:window:3", processIdentifier: 303,
+      bundleIdentifier: item.bundleIdentifier, applicationName: item.applicationName,
+      role: "UnverifiedStatusWindow", frame: ItemFrame(x: 300, y: 0, width: 200, height: 24),
+      actions: [], metadata: LiveAccessibilityMetadata(), observedOrder: 1, statusWindowIdentifier: 3)
+    let classified = assessor.classify([item, panel])
+    let byID = Dictionary(uniqueKeysWithValues: classified.map { ($0.observation.runtimeID, $0) })
+    #expect(byID[item.runtimeID]?.identity.persistentKey == "example.indistinguishable")
+    #expect(byID[panel.runtimeID]?.identity.persistentKey == nil)
+    #expect(byID[panel.runtimeID]?.identity.status != .ambiguous)
+    #expect(byID[panel.runtimeID]?.manageability.status == .protected)
+    // The panel appearing must not re-key the verified item.
+    let changes = differ.changes(from: assessor.classify([item]), to: classified)
+    #expect(changes.filter { $0.kind == .created }.count == 1)
+    #expect(changes.first { $0.kind == .created }?.identity?.discriminatorCandidate == "window:3")
+    #expect(changes.filter { $0.kind == .removed }.isEmpty)
   }
 
   private func sibling(_ raw: RawSourceItemObservation, window: UInt32?, x: Double,
-    pid: Int32? = nil) -> RawSourceItemObservation {
-    RawSourceItemObservation(runtimeID: "\(pid ?? raw.processIdentifier):\(x)",
+    pid: Int32? = nil, identifier: String? = nil, runtimeID: String? = nil) -> RawSourceItemObservation {
+    RawSourceItemObservation(runtimeID: runtimeID ?? "\(pid ?? raw.processIdentifier):\(x)",
       processIdentifier: pid ?? raw.processIdentifier,
       bundleIdentifier: raw.bundleIdentifier, applicationName: raw.applicationName,
       role: raw.role, frame: ItemFrame(x: x, y: 0, width: 24, height: 24),
-      actions: raw.actions, metadata: raw.metadata, observedOrder: raw.observedOrder,
-      statusWindowIdentifier: window)
+      actions: raw.actions,
+      metadata: LiveAccessibilityMetadata(identifierCandidate: identifier, title: raw.metadata.title),
+      observedOrder: raw.observedOrder, statusWindowIdentifier: window)
   }
 
   @Test("Physical ordering remains total when geometry is missing")

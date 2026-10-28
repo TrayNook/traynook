@@ -55,6 +55,9 @@ final class NativeMenuBarController: NSObject {
   /// warped back and shown again as soon as the synthesized input is done.
   private func hideCursor() {
     guard !cursorHidden else { return }
+    // Unverified on device: WindowServer may ignore this for a process that
+    // is not frontmost even though the call reports success. The dropdown
+    // regression's cursor witness is the check; see docs/HANDOFF.md.
     cursorHidden = CGDisplayHideCursor(CGMainDisplayID()) == .success
   }
 
@@ -113,6 +116,7 @@ final class NativeMenuBarController: NSObject {
   func reveal() {
     generation += 1
     releasePointer()
+    showCursor()
     separator?.length = compactWidth
     isConcealed = false
     concealedSourcePIDs.removeAll()
@@ -404,9 +408,14 @@ final class NativeMenuBarController: NSObject {
           throw MenuBarFailure(L("The item's native window changed. Other hidden items remain hidden."))
         }
         // Siblings of one app share the AX tree; the moved item is the one
-        // overlapping its bound window's current frame.
-        let (_, frame) = try accessibilityTarget(source, token: token,
-          expectedFrame: try? statusWindowFrame(sourceWindow))
+        // overlapping its bound window's current frame. AX geometry can lag
+        // WindowServer briefly, so no match yet just means "not yet".
+        let windowFrame = try statusWindowFrame(sourceWindow)
+        guard let (_, frame) = try? accessibilityTarget(source, token: token, expectedFrame: windowFrame)
+        else {
+          try await pause(0.02, token: token)
+          continue
+        }
         let moved = RawSourceItemObservation(runtimeID: source.runtimeID,
           processIdentifier: source.processIdentifier, bundleIdentifier: source.bundleIdentifier,
           applicationName: source.applicationName, role: source.role, subrole: source.subrole,
@@ -943,7 +952,6 @@ final class NativeMenuBarController: NSObject {
   private func releasePointer() {
     activeEventRelay?.cancel()
     activeEventRelay = nil
-    defer { showCursor() }
     guard let release = pendingRelease else { return }
     if let pid = pendingReleasePID {
       release.flags = []
@@ -1013,10 +1021,10 @@ final class NativeMenuBarController: NSObject {
       if CGEventSource.keyState(.hidSystemState, key: key) { return false }
     }
     if recentMovement {
-      // The pointer is hidden during the move, so only input that could land
-      // between our down and up matters; a short settle window is enough.
+      // Physical motion between our down and up still corrupts the drag even
+      // with the pointer hidden; keep the macOS 15-tested settle window.
       for type in [CGEventType.mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged, .scrollWheel, .keyDown] {
-        if CGEventSource.secondsSinceLastEventType(.hidSystemState, eventType: type) < 0.05 { return false }
+        if CGEventSource.secondsSinceLastEventType(.hidSystemState, eventType: type) < 0.2 { return false }
       }
     }
     return true

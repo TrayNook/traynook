@@ -98,20 +98,26 @@ final class AppModel: ObservableObject {
   /// is promoted. Hidden items keep their last capture. Without Screen
   /// Recording the cache is cleared and views fall back to app icons.
   func refreshProxyImages() {
-    screenRecordingGranted = ProxyImageCapture.isAuthorized
-    guard screenRecordingGranted else {
+    let authorized = ProxyImageCapture.isAuthorized
+    if authorized != screenRecordingGranted { screenRecordingGranted = authorized }
+    guard authorized else {
       if !proxyImages.isEmpty { proxyImages = [:] }
       return
     }
-    var next = proxyImages
+    // Never interleave window-list reads and captures with a native operation.
+    guard !busy, !native.isBusy else { return }
+    let dropdownKeys = Set(layout.items.filter { $0.placement == .dropdown }.map(\.id))
+    var next = proxyImages.filter { dropdownKeys.contains($0.key) }
+    var changed = next.count != proxyImages.count
     for item in dropdownItems where item.observation.isOnscreen == true {
       guard let key = item.identity.persistentKey,
         let window = native.statusWindowGeometry(for: item.observation),
         let captured = ProxyImageCapture.capture(windowID: window.id, frame: window.frame)
       else { continue }
       next[key] = captured
+      changed = true
     }
-    proxyImages = next
+    if changed { proxyImages = next }
   }
 
   func requestScreenRecording() {
@@ -222,13 +228,16 @@ final class AppModel: ObservableObject {
       let changes = Self.keyedChanges(from: previousItems, to: observed)
       let known = Set(layout.items.map(\.id))
       let hidden = Set(layout.items.filter { $0.placement != .menuBar }.map(\.id))
-      for change in changes where Self.rebindsProcess(change, known: hidden) {
+      let verifiedVisible = Set(observed.compactMap { item in
+        native.isBehindBoundary(item) == false ? item.identity.persistentKey : nil
+      })
+      for change in changes where Self.rebindsProcess(change, hidden: hidden) {
         if let key = change.key,
           let item = observed.first(where: { $0.observation.runtimeID == change.change.currentRuntimeID }) {
           native.adoptProcess(key: key, pid: item.observation.processIdentifier)
         }
       }
-      if Self.inventoryRequiresReveal(changes, known: known) {
+      if Self.inventoryRequiresReveal(changes, known: known, hidden: hidden, verifiedVisible: verifiedVisible) {
         reveal()
         message = L("Menu-bar items changed. Review the layout before hiding again.")
       }
@@ -256,40 +265,49 @@ final class AppModel: ObservableObject {
   struct KeyedChange {
     let change: SnapshotChange
     let key: String?
+    /// Same identity, same process, different status window: a ranked
+    /// sibling may have taken over another sibling's key.
+    let windowReplaced: Bool
+
+    var isRankedSibling: Bool { key?.contains("#w") == true }
   }
 
   static func keyedChanges(from previous: [ClassifiedSourceItem], to current: [ClassifiedSourceItem]) -> [KeyedChange] {
     SnapshotDiffer().changes(from: previous, to: current).map { change in
-      KeyedChange(change: change, key: (current + previous)
-        .first { $0.identity.provisionalKey != nil && $0.identity.provisionalKey == change.identity }?
-        .identity.persistentKey)
+      let before = previous.first { $0.observation.runtimeID == change.previousRuntimeID }
+      let after = current.first { $0.observation.runtimeID == change.currentRuntimeID }
+      return KeyedChange(change: change, key: (after ?? before)?.identity.persistentKey,
+        windowReplaced: before != nil && after != nil
+          && before!.observation.processIdentifier == after!.observation.processIdentifier
+          && before!.observation.statusWindowIdentifier != after!.observation.statusWindowIdentifier)
     }
   }
 
-  /// A source the user already placed may restart or relaunch without
+  /// A source the user placed outside Menu Bar may restart or relaunch without
   /// reopening the hidden section; the controller just adopts its new process.
-  static func rebindsProcess(_ change: KeyedChange, known: Set<String>) -> Bool {
-    guard let key = change.key else { return false }
+  static func rebindsProcess(_ change: KeyedChange, hidden: Set<String>) -> Bool {
+    guard let key = change.key, hidden.contains(key), !change.windowReplaced else { return false }
     switch change.change.kind {
-    case .processReplaced: return true
-    case .created: return known.contains(key)
+    case .processReplaced, .created: return true
     default: return false
     }
   }
 
-  static func inventoryRequiresReveal(_ changes: [KeyedChange], known: Set<String>) -> Bool {
+  /// Reveal when something could be hidden that the user did not place there:
+  /// an unknown source, a Menu Bar source that is not verified visible, an
+  /// ambiguous group change, or ranked siblings whose set or windows changed.
+  static func inventoryRequiresReveal(_ changes: [KeyedChange], known: Set<String>,
+    hidden: Set<String>, verifiedVisible: Set<String>) -> Bool {
     changes.contains { change in
+      if change.change.kind == .ambiguousInventoryChanged { return true }
+      guard let key = change.key else { return false } // runtime-only window rows
+      if change.isRankedSibling && (change.windowReplaced || change.change.kind == .removed) { return true }
       switch change.change.kind {
-      case .ambiguousInventoryChanged: true
-      case .created: !known.contains(change.key ?? "")
-      case .removed, .processReplaced, .orderChanged, .runtimeMetadataChanged: false
+      case .created: return !known.contains(key) || (!hidden.contains(key) && !verifiedVisible.contains(key))
+      case .processReplaced: return !hidden.contains(key) && !verifiedVisible.contains(key)
+      case .removed, .orderChanged, .runtimeMetadataChanged, .ambiguousInventoryChanged: return false
       }
     }
-  }
-
-  static func inventoryRequiresReveal(previous: [ClassifiedSourceItem], current: [ClassifiedSourceItem],
-    known: Set<String>) -> Bool {
-    inventoryRequiresReveal(keyedChanges(from: previous, to: current), known: known)
   }
 
   func reveal(cancelLaunchRestore: Bool = true) {

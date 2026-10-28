@@ -26,6 +26,23 @@ struct LayoutStoreTests {
     }
   }
 
+  @Test("Sibling keys round-trip; keys with whitespace or without a bundle are rejected")
+  func siblingKeys() throws {
+    try withStore { store in
+      let layout = SavedLayout(items: [
+        SavedItem(id: "example.pair#w1", placement: .dropdown),
+        SavedItem(id: "example.pair#ax:cpu-load_2", placement: .alwaysHidden),
+      ])
+      try store.save(layout)
+      #expect(try store.load() == layout)
+    }
+    for bad in ["example.pair#a b", "nodot#w1", "example.pair#" + String(repeating: "x", count: 250)] {
+      #expect(throws: LayoutError.self) {
+        try SavedLayout(items: [SavedItem(id: bad)]).validated()
+      }
+    }
+  }
+
   @Test("Unreadable and newer layouts remain untouched", arguments: [
     "not JSON",
     #"{"version":2,"rowCapacity":10,"items":[]}"#,
