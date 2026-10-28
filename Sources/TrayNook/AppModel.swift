@@ -18,7 +18,8 @@ final class AppModel: ObservableObject {
   @Published var selectedTab = 0
   @Published var loginEnabled = SMAppService.mainApp.status == .enabled
   @Published var screenRecordingGranted = ProxyImageCapture.isAuthorized
-  /// Keyed by runtime ID. Filled only while the dropdown is open; purged after.
+  /// Keyed by persistent identity. Session-only cache of each dropdown item's
+  /// last onscreen capture; cleared when Screen Recording is unavailable.
   @Published var proxyImages: [String: ProxyImage] = [:]
   let native: NativeMenuBarController
   let undoManager = UndoManager()
@@ -92,24 +93,26 @@ final class AppModel: ObservableObject {
     return NSImage(systemSymbolName: "app.dashed", accessibilityDescription: nil)!
   }
 
-  /// Capture the real menu-bar pixels of every dropdown item. Without Screen
-  /// Recording this clears the cache and the views fall back to app icons.
+  /// Capture the real menu-bar pixels of every dropdown item that is onscreen
+  /// right now: at launch and during Apply (all revealed), and while one item
+  /// is promoted. Hidden items keep their last capture. Without Screen
+  /// Recording the cache is cleared and views fall back to app icons.
   func refreshProxyImages() {
     screenRecordingGranted = ProxyImageCapture.isAuthorized
-    guard screenRecordingGranted else { proxyImages = [:]; return }
-    var next: [String: ProxyImage] = [:]
-    for item in dropdownItems {
-      guard let window = native.statusWindowGeometry(for: item.observation) else { continue }
-      if let captured = ProxyImageCapture.capture(windowID: window.id, frame: window.frame) {
-        next[item.observation.runtimeID] = captured
-      } else if let previous = proxyImages[item.observation.runtimeID] {
-        next[item.observation.runtimeID] = previous // transient capture failure
-      }
+    guard screenRecordingGranted else {
+      if !proxyImages.isEmpty { proxyImages = [:] }
+      return
+    }
+    var next = proxyImages
+    for item in dropdownItems where item.observation.isOnscreen == true {
+      guard let key = item.identity.persistentKey,
+        let window = native.statusWindowGeometry(for: item.observation),
+        let captured = ProxyImageCapture.capture(windowID: window.id, frame: window.frame)
+      else { continue }
+      next[key] = captured
     }
     proxyImages = next
   }
-
-  func purgeProxyImages() { proxyImages = [:] }
 
   func requestScreenRecording() {
     ProxyImageCapture.request()
@@ -232,6 +235,7 @@ final class AppModel: ObservableObject {
     }
     previousItems = observed
     items = observed
+    refreshProxyImages()
     if !recoveryRequired {
       let known = Set(layout.items.map(\.id))
       let additions = observed.compactMap { $0.identity.persistentKey }

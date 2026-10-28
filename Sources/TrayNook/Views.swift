@@ -157,7 +157,7 @@ struct SettingsView: View {
       Divider()
       Label(L("Screen Recording"), systemImage: model.screenRecordingGranted ? "checkmark.shield" : "rectangle.dashed.badge.record")
         .font(.title3.bold())
-      Text(L("Optional. With Screen Recording, the dropdown shows each item's real menu-bar icon. Without it, TrayNook shows application icons. Captured pixels stay in memory only while the dropdown is open and are never saved."))
+      Text(L("Optional. With Screen Recording, the dropdown shows each item's real menu-bar icon as last seen while it was visible. Without it, TrayNook shows application icons. Captured pixels stay in memory for this session only and are never saved."))
         .fixedSize(horizontal: false, vertical: true)
       Text(model.screenRecordingGranted ? L("Granted") : L("Not granted")).font(.headline)
       HStack {
@@ -263,7 +263,6 @@ struct DropdownIcons: View {
     }.buttonStyle(.borderless).padding(2)
     .task(id: interactive) {
       guard interactive else { return }
-      defer { model.purgeProxyImages() }
       while !Task.isCancelled {
         model.refreshProxyImages()
         try? await Task.sleep(for: .seconds(1))
@@ -271,10 +270,11 @@ struct DropdownIcons: View {
     }
   }
 
-  /// The real menu-bar pixels when Screen Recording allows it, on a backdrop
-  /// matching the menu bar the glyph was drawn for; otherwise the app icon.
+  /// The item's last onscreen menu-bar pixels when Screen Recording allows it,
+  /// on a backdrop matching the menu bar the glyph was drawn for; otherwise
+  /// the app icon.
   @ViewBuilder private func proxy(_ item: ClassifiedSourceItem, bundle: String) -> some View {
-    if let captured = model.proxyImages[item.observation.runtimeID] {
+    if let captured = model.proxyImages[bundle] {
       // ponytail: fixed 34pt cell; wide text items scale down. Variable-width
       // cells if that reads badly on real bars.
       Image(nsImage: captured.image).resizable().aspectRatio(contentMode: .fit)

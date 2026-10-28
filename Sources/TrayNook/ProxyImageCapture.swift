@@ -1,8 +1,9 @@
 import AppKit
 import InventoryIdentityCore
 
-/// Captured pixels of one status window. Held in memory only while a
-/// proxy-bearing surface is visible; never written to disk.
+/// Captured pixels of one status window. Held in memory for the session only;
+/// never written to disk. Public capture works only while the window is
+/// onscreen, so hidden items show their last image from when they were visible.
 struct ProxyImage {
   let image: NSImage
   /// Light glyphs mean the source draws for a dark menu bar. The proxy cell
@@ -20,8 +21,9 @@ enum ProxyImageCapture {
     }
   }
 
-  /// One status window, including offscreen ones: the window server still
-  /// holds their backing store. Returns nil without Screen Recording.
+  /// One onscreen status window. Returns nil without Screen Recording, and
+  /// nil for offscreen windows: the public API does not composite those
+  /// (verified on macOS 15.7; Ice needs a private SkyLight call for that).
   static func capture(windowID: UInt32, frame: ItemFrame) -> ProxyImage? {
     guard isAuthorized, frame.isUsable,
       let cgImage = CGWindowListCreateImage(.null, .optionIncludingWindow, CGWindowID(windowID),

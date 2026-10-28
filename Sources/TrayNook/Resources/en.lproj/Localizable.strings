@@ -63,7 +63,7 @@
 "Open Settings" = "Open Settings";
 "Open System Settings…" = "Open System Settings…";
 "Open TrayNook" = "Open TrayNook";
-"Optional. With Screen Recording, the dropdown shows each item's real menu-bar icon. Without it, TrayNook shows application icons. Captured pixels stay in memory only while the dropdown is open and are never saved." = "Optional. With Screen Recording, the dropdown shows each item's real menu-bar icon. Without it, TrayNook shows application icons. Captured pixels stay in memory only while the dropdown is open and are never saved.";
+"Optional. With Screen Recording, the dropdown shows each item's real menu-bar icon as last seen while it was visible. Without it, TrayNook shows application icons. Captured pixels stay in memory for this session only and are never saved." = "Optional. With Screen Recording, the dropdown shows each item's real menu-bar icon as last seen while it was visible. Without it, TrayNook shows application icons. Captured pixels stay in memory for this session only and are never saved.";
 "Permissions" = "Permissions";
 "Physical input interrupted the action. The section remains revealed." = "Physical input interrupted the action. The section remains revealed.";
 "Placement" = "Placement";
