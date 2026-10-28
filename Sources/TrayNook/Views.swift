@@ -70,53 +70,63 @@ struct SettingsView: View {
         Button(L("Restore All to Menu Bar")) { model.restoreAll() }
           .disabled(model.busy || model.recoveryRequired)
       }
-      ScrollView {
-        VStack(alignment: .leading, spacing: 16) {
-          LayoutPreviewView(model: model)
-          ForEach(Placement.allCases) { zone in
-            VStack(alignment: .leading, spacing: 8) {
-              HStack {
-                Text(zone.title).font(.headline)
-                Text("\(model.layout.items.filter { $0.placement == zone }.count)").foregroundStyle(.secondary)
-                Spacer()
-                if zone == .menuBar { Label(L("TrayNook stays here"), systemImage: "tray.full").font(.caption).foregroundStyle(.secondary) }
-              }
-              let savedItems = model.layout.items.filter { $0.placement == zone }
-              // Locked items carry no decision; one row stands for all of them.
-              let locked = savedItems.filter { saved in model.liveItem(saved.id).map { !model.isManageable($0) } ?? false }
-              if savedItems.isEmpty {
-                Text(L("No items here yet")).foregroundStyle(.secondary).padding(.vertical, 8)
-              }
-              ForEach(savedItems.filter { saved in !locked.contains { $0.id == saved.id } }) { item in itemRow(item) }
-              if !locked.isEmpty {
-                DisclosureGroup(isExpanded: $showLocked) {
-                  ForEach(locked) { item in itemRow(item) }
-                } label: {
-                  HStack(spacing: 10) {
-                    Image(systemName: "lock").frame(width: 26)
-                    Text(L("System items")).lineLimit(1)
-                    Text("\(locked.count)").foregroundStyle(.secondary)
-                    Spacer()
-                    Text(L("Protected — kept visible")).font(.caption).foregroundStyle(.secondary)
-                  }
+      // A List gives native row reordering (gap animation, drop indicator).
+      List {
+        LayoutPreviewView(model: model).listRowSeparator(.hidden)
+        ForEach(Placement.allCases) { zone in
+          let savedItems = model.layout.items.filter { $0.placement == zone }
+          // Locked items carry no decision; one row stands for all of them.
+          let locked = savedItems.filter { saved in model.liveItem(saved.id).map { !model.isManageable($0) } ?? false }
+          let shown = savedItems.filter { saved in !locked.contains { $0.id == saved.id } }
+          Section {
+            if savedItems.isEmpty {
+              Text(L("No items here yet")).foregroundStyle(.secondary)
+            }
+            ForEach(shown) { item in
+              itemRow(item).onDrag { NSItemProvider(object: item.id as NSString) }
+            }
+            .onMove { from, to in model.moveRows(in: zone, from: from, to: to) }
+            .onInsert(of: [.text]) { index, providers in
+              let sink = DragSink { key in model.insert(key, in: zone, at: index) }
+              for provider in providers {
+                _ = provider.loadObject(ofClass: NSString.self) { object, _ in
+                  guard let key = object as? String else { return }
+                  sink.deliver(key)
                 }
               }
             }
-            .padding(12)
-            .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 10))
-            .dropDestination(for: String.self) { bundles, _ in
-              guard bundles.count == 1, let bundle = bundles.first, model.canEdit,
-                let item = model.liveItem(bundle), model.isManageable(item) else { return false }
-              model.setPlacement(bundle, zone)
-              return true
+            if !locked.isEmpty {
+              DisclosureGroup(isExpanded: $showLocked) {
+                ForEach(locked) { item in itemRow(item) }
+              } label: {
+                HStack(spacing: 10) {
+                  Image(systemName: "lock").frame(width: 26)
+                  Text(L("System items")).lineLimit(1)
+                  Text("\(locked.count)").foregroundStyle(.secondary)
+                  Spacer()
+                  Text(L("Protected — kept visible")).font(.caption).foregroundStyle(.secondary)
+                }
+              }
+            }
+          } header: {
+            HStack {
+              Text(zone.title).font(.headline)
+              Text("\(savedItems.count)").foregroundStyle(.secondary)
+              Spacer()
+              if zone == .menuBar { Label(L("TrayNook stays here"), systemImage: "tray.full").font(.caption).foregroundStyle(.secondary) }
             }
           }
-          if model.layout.items.isEmpty {
-            Text(L("Grant Accessibility, then refresh to discover your menu-bar items."))
-              .foregroundStyle(.secondary).padding(.vertical, 12)
+          .dropDestination(for: String.self) { keys, _ in
+            guard keys.count == 1, let key = keys.first else { return false }
+            return model.insert(key, in: zone, at: Int.max)
           }
         }
+        if model.layout.items.isEmpty {
+          Text(L("Grant Accessibility, then refresh to discover your menu-bar items."))
+            .foregroundStyle(.secondary)
+        }
       }
+      .listStyle(.inset)
       Text(L("Opening an item brings only that item into view. It returns when its menu closes. Other hidden items stay hidden."))
         .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
     }.padding(12)
@@ -131,15 +141,6 @@ struct SettingsView: View {
       }
       Spacer()
       if let live = model.liveItem(saved.id), model.isManageable(live) {
-        if saved.placement == .dropdown {
-          let ordered = model.layout.items.filter { $0.placement == .dropdown }
-          Button { model.reorder(saved.id, delta: -1) } label: { Image(systemName: "arrow.up") }
-            .help(L("Move earlier in dropdown order")).accessibilityLabel(L("Move earlier in dropdown order"))
-            .disabled(ordered.first?.id == saved.id)
-          Button { model.reorder(saved.id, delta: 1) } label: { Image(systemName: "arrow.down") }
-            .help(L("Move later in dropdown order")).accessibilityLabel(L("Move later in dropdown order"))
-            .disabled(ordered.last?.id == saved.id)
-        }
         Picker(L("Placement"), selection: Binding(get: { saved.placement }, set: { model.setPlacement(saved.id, $0) })) {
           ForEach(Placement.allCases) { Text($0.title).tag($0) }
         }.labelsHidden().frame(width: 145).accessibilityLabel(L("Placement") + ": " + model.name(for: saved.id))
@@ -151,18 +152,9 @@ struct SettingsView: View {
       } else {
         Image(systemName: "lock").accessibilityLabel(L("Protected — kept visible"))
       }
-      Image(systemName: "line.3.horizontal").foregroundStyle(.secondary)
-        .help(L("Drag to reorder or move between sections")).accessibilityHidden(true)
     }
     .disabled(!model.canEdit)
     .padding(.vertical, 3)
-    .contentShape(Rectangle())
-    .draggable(saved.id)
-    // Dropping on a row inserts before it, in that row's section.
-    .dropDestination(for: String.self) { keys, _ in
-      guard keys.count == 1, let key = keys.first, key != saved.id else { return false }
-      return model.move(key, before: saved.id)
-    }
   }
 
   private var permissions: some View {
@@ -319,4 +311,11 @@ struct DropdownIcons: View {
       Image(nsImage: model.icon(for: bundle)).resizable().frame(width: 26, height: 26).padding(4)
     }
   }
+}
+
+/// Hands a dragged key from the item provider's background callback to the model.
+private final class DragSink: @unchecked Sendable {
+  private let deliverOnMain: @MainActor (String) -> Void
+  init(_ deliver: @escaping @MainActor (String) -> Void) { deliverOnMain = deliver }
+  func deliver(_ key: String) { Task { @MainActor in self.deliverOnMain(key) } }
 }

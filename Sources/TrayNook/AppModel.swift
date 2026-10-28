@@ -590,6 +590,35 @@ final class AppModel: ObservableObject {
     replaceLayout(next, undoable: true)
   }
 
+  /// Native list reordering inside one section.
+  func moveRows(in zone: Placement, from: IndexSet, to: Int) {
+    guard canEdit else { return }
+    var lane = layout.items.filter { $0.placement == zone }
+    lane.move(fromOffsets: from, toOffset: to)
+    var next = layout
+    var cursor = lane.makeIterator()
+    next.items = next.items.map { $0.placement == zone ? cursor.next()! : $0 }
+    replaceLayout(next, undoable: true)
+  }
+
+  /// A row dropped into a section at a position in that section's lane.
+  @discardableResult func insert(_ key: String, in zone: Placement, at laneIndex: Int) -> Bool {
+    guard canEdit, let from = layout.items.firstIndex(where: { $0.id == key }) else { return false }
+    var next = layout
+    var moved = next.items.remove(at: from)
+    let placementChanged = moved.placement != zone
+    if placementChanged {
+      guard let live = liveItem(key), isManageable(live) else { return false }
+      moved.placement = zone
+    }
+    let lane = next.items.indices.filter { next.items[$0].placement == zone }
+    let at = laneIndex < lane.count ? lane[laneIndex] : (lane.last.map { $0 + 1 } ?? next.items.count)
+    next.items.insert(moved, at: at)
+    guard replaceLayout(next, undoable: true) else { return false }
+    if placementChanged { applySavedLayout(restoringToMenuBar: zone == .menuBar ? key : nil) }
+    return true
+  }
+
   /// Reorders within a section, or moves into the target row's section at
   /// that position. Only the dropdown order has a visible effect; other
   /// sections keep the list order for the user's own sense of it.
