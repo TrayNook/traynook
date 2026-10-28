@@ -5,6 +5,7 @@ import InventoryIdentityCore
 struct SettingsView: View {
   @ObservedObject var model: AppModel
   @State private var confirmReset = false
+  @AppStorage("dropdownGlyphs") private var showGlyphs = false
   @State private var showLocked = false
   @State private var reorder = Reorder()
   @State private var rowHeights: [String: CGFloat] = [:]
@@ -250,6 +251,8 @@ struct SettingsView: View {
         Text(L("macOS applies Screen Recording after TrayNook is quit and reopened."))
           .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
       }
+      Toggle(L("Show menu-bar glyphs instead of app icons in the dropdown"), isOn: $showGlyphs)
+        .disabled(!model.screenRecordingGranted)
       Spacer()
     }.padding(20)
   }
@@ -312,6 +315,7 @@ struct DropdownView: View {
 
 struct DropdownIcons: View {
   @ObservedObject var model: AppModel
+  @AppStorage("dropdownGlyphs") private var showGlyphs = false
   let columns: Int
   var interactive = true
 
@@ -356,11 +360,10 @@ struct DropdownIcons: View {
     }
   }
 
-  /// The item's last onscreen menu-bar pixels when Screen Recording allows it,
-  /// on a backdrop matching the menu bar the glyph was drawn for; otherwise
-  /// the app icon.
+  /// The app icon by default: large and recognizable. The item's last onscreen
+  /// menu-bar pixels (Screen Recording) only when the user prefers them.
   @ViewBuilder private func proxy(_ item: ClassifiedSourceItem, bundle: String) -> some View {
-    if let captured = model.proxyImages[bundle] {
+    if showGlyphs, let captured = model.proxyImages[bundle] {
       // ponytail: fixed 34pt cell; wide text items scale down. Variable-width
       // cells if that reads badly on real bars.
       // Template glyphs take the label color like in the menu bar; colored

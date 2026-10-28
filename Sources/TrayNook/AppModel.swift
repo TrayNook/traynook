@@ -108,10 +108,35 @@ final class AppModel: ObservableObject {
 
   func icon(for key: String) -> NSImage {
     let bundle = Self.bundle(ofKey: key)
+    // System menu extras have no app icon worth showing; use a symbol.
+    if let symbol = Self.systemSymbol(forKey: key),
+      let image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil) {
+      return image
+    }
     if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundle) {
       return NSWorkspace.shared.icon(forFile: url.path)
     }
     return NSImage(systemSymbolName: "app.dashed", accessibilityDescription: nil)!
+  }
+
+  static func systemSymbol(forKey key: String) -> String? {
+    guard key.hasPrefix("com.apple.") else { return nil }
+    let suffix = key.split(separator: ".").last.map(String.init) ?? ""
+    switch suffix {
+    case "KerberosMenuExtra": return "key"
+    case "TextInputMenuAgent": return "keyboard"
+    case "now-playing": return "play.circle"
+    case "sound": return "speaker.wave.2"
+    case "bluetooth": return "dot.radiowaves.left.and.right"
+    case "battery": return "battery.75percent"
+    case "wifi": return "wifi"
+    case "controlcenter": return "switch.2"
+    case "clock": return "clock"
+    case "audiovideo": return "video"
+    case "focusmodes": return "moon"
+    case "screenmirroring", "display": return "display"
+    default: return key.contains("#") ? "menubar.rectangle" : nil
+    }
   }
 
   /// Capture the real menu-bar pixels of every dropdown item that is onscreen
