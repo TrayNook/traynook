@@ -273,6 +273,9 @@ final class AppModel: ObservableObject {
     /// Same identity, same process, different status window: a ranked
     /// sibling may have taken over another sibling's key.
     let windowReplaced: Bool
+    /// A removed sibling left fewer than two items, so the survivor's key
+    /// collapses to the plain bundle identifier without a visible change.
+    let survivorsRekeyed: Bool
 
     var isSibling: Bool { key?.contains("#") == true }
     var isRankedSibling: Bool { key?.contains("#w") == true }
@@ -282,10 +285,13 @@ final class AppModel: ObservableObject {
     SnapshotDiffer().changes(from: previous, to: current).map { change in
       let before = previous.first { $0.observation.runtimeID == change.previousRuntimeID }
       let after = current.first { $0.observation.runtimeID == change.currentRuntimeID }
+      let bundle = before?.observation.bundleIdentifier
       return KeyedChange(change: change, key: (after ?? before)?.identity.persistentKey,
         windowReplaced: before != nil && after != nil
           && before!.observation.processIdentifier == after!.observation.processIdentifier
-          && before!.observation.statusWindowIdentifier != after!.observation.statusWindowIdentifier)
+          && before!.observation.statusWindowIdentifier != after!.observation.statusWindowIdentifier,
+        survivorsRekeyed: change.kind == .removed && bundle != nil
+          && current.filter { $0.observation.bundleIdentifier == bundle && $0.identity.persistentKey != nil }.count < 2)
     }
   }
 
@@ -308,10 +314,12 @@ final class AppModel: ObservableObject {
     changes.contains { change in
       if change.change.kind == .ambiguousInventoryChanged { return true }
       guard let key = change.key else { return false } // runtime-only window rows
-      // A sibling leaving can re-key the survivors; a ranked sibling's window
-      // changing within one process can swap ranks.
-      if change.isSibling && change.change.kind == .removed { return true }
-      if change.isRankedSibling && change.windowReplaced { return true }
+      // A ranked sibling leaving re-keys the survivors, and its window changing
+      // within one process can swap ranks. Identifier-keyed siblings keep their
+      // keys (Control Centre's camera indicator comes and goes); when one of
+      // them is re-keyed to the plain bundle, that key shows up as created.
+      if change.isRankedSibling && (change.change.kind == .removed || change.windowReplaced) { return true }
+      if change.isSibling && change.change.kind == .removed && change.survivorsRekeyed { return true }
       switch change.change.kind {
       case .created: return !known.contains(key) || (!hidden.contains(key) && !verifiedVisible.contains(key))
       case .processReplaced: return !hidden.contains(key) && !verifiedVisible.contains(key)

@@ -121,6 +121,21 @@ struct AppModelInventoryTests {
     #expect(survivor[0].identity.persistentKey == "example.pair")
     let removal = AppModel.keyedChanges(from: pair, to: survivor)
     #expect(AppModel.inventoryRequiresReveal(removal, known: keys, hidden: keys, verifiedVisible: []))
+
+    // A transient system sibling (Control Centre's camera indicator) leaving a
+    // larger group changes no other key and must not reopen the section.
+    let trio = assessor.classify([
+      item(bundle: "com.apple.controlcenter", pid: 41, index: 0, identifier: "clock", window: 20),
+      item(bundle: "com.apple.controlcenter", pid: 41, index: 1, identifier: "wifi", window: 21),
+      item(bundle: "com.apple.controlcenter", pid: 41, index: 2, identifier: "audiovideo", window: 22),
+    ])
+    let duo = assessor.classify([
+      item(bundle: "com.apple.controlcenter", pid: 41, index: 0, identifier: "clock", window: 20),
+      item(bundle: "com.apple.controlcenter", pid: 41, index: 1, identifier: "wifi", window: 21),
+    ])
+    let systemKeys = Set(trio.compactMap(\.identity.persistentKey))
+    #expect(!AppModel.inventoryRequiresReveal(AppModel.keyedChanges(from: trio, to: duo), known: systemKeys, hidden: [], verifiedVisible: []))
+    #expect(!AppModel.inventoryRequiresReveal(AppModel.keyedChanges(from: duo, to: trio), known: systemKeys, hidden: [], verifiedVisible: systemKeys))
   }
 
   @Test("Runtime-only status windows never trigger a reveal by themselves")

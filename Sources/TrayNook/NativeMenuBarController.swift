@@ -332,7 +332,7 @@ final class NativeMenuBarController: NSObject {
       // Hidden items must leave every menu bar, so grow to the widest display.
       let widestDisplay = NSScreen.screens.map { Double($0.frame.width) }.max() ?? before.displayWidth
       separator?.length = max(before.displayWidth, widestDisplay) + compactWidth
-      nativeLog.info("conceal allowed=\(allowedKeys.count) sources=\(self.concealedSourcePIDs.count) length=\(self.separator?.length ?? 0, privacy: .public)")
+      nativeLog.info("conceal allowed=\(allowedKeys.count) sources=\(self.concealedSourcePIDs.count) displayWidth=\(before.displayWidth, privacy: .public) widest=\(widestDisplay, privacy: .public) screens=\(NSScreen.screens.map { Double($0.frame.width) }.description, privacy: .public) length=\(self.separator?.length ?? 0, privacy: .public)")
       isConcealed = true
       try await pause(0.25, token: token)
       guard let after = environment(), before.display == after.display,

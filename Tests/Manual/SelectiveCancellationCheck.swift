@@ -100,6 +100,8 @@ private final class CancellationCheck: NSObject, NSApplicationDelegate {
     }
     var stage = "setup"
     do {
+      let probe = await Task.detached { AccessibilityInventoryScanner().scan() }.value
+      print("Setup inventory: permission=\(probe.permission.rawValue) completeness=\(probe.completeness.rawValue) items=\(probe.items.count) scanMs=\(Int(probe.metrics.durationMilliseconds)) incompleteApps=\(probe.metrics.incompleteApplicationCount) warnings=\(probe.warnings)")
       try await native.prepareLayout()
       try sentinel.run(); try fixture.run()
       try await Task.sleep(for: .seconds(1))
