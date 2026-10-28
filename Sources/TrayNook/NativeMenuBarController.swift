@@ -42,6 +42,7 @@ final class NativeMenuBarController: NSObject {
   private let compactWidth: CGFloat = 18
   private var generation = 0
   private var pendingRelease: CGEvent?
+  /// Persistent identity key → process trusted to own that concealed item.
   private var concealedSourcePIDs: [String: Int32] = [:]
   private var cursorHidden = false
   private(set) var isConcealed = false
@@ -119,11 +120,11 @@ final class NativeMenuBarController: NSObject {
     onReveal?()
   }
 
-  /// A concealed source restarted. Trust its new process for the same bundle
+  /// A concealed source restarted. Trust its new process for the same identity
   /// so its proxy keeps working without reopening the whole section.
-  func adoptProcess(bundle: String, pid: Int32) {
+  func adoptProcess(key: String, pid: Int32) {
     guard isConcealed else { return }
-    concealedSourcePIDs[bundle] = pid
+    concealedSourcePIDs[key] = pid
   }
 
   func remove() {
@@ -185,13 +186,11 @@ final class NativeMenuBarController: NSObject {
       }
       let environment = try checkedEnvironment()
       let snapshot = try await freshInventory(token: token)
-      let groups = Dictionary(grouping: snapshot.items) { $0.observation.bundleIdentifier }
       let visibleFrames = snapshot.items.compactMap { item -> ItemFrame? in
         guard item.observation.processIdentifier != ProcessInfo.processInfo.processIdentifier,
           item.observation.isOnscreen != false,
-          item.manageability.status == .protected || item.identity.status == .ambiguous
-            || groups[item.observation.bundleIdentifier, default: []].count > 1
-            || keepingVisible.contains(item.observation.bundleIdentifier ?? ""),
+          item.manageability.status == .protected || item.identity.persistentKey == nil
+            || keepingVisible.contains(item.identity.persistentKey ?? ""),
           let frame = item.observation.frame, environment.safeFrame.contains(frame) else { return nil }
         return frame
       }
@@ -212,27 +211,27 @@ final class NativeMenuBarController: NSObject {
   }
 
   /// nil means the item cannot safely be attributed to this menu-bar row.
-  func isBehindBoundary(_ item: RawSourceItemObservation) -> Bool? {
+  func isBehindBoundary(_ classified: ClassifiedSourceItem) -> Bool? {
+    let item = classified.observation
+    let key = classified.identity.persistentKey
     guard let environment = environment(), let frame = item.frame,
       Self.launcherIsSafe(environment.launcher, boundary: environment.boundary,
         safeFrame: environment.safeFrame, expanded: isConcealed)
     else { return nil }
     if Self.isClipped(item, boundary: environment.boundary, displayFrame: environment.displayFrame,
       occlusionFrame: environment.occlusionFrame) {
-      if let bundle = item.bundleIdentifier,
-        concealedSourcePIDs[bundle] == item.processIdentifier { return true }
+      if let key, concealedSourcePIDs[key] == item.processIdentifier { return true }
       if item.isOnscreen == false || environment.occlusionFrame?.contains(frame) == true { return false }
       // A partially covered, uncached source may still be visible. Its side
       // must be checked normally so an unassigned source cannot stay hidden.
     }
     if Self.outsideDisplay(frame, display: environment.displayFrame) {
-      guard let bundle = item.bundleIdentifier else { return false }
-      return concealedSourcePIDs[bundle] == item.processIdentifier
+      guard let key else { return false }
+      return concealedSourcePIDs[key] == item.processIdentifier
     }
     guard let behind = Self.hiddenSide(frame, boundary: environment.boundary) else { return nil }
     if isConcealed && behind {
-      guard let bundle = item.bundleIdentifier,
-        concealedSourcePIDs[bundle] == item.processIdentifier else { return nil }
+      guard let key, concealedSourcePIDs[key] == item.processIdentifier else { return nil }
     } else if !environment.safeFrame.contains(frame) {
       return nil
     }
@@ -247,7 +246,7 @@ final class NativeMenuBarController: NSObject {
       occlusionFrame: environment.occlusionFrame)
   }
 
-  func conceal(allowedBundleIdentifiers: Set<String>) async throws {
+  func conceal(allowedKeys: Set<String>) async throws {
     guard !isBusy else { throw MenuBarFailure(L("Another menu-bar action is in progress.")) }
     isBusy = true
     reveal()
@@ -261,7 +260,7 @@ final class NativeMenuBarController: NSObject {
       let items = snapshot.items.filter {
         $0.observation.processIdentifier != ProcessInfo.processInfo.processIdentifier
       }
-      guard Self.canConceal(items, allowedBundleIdentifiers: allowedBundleIdentifiers,
+      guard Self.canConceal(items, allowedKeys: allowedKeys,
         boundary: before.boundary, safeFrame: before.safeFrame, displayFrame: before.displayFrame,
         occlusionFrame: before.occlusionFrame) else {
         throw MenuBarFailure(L("A new, protected, or unassigned item is behind the separator. Keep it on the right before hiding."))
@@ -270,19 +269,17 @@ final class NativeMenuBarController: NSObject {
       guard try checkedEnvironment() == before else {
         throw MenuBarFailure(L("The menu bar changed. Try hiding again."))
       }
-      let groups = Dictionary(grouping: items) { $0.observation.bundleIdentifier }
-      concealedSourcePIDs = Dictionary(uniqueKeysWithValues: items.compactMap { item in
-        guard let bundle = item.observation.bundleIdentifier,
+      concealedSourcePIDs = Dictionary(items.compactMap { item in
+        guard let key = item.identity.persistentKey, let bundle = item.observation.bundleIdentifier,
           let frame = item.observation.frame,
-          allowedBundleIdentifiers.contains(bundle), groups[bundle]?.count == 1,
-          !bundle.hasPrefix("com.apple."), item.identity.status != .ambiguous,
+          allowedKeys.contains(key), !bundle.hasPrefix("com.apple."),
           item.manageability.status != .protected,
           Self.isClipped(item.observation, boundary: before.boundary, displayFrame: before.displayFrame,
             occlusionFrame: before.occlusionFrame)
             || (before.safeFrame.contains(frame) && Self.hiddenSide(frame, boundary: before.boundary) == true)
         else { return nil }
-        return (bundle, item.observation.processIdentifier)
-      })
+        return (key, item.observation.processIdentifier)
+      }, uniquingKeysWith: { first, _ in first })
       separator?.length = before.displayWidth + compactWidth
       isConcealed = true
       try await pause(0.25, token: token)
@@ -309,7 +306,7 @@ final class NativeMenuBarController: NSObject {
   }
 
   private struct PendingActivation {
-    let source: RawSourceItemObservation
+    let source: ClassifiedSourceItem
     let sourceWindow: StatusWindowBinding
     let returnWindow: StatusWindowBinding
     let originalGap: Double
@@ -322,7 +319,7 @@ final class NativeMenuBarController: NSObject {
 
   /// Promote just this source while the separator remains expanded. A return
   /// record is retained until its original neighbour is verified again.
-  func prepareActivation(_ original: RawSourceItemObservation) async throws -> RawSourceItemObservation {
+  func prepareActivation(_ original: ClassifiedSourceItem) async throws -> ClassifiedSourceItem {
     guard !isBusy, pendingActivation == nil else {
       throw MenuBarFailure(L("Finish the current item interaction before opening another item."))
     }
@@ -333,7 +330,7 @@ final class NativeMenuBarController: NSObject {
       allowingClipped: true, allowingConcealed: true)
     if prepared.environment.safeFrame.contains(prepared.item.observation.frame!),
       prepared.item.observation.isOnscreen != false {
-      return prepared.item.observation
+      return prepared.item
     }
     if !Self.physicalInputIsIdle(recentMovement: true) {
       try await waitForIdleInput(token: token)
@@ -342,6 +339,7 @@ final class NativeMenuBarController: NSObject {
         allowingClipped: true, allowingConcealed: true)
     }
     let source = prepared.item.observation
+    let identity = prepared.item.identity
     let environment = prepared.environment
     let sourceFrame = source.frame!
     let sourceWindow = try statusWindow(for: source)
@@ -361,7 +359,7 @@ final class NativeMenuBarController: NSObject {
     guard anchorFrame.minX - width >= environment.safeFrame.minX,
       environment.boundary.maxX - width >= environment.safeFrame.minX + 2,
       prepared.snapshot.items.allSatisfy({ item in
-        guard item.observation.processIdentifier != source.processIdentifier,
+        guard item.observation.runtimeID != source.runtimeID,
           item.observation.isOnscreen != false, let frame = item.observation.frame,
           environment.safeFrame.contains(frame), frame.maxX <= environment.launcher.minX else { return true }
         return frame.minX - width >= environment.safeFrame.minX
@@ -375,7 +373,7 @@ final class NativeMenuBarController: NSObject {
       returnFrame = boundaryFrame
     }
     for item in prepared.snapshot.items {
-      guard item.observation.processIdentifier != source.processIdentifier,
+      guard item.observation.runtimeID != source.runtimeID,
         let frame = item.observation.frame, frame.isUsable,
         frame.minX > sourceFrame.minX, frame.y < sourceFrame.maxY, frame.maxY > sourceFrame.y,
         returnFrame == nil || frame.minX < returnFrame!.minX else { continue }
@@ -390,7 +388,7 @@ final class NativeMenuBarController: NSObject {
     guard let returnBinding, let returnFrame else {
       throw MenuBarFailure(L("This item's original position cannot be restored safely. Other hidden items remain hidden."))
     }
-    pendingActivation = PendingActivation(source: source, sourceWindow: sourceWindow,
+    pendingActivation = PendingActivation(source: prepared.item, sourceWindow: sourceWindow,
       returnWindow: returnBinding, originalGap: returnFrame.minX - sourceOuterFrame.maxX)
     let windowBindings = statusWindows().map(\.binding).sorted { $0.id < $1.id }
     do {
@@ -405,15 +403,20 @@ final class NativeMenuBarController: NSObject {
           statusWindows().map(\.binding).sorted(by: { $0.id < $1.id }) == windowBindings else {
           throw MenuBarFailure(L("The item's native window changed. Other hidden items remain hidden."))
         }
-        let (_, frame) = try accessibilityTarget(source, token: token)
+        // Siblings of one app share the AX tree; the moved item is the one
+        // overlapping its bound window's current frame.
+        let (_, frame) = try accessibilityTarget(source, token: token,
+          expectedFrame: try? statusWindowFrame(sourceWindow))
         let moved = RawSourceItemObservation(runtimeID: source.runtimeID,
           processIdentifier: source.processIdentifier, bundleIdentifier: source.bundleIdentifier,
           applicationName: source.applicationName, role: source.role, subrole: source.subrole,
           frame: frame, actions: source.actions, metadata: source.metadata,
-          observedOrder: source.observedOrder, isOnscreen: true)
+          observedOrder: source.observedOrder, isOnscreen: true,
+          statusWindowIdentifier: source.statusWindowIdentifier)
         if current.safeFrame.contains(frame),
           let window = try? statusWindow(for: moved, requiringOnscreen: true), window.id == sourceWindow.id {
-          return moved
+          return ClassifiedSourceItem(observation: moved, identity: identity,
+            manageability: prepared.item.manageability)
         }
         try await pause(0.02, token: token)
       }
@@ -426,11 +429,12 @@ final class NativeMenuBarController: NSObject {
 
   /// Deliver one action to the prepared, visible source. Never reveal the
   /// section and never retry an AX action with uncertain delivery.
-  func activatePrepared(_ original: RawSourceItemObservation, secondary: Bool) async throws {
+  func activatePrepared(_ prepared: ClassifiedSourceItem, secondary: Bool) async throws {
     guard !isBusy else { throw MenuBarFailure(L("Another menu-bar action is in progress.")) }
+    let original = prepared.observation
     if let pendingActivation {
-      guard pendingActivation.source.processIdentifier == original.processIdentifier,
-        pendingActivation.source.bundleIdentifier == original.bundleIdentifier else {
+      guard pendingActivation.source.observation.processIdentifier == original.processIdentifier,
+        pendingActivation.source.identity.persistentKey == prepared.identity.persistentKey else {
         throw MenuBarFailure(L("Finish the current item interaction before opening another item."))
       }
     }
@@ -458,13 +462,13 @@ final class NativeMenuBarController: NSObject {
       try performAccessibilityAction(original, secondary: secondary, token: token)
       return
     }
-    let prepared = try await stableTarget(original, token: token, allowingConcealed: true)
-    guard prepared.environment.safeFrame.contains(prepared.item.observation.frame!),
-      prepared.item.observation.isOnscreen != false else {
+    let stable = try await stableTarget(prepared, token: token, allowingConcealed: true)
+    guard stable.environment.safeFrame.contains(stable.item.observation.frame!),
+      stable.item.observation.isOnscreen != false else {
       throw MenuBarFailure(L("The selected item is not safely visible. Other hidden items remain hidden."))
     }
-    try verifyHitTarget(prepared.item.observation)
-    let frame = prepared.item.observation.frame!
+    try verifyHitTarget(stable.item.observation)
+    let frame = stable.item.observation.frame!
     let point = CGPoint(x: frame.midX, y: frame.midY)
     try await post([(.mouseMoved, point, false),
       (secondary ? .rightMouseDown : .leftMouseDown, point, false),
@@ -643,22 +647,22 @@ final class NativeMenuBarController: NSObject {
     try await relay.send()
   }
 
-  func move(_ item: RawSourceItemObservation, toHidden: Bool) async throws {
+  func move(_ item: ClassifiedSourceItem, toHidden: Bool) async throws {
     try await interact(with: item, movingToHidden: toHidden, secondary: false)
   }
 
-  func activate(_ item: RawSourceItemObservation, secondary: Bool) async throws {
+  func activate(_ item: ClassifiedSourceItem, secondary: Bool) async throws {
     let prepared = try await prepareActivation(item)
     try await activatePrepared(prepared, secondary: secondary)
   }
 
   /// Readiness is checked before preparation changes the visible menu bar.
-  func waitForActivationReadiness(_ item: RawSourceItemObservation, secondary: Bool) async throws {
+  func waitForActivationReadiness(_ item: ClassifiedSourceItem, secondary: Bool) async throws {
     guard !isBusy else { throw MenuBarFailure(L("Another menu-bar action is in progress.")) }
     let token = generation
     try checkOperation(token)
     try await waitForIdleInput(token: token,
-      checkingPointer: !Self.offersAccessibilityAction(item, secondary: secondary))
+      checkingPointer: !Self.offersAccessibilityAction(item.observation, secondary: secondary))
     try checkOperation(token)
   }
 
@@ -667,13 +671,14 @@ final class NativeMenuBarController: NSObject {
   }
 
   private func interact(
-    with original: RawSourceItemObservation, movingToHidden: Bool?, secondary: Bool
+    with original: ClassifiedSourceItem, movingToHidden: Bool?, secondary: Bool
   ) async throws {
     guard !isBusy else { throw MenuBarFailure(L("Another menu-bar action is in progress.")) }
     isBusy = true
     var token = generation
     var didReveal = false
-    let accessibilityAction = movingToHidden == nil && Self.offersAccessibilityAction(original, secondary: secondary)
+    let accessibilityAction = movingToHidden == nil
+      && Self.offersAccessibilityAction(original.observation, secondary: secondary)
     defer { isBusy = false }
     do {
       try await waitForIdleInput(token: token, checkingPointer: !accessibilityAction)
@@ -743,7 +748,7 @@ final class NativeMenuBarController: NSObject {
     }
   }
 
-  private func stableTarget(_ original: RawSourceItemObservation, token: Int, allowingClipped: Bool = false,
+  private func stableTarget(_ original: ClassifiedSourceItem, token: Int, allowingClipped: Bool = false,
     allowingConcealed: Bool = false) async throws
     -> (item: ClassifiedSourceItem, environment: MenuBarEnvironment, snapshot: InventorySnapshot)
   {
@@ -752,20 +757,21 @@ final class NativeMenuBarController: NSObject {
       let beforeEnvironment = try checkedEnvironment(allowingExpanded: allowingConcealed)
       let snapshot = try await freshInventory(token: token)
       let environment = try checkedEnvironment(allowingExpanded: allowingConcealed)
-      guard let bundle = original.bundleIdentifier, !bundle.hasPrefix("com.apple."),
-        original.processIdentifier != ProcessInfo.processInfo.processIdentifier
+      guard let bundle = original.observation.bundleIdentifier, !bundle.hasPrefix("com.apple."),
+        let key = original.identity.persistentKey,
+        original.observation.processIdentifier != ProcessInfo.processInfo.processIdentifier
       else { throw MenuBarFailure(L("System items and TrayNook's own items cannot be controlled.")) }
-      let matches = snapshot.items.filter { $0.observation.bundleIdentifier == bundle }
+      let matches = snapshot.items.filter { $0.identity.persistentKey == key }
       guard matches.count == 1, let item = matches.first,
-        item.observation.processIdentifier == original.processIdentifier,
-        item.observation.metadata.identifierCandidate == original.metadata.identifierCandidate,
+        item.observation.processIdentifier == original.observation.processIdentifier,
+        item.observation.metadata.identifierCandidate == original.observation.metadata.identifierCandidate,
         item.identity.status != .ambiguous, item.identity.provisionalKey != nil,
         item.manageability.status != .protected,
         let frame = item.observation.frame, frame.isUsable,
         environment.safeFrame.contains(frame) || (allowingClipped && Self.isClipped(item.observation,
           boundary: environment.boundary, displayFrame: environment.displayFrame,
           occlusionFrame: environment.occlusionFrame))
-          || (allowingConcealed && isConcealed && concealedSourcePIDs[bundle] == item.observation.processIdentifier
+          || (allowingConcealed && isConcealed && concealedSourcePIDs[key] == item.observation.processIdentifier
             && Self.hiddenSide(frame, boundary: environment.boundary) == true),
         frame.y < environment.boundary.maxY, frame.maxY > environment.boundary.y
       else {
@@ -786,8 +792,11 @@ final class NativeMenuBarController: NSObject {
   }
 
   /// A crowded source can remain clipped even after revealing the section.
-  /// Rebind its one native AX item and use only the action it explicitly offers.
-  private func accessibilityTarget(_ item: RawSourceItemObservation, token: Int) throws
+  /// Rebind its native AX item and use only the action it explicitly offers.
+  /// When the app owns several items, the one overlapping `expectedFrame`
+  /// (the item's last known frame by default) is the target.
+  private func accessibilityTarget(_ item: RawSourceItemObservation, token: Int,
+    expectedFrame: ItemFrame? = nil) throws
     -> (element: AXUIElement, frame: ItemFrame) {
     let failure = MenuBarFailure(L("The clipped item's native Accessibility action is unavailable. Free menu-bar space and try again."))
     guard NSRunningApplication(processIdentifier: item.processIdentifier)?.bundleIdentifier == item.bundleIdentifier else {
@@ -825,25 +834,37 @@ final class NativeMenuBarController: NSObject {
         queue.append((child, depth + 1))
       }
     }
-    guard candidates.count == 1, let target = candidates.first,
-      try value(kAXIdentifierAttribute as CFString, of: target, optional: true) as? String
-        == item.metadata.identifierCandidate,
-      let positionValue = try value(kAXPositionAttribute as CFString, of: target),
-      let sizeValue = try value(kAXSizeAttribute as CFString, of: target),
-      CFGetTypeID(positionValue) == AXValueGetTypeID(), CFGetTypeID(sizeValue) == AXValueGetTypeID()
-    else { throw failure }
-    let position = unsafeDowncast(positionValue, to: AXValue.self)
-    let size = unsafeDowncast(sizeValue, to: AXValue.self)
-    var point = CGPoint.zero
-    var dimensions = CGSize.zero
-    var pid: pid_t = 0
-    guard AXValueGetType(position) == .cgPoint, AXValueGetType(size) == .cgSize,
-      AXValueGetValue(position, .cgPoint, &point), AXValueGetValue(size, .cgSize, &dimensions),
-      AXUIElementGetPid(target, &pid) == .success, pid == item.processIdentifier
-    else { throw failure }
-    let frame = ItemFrame(x: point.x, y: point.y, width: dimensions.width, height: dimensions.height)
-    guard frame.isUsable else { throw failure }
-    return (target, frame)
+    func geometry(of target: AXUIElement) throws -> ItemFrame {
+      guard let positionValue = try value(kAXPositionAttribute as CFString, of: target),
+        let sizeValue = try value(kAXSizeAttribute as CFString, of: target),
+        CFGetTypeID(positionValue) == AXValueGetTypeID(), CFGetTypeID(sizeValue) == AXValueGetTypeID()
+      else { throw failure }
+      let position = unsafeDowncast(positionValue, to: AXValue.self)
+      let size = unsafeDowncast(sizeValue, to: AXValue.self)
+      var point = CGPoint.zero
+      var dimensions = CGSize.zero
+      var pid: pid_t = 0
+      guard AXValueGetType(position) == .cgPoint, AXValueGetType(size) == .cgSize,
+        AXValueGetValue(position, .cgPoint, &point), AXValueGetValue(size, .cgSize, &dimensions),
+        AXUIElementGetPid(target, &pid) == .success, pid == item.processIdentifier
+      else { throw failure }
+      let frame = ItemFrame(x: point.x, y: point.y, width: dimensions.width, height: dimensions.height)
+      guard frame.isUsable else { throw failure }
+      return frame
+    }
+    let matching = try candidates.filter { candidate in
+      try value(kAXIdentifierAttribute as CFString, of: candidate, optional: true) as? String
+        == item.metadata.identifierCandidate
+    }
+    if matching.count == 1, let target = matching.first {
+      return (target, try geometry(of: target))
+    }
+    guard let expected = expectedFrame ?? item.frame, expected.isUsable else { throw failure }
+    let located = try matching.map { ($0, try geometry(of: $0)) }.filter { _, frame in
+      frame.x < expected.maxX && frame.maxX > expected.x && frame.y < expected.maxY && frame.maxY > expected.y
+    }
+    guard located.count == 1, let target = located.first else { throw failure }
+    return target
   }
 
   private func performAccessibilityAction(_ item: RawSourceItemObservation, secondary: Bool, token: Int) throws {
@@ -1080,10 +1101,9 @@ final class NativeMenuBarController: NSObject {
   }
 
   static func canConceal(_ items: [ClassifiedSourceItem],
-    allowedBundleIdentifiers: Set<String>, boundary: ItemFrame, safeFrame: ItemFrame,
+    allowedKeys: Set<String>, boundary: ItemFrame, safeFrame: ItemFrame,
     displayFrame: ItemFrame? = nil, occlusionFrame: ItemFrame? = nil) -> Bool {
-    let groups = Dictionary(grouping: items) { $0.observation.bundleIdentifier }
-    return items.allSatisfy { item in
+    items.allSatisfy { item in
       let clipped = displayFrame.map {
         isClipped(item.observation, boundary: boundary, displayFrame: $0, occlusionFrame: occlusionFrame)
       } ?? false
@@ -1097,10 +1117,9 @@ final class NativeMenuBarController: NSObject {
         let behind = hiddenSide(frame, boundary: boundary),
         safeFrame.contains(frame) || (clipped && behind) else { return false }
       guard behind else { return true }
-      guard let bundle = item.observation.bundleIdentifier,
-        !bundle.hasPrefix("com.apple."), allowedBundleIdentifiers.contains(bundle),
-        groups[bundle]?.count == 1,
-        item.identity.status != .ambiguous, item.manageability.status != .protected
+      guard let bundle = item.observation.bundleIdentifier, let key = item.identity.persistentKey,
+        !bundle.hasPrefix("com.apple."), allowedKeys.contains(key),
+        item.manageability.status != .protected
       else { return false }
       return true
     }

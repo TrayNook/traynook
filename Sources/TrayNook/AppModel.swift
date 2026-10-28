@@ -53,27 +53,39 @@ final class AppModel: ObservableObject {
     layout.items.filter { $0.placement == .dropdown }.compactMap { liveItem($0.id) }
   }
 
-  func liveItem(_ bundle: String) -> ClassifiedSourceItem? {
-    let matches = items.filter { $0.observation.bundleIdentifier == bundle }
+  /// Saved identities are `bundle` or `bundle#discriminator`; see IdentityAssessor.
+  static func bundle(ofKey key: String) -> String {
+    String(key.prefix { $0 != "#" })
+  }
+
+  func liveItem(_ key: String) -> ClassifiedSourceItem? {
+    let matches = items.filter { $0.identity.persistentKey == key }
     return matches.count == 1 ? matches.first : nil
   }
 
   func isManageable(_ item: ClassifiedSourceItem) -> Bool {
-    guard let bundle = item.observation.bundleIdentifier,
+    guard let bundle = item.observation.bundleIdentifier, let key = item.identity.persistentKey,
       bundle != ownBundle, !bundle.hasPrefix("com.apple."),
-      liveItem(bundle) != nil else { return false }
-    return item.identity.status != .ambiguous && item.manageability.status != .protected
+      liveItem(key) != nil else { return false }
+    return item.manageability.status != .protected
   }
 
-  func name(for bundle: String) -> String {
-    if let name = liveItem(bundle)?.observation.applicationName { return name }
-    if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundle) {
-      return url.deletingPathExtension().lastPathComponent
-    }
-    return bundle
+  /// Siblings of one app are named by their runtime AX text for display only.
+  func name(for key: String) -> String {
+    let bundle = Self.bundle(ofKey: key)
+    let appName = liveItem(key)?.observation.applicationName
+      ?? NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundle)?
+        .deletingPathExtension().lastPathComponent ?? bundle
+    guard key != bundle else { return appName }
+    let metadata = liveItem(key)?.observation.metadata
+    let detail = [metadata?.label, metadata?.title, metadata?.help]
+      .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+      .first { !$0.isEmpty && $0.count <= 40 }
+    return "\(appName) · \(detail ?? String(key.dropFirst(bundle.count + 1)))"
   }
 
-  func icon(for bundle: String) -> NSImage {
+  func icon(for key: String) -> NSImage {
+    let bundle = Self.bundle(ofKey: key)
     if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundle) {
       return NSWorkspace.shared.icon(forFile: url.path)
     }
@@ -109,17 +121,19 @@ final class AppModel: ObservableObject {
   }
 
   func status(for saved: SavedItem) -> String {
-    let matches = items.filter { $0.observation.bundleIdentifier == saved.id }
-    if matches.count > 1 { return L("Multiple items — kept visible") }
-    guard let item = matches.first else {
-      return NSWorkspace.shared.urlForApplication(withBundleIdentifier: saved.id) == nil
+    guard let item = liveItem(saved.id) else {
+      let bundle = Self.bundle(ofKey: saved.id)
+      if items.contains(where: { $0.observation.bundleIdentifier == bundle && $0.identity.persistentKey == nil }) {
+        return L("Multiple items — kept visible")
+      }
+      return NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundle) == nil
         ? L("App not found") : L("Not running")
     }
     if !isManageable(item) { return L("Protected — kept visible") }
     if saved.placement == .menuBar && native.isClipped(item.observation) {
       return L("Offscreen — menu bar is full")
     }
-    if saved.placement != .menuBar && native.isBehindBoundary(item.observation) != true {
+    if saved.placement != .menuBar && native.isBehindBoundary(item) != true {
       return L("Currently in Menu Bar — retry placement")
     }
     if saved.placement != .menuBar && concealed {
@@ -202,13 +216,13 @@ final class AppModel: ObservableObject {
     // section hidden and just rebinds its process; only an unknown bundle or an
     // ambiguous group change reveals. Add AX observers only if idle cost demands.
     if concealed {
-      let changes = SnapshotDiffer().changes(from: previousItems, to: observed)
+      let changes = Self.keyedChanges(from: previousItems, to: observed)
       let known = Set(layout.items.map(\.id))
       let hidden = Set(layout.items.filter { $0.placement != .menuBar }.map(\.id))
       for change in changes where Self.rebindsProcess(change, known: hidden) {
-        if let bundle = change.identity?.bundleIdentifier,
-          let item = observed.first(where: { $0.observation.runtimeID == change.currentRuntimeID }) {
-          native.adoptProcess(bundle: bundle, pid: item.observation.processIdentifier)
+        if let key = change.key,
+          let item = observed.first(where: { $0.observation.runtimeID == change.change.currentRuntimeID }) {
+          native.adoptProcess(key: key, pid: item.observation.processIdentifier)
         }
       }
       if Self.inventoryRequiresReveal(changes, known: known) {
@@ -220,11 +234,11 @@ final class AppModel: ObservableObject {
     items = observed
     if !recoveryRequired {
       let known = Set(layout.items.map(\.id))
-      let additions = observed.compactMap { $0.observation.bundleIdentifier }
+      let additions = observed.compactMap { $0.identity.persistentKey }
         .filter { !known.contains($0) }
       var added = Set<String>()
-      for bundle in additions where added.insert(bundle).inserted {
-        layout.items.append(SavedItem(id: bundle))
+      for key in additions where added.insert(key).inserted {
+        layout.items.append(SavedItem(id: key))
       }
       if !added.isEmpty { persist() }
     }
@@ -234,22 +248,36 @@ final class AppModel: ObservableObject {
     }
   }
 
+  /// An inventory change together with the persistent key it concerns.
+  struct KeyedChange {
+    let change: SnapshotChange
+    let key: String?
+  }
+
+  static func keyedChanges(from previous: [ClassifiedSourceItem], to current: [ClassifiedSourceItem]) -> [KeyedChange] {
+    SnapshotDiffer().changes(from: previous, to: current).map { change in
+      KeyedChange(change: change, key: (current + previous)
+        .first { $0.identity.provisionalKey != nil && $0.identity.provisionalKey == change.identity }?
+        .identity.persistentKey)
+    }
+  }
+
   /// A source the user already placed may restart or relaunch without
   /// reopening the hidden section; the controller just adopts its new process.
-  static func rebindsProcess(_ change: SnapshotChange, known: Set<String>) -> Bool {
-    guard let bundle = change.identity?.bundleIdentifier else { return false }
-    switch change.kind {
+  static func rebindsProcess(_ change: KeyedChange, known: Set<String>) -> Bool {
+    guard let key = change.key else { return false }
+    switch change.change.kind {
     case .processReplaced: return true
-    case .created: return known.contains(bundle)
+    case .created: return known.contains(key)
     default: return false
     }
   }
 
-  static func inventoryRequiresReveal(_ changes: [SnapshotChange], known: Set<String>) -> Bool {
+  static func inventoryRequiresReveal(_ changes: [KeyedChange], known: Set<String>) -> Bool {
     changes.contains { change in
-      switch change.kind {
+      switch change.change.kind {
       case .ambiguousInventoryChanged: true
-      case .created: !known.contains(change.identity?.bundleIdentifier ?? "")
+      case .created: !known.contains(change.key ?? "")
       case .removed, .processReplaced, .orderChanged, .runtimeMetadataChanged: false
       }
     }
@@ -257,7 +285,7 @@ final class AppModel: ObservableObject {
 
   static func inventoryRequiresReveal(previous: [ClassifiedSourceItem], current: [ClassifiedSourceItem],
     known: Set<String>) -> Bool {
-    inventoryRequiresReveal(SnapshotDiffer().changes(from: previous, to: current), known: known)
+    inventoryRequiresReveal(keyedChanges(from: previous, to: current), known: known)
   }
 
   func reveal(cancelLaunchRestore: Bool = true) {
@@ -267,10 +295,10 @@ final class AppModel: ObservableObject {
 
   private func canSafelyConceal() -> Bool {
     items.allSatisfy { item in
-      guard let behind = native.isBehindBoundary(item.observation) else { return false }
+      guard let behind = native.isBehindBoundary(item) else { return false }
       guard behind else { return true }
       return isManageable(item) && layout.items.contains {
-        $0.id == item.observation.bundleIdentifier && $0.placement != .menuBar
+        $0.id == item.identity.persistentKey && $0.placement != .menuBar
       }
     }
   }
@@ -295,19 +323,19 @@ final class AppModel: ObservableObject {
     }
   }
 
-  func setPlacement(_ bundle: String, _ placement: Placement) {
-    guard canEdit, let item = liveItem(bundle), isManageable(item) else { return }
+  func setPlacement(_ key: String, _ placement: Placement) {
+    guard canEdit, let item = liveItem(key), isManageable(item) else { return }
     var next = layout
-    next.place(bundle, in: placement)
+    next.place(key, in: placement)
     guard replaceLayout(next, undoable: true) else { return }
-    applySavedLayout(restoringToMenuBar: placement == .menuBar ? bundle : nil)
+    applySavedLayout(restoringToMenuBar: placement == .menuBar ? key : nil)
   }
 
-  func applySavedLayout(restoringToMenuBar bundle: String? = nil) {
+  func applySavedLayout(restoringToMenuBar key: String? = nil) {
     guard canEdit else { return }
     attemptedLaunchRestore = true
     message = L("Applying placements…")
-    runOperation { try await self.applyAndConceal(restoringToMenuBar: bundle) }
+    runOperation { try await self.applyAndConceal(restoringToMenuBar: key) }
   }
 
   private func freshOperationInventory() async throws {
@@ -321,11 +349,11 @@ final class AppModel: ObservableObject {
     }
   }
 
-  private func applyAndConceal(restoringToMenuBar bundle: String?) async throws {
+  private func applyAndConceal(restoringToMenuBar key: String?) async throws {
     try await native.prepareLayout(keepingVisible: Set(layout.items.filter { $0.placement == .menuBar }.map(\.id)))
     try await freshOperationInventory()
-    if let bundle, let item = liveItem(bundle), native.isClipped(item.observation) {
-      throw AppError.message("\(name(for: bundle)): \(L("macOS has clipped this item. Free some menu-bar space, then retry moving it to Menu Bar."))")
+    if let key, let item = liveItem(key), native.isClipped(item.observation) {
+      throw AppError.message("\(name(for: key)): \(L("macOS has clipped this item. Free some menu-bar space, then retry moving it to Menu Bar."))")
     }
     let placements = layout.items.filter { $0.placement != .menuBar }
       + layout.items.filter { $0.placement == .menuBar }
@@ -333,12 +361,12 @@ final class AppModel: ObservableObject {
       try Task.checkCancellation()
       guard let item = liveItem(saved.id), isManageable(item) else { continue }
       let hidden = saved.placement != .menuBar
-      let behind = native.isBehindBoundary(item.observation)
+      let behind = native.isBehindBoundary(item)
       if hidden && native.isClipped(item.observation) { continue }
       // Already-clipped, unassigned items cannot be dragged. The native guard
       // still rejects any visible protected/unassigned item in the hidden section.
       if hidden ? behind == true : behind != true { continue }
-      do { try await native.move(item.observation, toHidden: hidden) }
+      do { try await native.move(item, toHidden: hidden) }
       catch is CancellationError { throw CancellationError() }
       catch { throw AppError.message("\(name(for: saved.id)): \(error.localizedDescription)") }
       try await freshOperationInventory()
@@ -346,7 +374,7 @@ final class AppModel: ObservableObject {
     try Task.checkCancellation()
     let hidden = Set(layout.items.filter { $0.placement != .menuBar }.map(\.id))
     if !hidden.isEmpty {
-      try await native.conceal(allowedBundleIdentifiers: hidden)
+      try await native.conceal(allowedKeys: hidden)
     }
     concealed = native.isConcealed
     message = nil
@@ -356,8 +384,8 @@ final class AppModel: ObservableObject {
     guard canEdit, isManageable(item), !native.hasPendingActivation else { return }
     runOperation(restoreSettingsFocus: false, revealOnFailure: false) {
       self.message = nil
-      try await self.native.waitForActivationReadiness(item.observation, secondary: secondary)
-      let prepared = try await self.native.prepareActivation(item.observation)
+      try await self.native.waitForActivationReadiness(item, secondary: secondary)
+      let prepared = try await self.native.prepareActivation(item)
       let interaction = NativeMenuInteraction(processIdentifier: item.observation.processIdentifier)
       defer { interaction?.cancel() }
       var responseTimedOut = false
@@ -409,18 +437,17 @@ final class AppModel: ObservableObject {
     }
   }
 
-  func reorder(_ bundle: String, delta: Int) {
-    guard canEdit, let index = layout.items.firstIndex(where: { $0.id == bundle }) else { return }
+  func reorder(_ key: String, delta: Int) {
+    guard canEdit, let index = layout.items.firstIndex(where: { $0.id == key }) else { return }
     let lane = layout.items.indices.filter { layout.items[$0].placement == layout.items[index].placement }
     guard let position = lane.firstIndex(of: index), lane.indices.contains(position + delta) else { return }
     var next = layout; next.items.swapAt(index, lane[position + delta])
     replaceLayout(next, undoable: true)
   }
 
-  func forget(_ bundle: String) {
-    guard !busy, !recoveryRequired,
-      !items.contains(where: { $0.observation.bundleIdentifier == bundle }) else { return }
-    var next = layout; next.items.removeAll { $0.id == bundle }
+  func forget(_ key: String) {
+    guard !busy, !recoveryRequired, liveItem(key) == nil else { return }
+    var next = layout; next.items.removeAll { $0.id == key }
     replaceLayout(next, undoable: true)
   }
 

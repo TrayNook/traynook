@@ -56,7 +56,8 @@ public struct IdentityAssessor: Sendable {
             ),
             reason: identifier == nil
               ? "Only one Source Item from this bundle is currently observed."
-              : "The AXIdentifier is provisionally useful, but must be verified as stable and non-content before persistence."
+              : "The AXIdentifier is provisionally useful, but must be verified as stable and non-content before persistence.",
+            persistentKey: bundleIdentifier
           ),
           manageability: manageability(for: observation)
         )
@@ -66,6 +67,12 @@ public struct IdentityAssessor: Sendable {
     let identifiers = Dictionary(grouping: observations) {
       normalized($0.metadata.identifierCandidate)
     }
+    // ponytail: siblings without AXIdentifiers are told apart by the creation
+    // order of their status windows, which follows the app's code order. An
+    // app that creates items dynamically can shift ranks; revisit if seen.
+    let windows = observations.compactMap(\.statusWindowIdentifier)
+    let rankedWindows = windows.count == observations.count && Set(windows).count == windows.count
+      ? windows.sorted() : []
 
     return observations.map { observation in
       let identifier = normalized(observation.metadata.identifierCandidate)
@@ -81,7 +88,26 @@ public struct IdentityAssessor: Sendable {
               discriminatorCandidate: identifier
             ),
             reason:
-              "The AXIdentifier is unique in this bundle, but must be verified as stable and non-content before persistence."
+              "The AXIdentifier is unique in this bundle, but must be verified as stable and non-content before persistence.",
+            persistentKey: "\(bundleIdentifier)#\(identifier)"
+          ),
+          manageability: manageability(for: observation)
+        )
+      }
+
+      if let window = observation.statusWindowIdentifier,
+        let rank = rankedWindows.firstIndex(of: window) {
+        let discriminator = "w\(rank)"
+        return ClassifiedSourceItem(
+          observation: observation,
+          identity: IdentityAssessment(
+            status: .provisionalDiscriminator,
+            provisionalKey: ProvisionalIdentityKey(
+              bundleIdentifier: bundleIdentifier,
+              discriminatorCandidate: discriminator
+            ),
+            reason: "Sibling items are told apart by status-window creation order.",
+            persistentKey: rank == 0 ? bundleIdentifier : "\(bundleIdentifier)#\(discriminator)"
           ),
           manageability: manageability(for: observation)
         )

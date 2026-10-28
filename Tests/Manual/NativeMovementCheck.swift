@@ -112,7 +112,7 @@ private final class MovementCheck: NSObject, NSApplicationDelegate, NSMenuDelega
       try fixture.run()
       try await Task.sleep(for: .seconds(1))
       let source = try await readFixture(processIdentifier: fixture.processIdentifier)
-      guard source.isOnscreen == true, native.isBehindBoundary(source) == false else {
+      guard source.observation.isOnscreen == true, native.isBehindBoundary(source) == false else {
         throw CheckFailure("Disposable fixture is not visible beside the launcher; no item was moved.")
       }
       if CommandLine.arguments.contains("--pointer-motion") {
@@ -132,8 +132,8 @@ private final class MovementCheck: NSObject, NSApplicationDelegate, NSMenuDelega
         try "clip".write(to: controlURL, atomically: true, encoding: .utf8)
         try await Task.sleep(for: .seconds(0.5))
         let clipped = try await readFixture(processIdentifier: fixture.processIdentifier)
-        guard native.isClipped(clipped) else {
-          print("Fixture visibility=\(String(describing: clipped.isOnscreen)), frame=\(String(describing: clipped.frame))")
+        guard native.isClipped(clipped.observation) else {
+          print("Fixture visibility=\(String(describing: clipped.observation.isOnscreen)), frame=\(String(describing: clipped.observation.frame))")
           throw CheckFailure("This display did not clip the fixture; the optional AX fallback check cannot run.")
         }
         try await checkActivation(clipped, native: native, secondary: false)
@@ -147,20 +147,20 @@ private final class MovementCheck: NSObject, NSApplicationDelegate, NSMenuDelega
     }
   }
 
-  private func readFixture(processIdentifier: Int32) async throws -> RawSourceItemObservation {
+  private func readFixture(processIdentifier: Int32) async throws -> ClassifiedSourceItem {
     let snapshot = await Task.detached { AccessibilityInventoryScanner().scan() }.value
     let matches = snapshot.items.filter { $0.observation.bundleIdentifier == fixtureBundle }
     guard snapshot.completeness == .complete, matches.count == 1,
-      let source = matches.first?.observation, source.processIdentifier == processIdentifier else {
+      let source = matches.first, source.observation.processIdentifier == processIdentifier else {
       throw CheckFailure("A complete inventory with our exact fixture process is unavailable.")
     }
     return source
   }
 
-  private func checkActivation(_ source: RawSourceItemObservation,
+  private func checkActivation(_ source: ClassifiedSourceItem,
     native: NativeMenuBarController, secondary: Bool) async throws {
     try "".write(to: eventsURL, atomically: true, encoding: .utf8)
-    let observer = NativeMenuInteraction(processIdentifier: source.processIdentifier)
+    let observer = NativeMenuInteraction(processIdentifier: source.observation.processIdentifier)
     defer { observer?.cancel() }
     do { try await native.activate(source, secondary: secondary) }
     catch NativeMenuActionError.responseTimedOut {
@@ -182,9 +182,9 @@ private final class MovementCheck: NSObject, NSApplicationDelegate, NSMenuDelega
   /// Keep the recent HID movement signal active without displacing the pointer
   /// or clicking any application. The old physical-click path waits for this
   /// signal to stop; an explicitly advertised AXPress must not need that wait.
-  private func checkActivationDuringPointerMotion(_ source: RawSourceItemObservation,
+  private func checkActivationDuringPointerMotion(_ source: ClassifiedSourceItem,
     native: NativeMenuBarController) async throws {
-    guard source.actions.contains(kAXPressAction as String) else {
+    guard source.observation.actions.contains(kAXPressAction as String) else {
       throw CheckFailure("The fixture does not advertise AXPress.")
     }
     let timer = Timer(timeInterval: 0.04, repeats: true) { _ in

@@ -14,12 +14,11 @@ struct LayoutPreviewView: View {
 
   func items(in placement: Placement) -> [SavedItem] {
     model.layout.items.filter { saved in
-      let observed = model.items.filter { $0.observation.bundleIdentifier == saved.id }
-      guard !observed.isEmpty else { return false }
-      let protected = observed.count > 1 || observed.contains { !model.isManageable($0) }
+      guard let live = model.liveItem(saved.id) else { return false }
+      let protected = !model.isManageable(live)
       switch placement {
       case .menuBar: return saved.placement == .menuBar || protected
-      case .dropdown: return saved.placement == .dropdown && observed.count == 1
+      case .dropdown: return saved.placement == .dropdown && !protected
       case .alwaysHidden: return saved.placement == .alwaysHidden && !protected
       }
     }
@@ -110,7 +109,6 @@ struct LayoutPreviewView: View {
   }
 
   private func previewIcon(_ item: SavedItem, size: CGFloat) -> some View {
-    let count = model.items.filter { $0.observation.bundleIdentifier == item.id }.count
     let protected = model.liveItem(item.id).map { !model.isManageable($0) } ?? true
     return Image(nsImage: model.icon(for: item.id)).resizable().frame(width: size, height: size)
       .overlay(alignment: .bottomTrailing) {
@@ -119,8 +117,7 @@ struct LayoutPreviewView: View {
             .padding(2).background(.background, in: Circle()).offset(x: 5, y: 3)
         }
       }
-      .help(model.name(for: item.id) + " — " + model.status(for: item)
-        + (count > 1 ? " (\(count))" : ""))
+      .help(model.name(for: item.id) + " — " + model.status(for: item))
       .accessibilityLabel(model.name(for: item.id) + " — "
         + (protected ? Placement.menuBar.title : item.placement.title) + " — " + L("Preview"))
   }

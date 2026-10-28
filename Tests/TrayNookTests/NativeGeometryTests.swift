@@ -68,12 +68,12 @@ struct NativeGeometryTests {
     let allowed: Set<String> = ["example.hidden", "com.apple.controlcenter"]
     let assessor = IdentityAssessor()
     #expect(NativeMenuBarController.canConceal(
-      assessor.classify([hidden, system]), allowedBundleIdentifiers: allowed,
+      assessor.classify([hidden, system]), allowedKeys: allowed,
       boundary: boundary, safeFrame: safeFrame))
     #expect(NativeMenuBarController.canConceal(
       assessor.classify([hidden, system,
         observation(bundle: "com.apple.controlcenter", x: 1304)]),
-      allowedBundleIdentifiers: allowed, boundary: boundary, safeFrame: safeFrame))
+      allowedKeys: allowed, boundary: boundary, safeFrame: safeFrame))
 
     for unsafeInventory in [
       [hidden, observation(bundle: "example.new", x: 1170)],
@@ -82,7 +82,7 @@ struct NativeGeometryTests {
       [observation(bundle: "example.hidden", x: 880)],
     ] {
       #expect(!NativeMenuBarController.canConceal(
-        assessor.classify(unsafeInventory), allowedBundleIdentifiers: allowed,
+        assessor.classify(unsafeInventory), allowedKeys: allowed,
         boundary: boundary, safeFrame: safeFrame))
     }
   }
@@ -94,13 +94,13 @@ struct NativeGeometryTests {
     let assessor = IdentityAssessor()
     #expect(NativeMenuBarController.canConceal(
       assessor.classify([hidden, observation(bundle: "example.unassigned", x: -4096)]),
-      allowedBundleIdentifiers: ["example.hidden"], boundary: boundary,
+      allowedKeys: ["example.hidden"], boundary: boundary,
       safeFrame: safeFrame, displayFrame: display))
 
     for unsafeX in [-12.0, 880, Double.nan] {
       #expect(!NativeMenuBarController.canConceal(
         assessor.classify([hidden, observation(bundle: "example.unassigned", x: unsafeX)]),
-        allowedBundleIdentifiers: ["example.hidden"], boundary: boundary,
+        allowedKeys: ["example.hidden"], boundary: boundary,
         safeFrame: safeFrame, displayFrame: display))
     }
     #expect(NativeMenuBarController.outsideDisplay(
@@ -119,13 +119,13 @@ struct NativeGeometryTests {
       #expect(NativeMenuBarController.isClipped(
         clipped, boundary: boundary, displayFrame: display) == (visibility == false))
       #expect(NativeMenuBarController.canConceal(
-        assessor.classify([hidden, clipped]), allowedBundleIdentifiers: ["example.hidden"],
+        assessor.classify([hidden, clipped]), allowedKeys: ["example.hidden"],
         boundary: boundary, safeFrame: safeFrame, displayFrame: display) == (visibility == false))
     }
     let wrongRow = observation(bundle: "example.clipped", x: 880, y: 24, isOnscreen: false)
     #expect(!NativeMenuBarController.isClipped(wrongRow, boundary: boundary, displayFrame: display))
     #expect(!NativeMenuBarController.canConceal(
-      assessor.classify([hidden, wrongRow]), allowedBundleIdentifiers: ["example.hidden"],
+      assessor.classify([hidden, wrongRow]), allowedKeys: ["example.hidden"],
       boundary: boundary, safeFrame: safeFrame, displayFrame: display))
     #expect(!NativeMenuBarController.isClipped(
       observation(bundle: "example.clipped", x: 3000, isOnscreen: false),
@@ -141,7 +141,7 @@ struct NativeGeometryTests {
       #expect(NativeMenuBarController.isClipped(covered, boundary: boundary,
         displayFrame: display, occlusionFrame: cutout))
       #expect(NativeMenuBarController.canConceal(
-        IdentityAssessor().classify([covered]), allowedBundleIdentifiers: ["example.covered"],
+        IdentityAssessor().classify([covered]), allowedKeys: ["example.covered"],
         boundary: boundary, safeFrame: safeFrame, displayFrame: display, occlusionFrame: cutout))
       #expect(!NativeMenuBarController.isClipped(covered, boundary: boundary, displayFrame: display))
     }
@@ -175,17 +175,17 @@ struct NativeGeometryTests {
       #expect(NativeMenuBarController.isClipped(partial, boundary: divider,
         displayFrame: display, occlusionFrame: cutout))
       #expect(NativeMenuBarController.canConceal(assessor.classify([partial]),
-        allowedBundleIdentifiers: [bundle], boundary: divider, safeFrame: safe,
+        allowedKeys: [bundle], boundary: divider, safeFrame: safe,
         displayFrame: display, occlusionFrame: cutout))
       #expect(!NativeMenuBarController.canConceal(assessor.classify([partial]),
-        allowedBundleIdentifiers: [], boundary: divider, safeFrame: safe,
+        allowedKeys: [], boundary: divider, safeFrame: safe,
         displayFrame: display, occlusionFrame: cutout))
       #expect(!NativeMenuBarController.canConceal(
         assessor.classify([partial, observation(bundle: bundle, x: 1050)]),
-        allowedBundleIdentifiers: [bundle], boundary: divider, safeFrame: safe,
+        allowedKeys: [bundle], boundary: divider, safeFrame: safe,
         displayFrame: display, occlusionFrame: cutout))
       #expect(!NativeMenuBarController.canConceal(assessor.classify([partial]),
-        allowedBundleIdentifiers: [bundle],
+        allowedKeys: [bundle],
         boundary: ItemFrame(x: 960, y: 6.5, width: 20, height: 24), safeFrame: safe,
         displayFrame: display, occlusionFrame: cutout))
     }
@@ -195,7 +195,7 @@ struct NativeGeometryTests {
         role: "UnverifiedStatusWindow", isOnscreen: true),
     ] {
       #expect(!NativeMenuBarController.canConceal(assessor.classify([protected]),
-        allowedBundleIdentifiers: [bundle, "com.apple.protected"], boundary: divider,
+        allowedKeys: [bundle, "com.apple.protected"], boundary: divider,
         safeFrame: safe, displayFrame: display, occlusionFrame: cutout))
     }
   }

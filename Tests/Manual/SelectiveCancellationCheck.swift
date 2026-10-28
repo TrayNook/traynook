@@ -58,14 +58,14 @@ private final class CancellationCheck: NSObject, NSApplicationDelegate {
     if let bundle = Bundle.main.bundleIdentifier { UserDefaults.standard.removePersistentDomain(forName: bundle) }
   }
 
-  private func read(_ pid: Int32, expectedBundle: String? = nil) async throws -> RawSourceItemObservation {
+  private func read(_ pid: Int32, expectedBundle: String? = nil) async throws -> ClassifiedSourceItem {
     let snapshot = await Task.detached { AccessibilityInventoryScanner().scan() }.value
     let matches = snapshot.items.filter { $0.observation.processIdentifier == pid }
     guard snapshot.completeness == .complete, matches.count == 1,
       let item = matches.first, item.observation.bundleIdentifier == (expectedBundle ?? fixtureBundle) else {
       throw Failure("The exact owned fixture could not be bound in a complete inventory.")
     }
-    return item.observation
+    return item
   }
 
   private func run() async -> Int32 {
@@ -109,19 +109,19 @@ private final class CancellationCheck: NSObject, NSApplicationDelegate {
       // Its temporary separator may conceal the third-party sources already to
       // its left; native guards still protect every visible system/unknown item.
       let allowed = Set(snapshot.items.compactMap { item -> String? in
-        guard item.identity.status != .ambiguous, item.manageability.status != .protected,
+        guard let key = item.identity.persistentKey, item.manageability.status != .protected,
           let bundle = item.observation.bundleIdentifier, !bundle.hasPrefix("com.apple.") else { return nil }
-        return bundle
+        return key
       })
       for phase in ["queued-down", "delivered-down", "delivered-up", "queued-motion", "queued-up-motion", "motion-down", "motion-up",
         "return-motion-down", "return-motion-up"] {
         stage = "\(phase): conceal"
-        try await native.conceal(allowedBundleIdentifiers: allowed)
+        try await native.conceal(allowedKeys: allowed)
         stage = "\(phase): bind"
         let source = try await read(fixture.processIdentifier)
         let initialSentinel = try await read(sentinel.processIdentifier, expectedBundle: sentinelBundle)
-        guard native.isConcealed, let sourceFrame = source.frame,
-          let sentinelFrame = initialSentinel.frame,
+        guard native.isConcealed, let sourceFrame = source.observation.frame,
+          let sentinelFrame = initialSentinel.observation.frame,
           sourceFrame.maxX < 0, sentinelFrame.maxX < 0,
           sourceFrame.minX < sentinelFrame.minX else {
           throw Failure("The owned source must begin fully offscreen behind the expanded separator.")
@@ -205,7 +205,7 @@ private final class CancellationCheck: NSObject, NSApplicationDelegate {
           let restored = try await read(fixture.processIdentifier)
           let restoredSentinel = try await read(sentinel.processIdentifier, expectedBundle: sentinelBundle)
           guard native.isConcealed, native.isBehindBoundary(restored) == true,
-            let restoredFrame = restored.frame, let restoredSentinelFrame = restoredSentinel.frame,
+            let restoredFrame = restored.observation.frame, let restoredSentinelFrame = restoredSentinel.observation.frame,
             restoredFrame.maxX < 0, restoredSentinelFrame.maxX < 0,
             restoredFrame.minX < restoredSentinelFrame.minX,
             abs(restoredSentinelFrame.minX - restoredFrame.maxX - originalGap) <= 2 else {
@@ -223,7 +223,7 @@ private final class CancellationCheck: NSObject, NSApplicationDelegate {
         try await Task.sleep(for: .milliseconds(20))
       }
       let wide = try await read(fixture.processIdentifier)
-      guard (wide.frame?.width ?? 0) > 1000 else { throw Failure("Wide fixture was not established.") }
+      guard (wide.observation.frame?.width ?? 0) > 1000 else { throw Failure("Wide fixture was not established.") }
       do {
         _ = try await native.prepareActivation(wide)
         throw Failure("A source wider than the safe status area was promoted.")
@@ -232,7 +232,7 @@ private final class CancellationCheck: NSObject, NSApplicationDelegate {
       }
       guard SelectiveCancellationHooks.downPosts == 0, SelectiveCancellationHooks.upPosts == 0,
         !native.hasPendingActivation, native.isConcealed,
-        try await read(sentinel.processIdentifier, expectedBundle: sentinelBundle).isOnscreen == false else {
+        try await read(sentinel.processIdentifier, expectedBundle: sentinelBundle).observation.isOnscreen == false else {
         throw Failure("No-space rejection posted input or lost concealment.")
       }
       print("PASS: no safe slot rejected before input, no pending return, peers remain concealed")

@@ -62,6 +62,10 @@ public struct RawSourceItemObservation: Codable, Equatable, Sendable {
   public let observedOrder: Int
   /// Runtime window visibility. AX geometry alone can describe an offscreen item.
   public let isOnscreen: Bool?
+  /// Runtime window-server identity of the item's status window, when exactly
+  /// one window matches. Never persisted; its creation order discriminates
+  /// sibling items of one application.
+  public let statusWindowIdentifier: UInt32?
 
   public init(
     runtimeID: String,
@@ -74,7 +78,8 @@ public struct RawSourceItemObservation: Codable, Equatable, Sendable {
     actions: [String],
     metadata: LiveAccessibilityMetadata,
     observedOrder: Int,
-    isOnscreen: Bool? = nil
+    isOnscreen: Bool? = nil,
+    statusWindowIdentifier: UInt32? = nil
   ) {
     self.runtimeID = runtimeID
     self.processIdentifier = processIdentifier
@@ -87,6 +92,7 @@ public struct RawSourceItemObservation: Codable, Equatable, Sendable {
     self.metadata = metadata
     self.observedOrder = observedOrder
     self.isOnscreen = isOnscreen
+    self.statusWindowIdentifier = statusWindowIdentifier
   }
 }
 
@@ -117,15 +123,21 @@ public struct IdentityAssessment: Codable, Equatable, Sendable {
   public let status: IdentityStatus
   public let provisionalKey: ProvisionalIdentityKey?
   public let reason: String
+  /// The string a layout may persist for this item: the bundle identifier for
+  /// an application's only (or first) item, `bundle#discriminator` for later
+  /// siblings, nil while the item is Ambiguous. Never content-bearing.
+  public let persistentKey: String?
 
   public init(
     status: IdentityStatus,
     provisionalKey: ProvisionalIdentityKey?,
-    reason: String
+    reason: String,
+    persistentKey: String? = nil
   ) {
     self.status = status
     self.provisionalKey = provisionalKey
     self.reason = reason
+    self.persistentKey = persistentKey
   }
 }
 

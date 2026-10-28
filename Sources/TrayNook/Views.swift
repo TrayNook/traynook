@@ -127,10 +127,10 @@ struct SettingsView: View {
         Picker(L("Placement"), selection: Binding(get: { saved.placement }, set: { model.setPlacement(saved.id, $0) })) {
           ForEach(Placement.allCases) { Text($0.title).tag($0) }
         }.labelsHidden().frame(width: 145).accessibilityLabel(L("Placement") + ": " + model.name(for: saved.id))
-        if model.native.isBehindBoundary(live.observation) != (saved.placement != .menuBar) {
+        if model.native.isBehindBoundary(live) != (saved.placement != .menuBar) {
           Button(L("Retry")) { model.setPlacement(saved.id, saved.placement) }
         }
-      } else if !model.items.contains(where: { $0.observation.bundleIdentifier == saved.id }) {
+      } else if model.liveItem(saved.id) == nil {
         Button(L("Forget")) { model.forget(saved.id) }
       } else {
         Image(systemName: "lock").accessibilityLabel(L("Protected — kept visible"))
@@ -242,7 +242,7 @@ struct DropdownIcons: View {
           .accessibilityLabel(L("Settings preview"))
       }
       ForEach(model.dropdownItems, id: \.observation.runtimeID) { item in
-        let bundle = item.observation.bundleIdentifier ?? ""
+        let bundle = item.identity.persistentKey ?? ""
         if interactive {
           Button { model.activate(item) } label: {
             proxy(item, bundle: bundle)

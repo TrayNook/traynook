@@ -13,7 +13,9 @@ enum Placement: String, Codable, CaseIterable, Identifiable {
 }
 
 struct SavedItem: Codable, Equatable, Identifiable {
-  var id: String // Bundle identity only; never persist AX titles or identifiers.
+  // `bundle` or `bundle#discriminator` from IdentityAssessment.persistentKey.
+  // Never AX titles, labels, geometry, or process/window IDs.
+  var id: String
   var placement: Placement = .menuBar
 }
 

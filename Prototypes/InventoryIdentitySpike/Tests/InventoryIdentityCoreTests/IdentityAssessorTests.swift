@@ -103,6 +103,42 @@ struct IdentityAssessorTests {
     #expect(inventoryChange.currentCount == 2)
   }
 
+  @Test("Siblings without identifiers are ranked by status-window creation order")
+  func siblingsRankedByWindowOrder() throws {
+    let duplicates = try loadFixture().ambiguousDuplicates
+    let withWindows = duplicates.enumerated().map { index, raw in
+      // Observed right-to-left on purpose: physical order must not matter.
+      sibling(raw, window: UInt32(200 - index), x: Double(100 * index))
+    }
+    let items = assessor.classify(withWindows)
+
+    #expect(items.allSatisfy { $0.identity.status == .provisionalDiscriminator })
+    #expect(Set(items.compactMap(\.identity.persistentKey)).count == 2)
+    let keys = items.sorted { $0.observation.statusWindowIdentifier! < $1.observation.statusWindowIdentifier! }
+      .map(\.identity.persistentKey)
+    #expect(keys == ["example.indistinguishable", "example.indistinguishable#w1"])
+
+    let relaunched = duplicates.enumerated().map { index, raw in
+      sibling(raw, window: UInt32(900 - index), x: Double(100 * index), pid: 77)
+    }
+    let changes = differ.changes(from: items, to: assessor.classify(relaunched))
+    #expect(changes.filter { $0.kind == .created || $0.kind == .removed }.isEmpty)
+    #expect(changes.filter { $0.kind == .processReplaced }.count == 2)
+
+    let partial = [withWindows[0], sibling(duplicates[1], window: nil, x: 100)]
+    #expect(assessor.classify(partial).allSatisfy { $0.identity.status == .ambiguous })
+  }
+
+  private func sibling(_ raw: RawSourceItemObservation, window: UInt32?, x: Double,
+    pid: Int32? = nil) -> RawSourceItemObservation {
+    RawSourceItemObservation(runtimeID: "\(pid ?? raw.processIdentifier):\(x)",
+      processIdentifier: pid ?? raw.processIdentifier,
+      bundleIdentifier: raw.bundleIdentifier, applicationName: raw.applicationName,
+      role: raw.role, frame: ItemFrame(x: x, y: 0, width: 24, height: 24),
+      actions: raw.actions, metadata: raw.metadata, observedOrder: raw.observedOrder,
+      statusWindowIdentifier: window)
+  }
+
   @Test("Physical ordering remains total when geometry is missing")
   func ordersMixedGeometryDeterministically() {
     let observations = [

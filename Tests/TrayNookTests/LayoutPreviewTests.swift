@@ -90,8 +90,9 @@ struct LayoutPreviewTests {
       item("example.weather", name: "Weather"),
     ])
     let preview = LayoutPreviewView(model: model)
+    // Ambiguous siblings have no persistent identity, so no lane lists them.
     #expect(preview.items(in: .menuBar).map(\.id) == [
-      "example.timer", "com.apple.controlcenter", "example.multiple", "example.weather",
+      "example.timer", "com.apple.controlcenter", "example.weather",
     ])
     #expect(preview.items(in: .alwaysHidden).map(\.id) == ["example.hidden"])
     let dropdown = applications.map(\.id)
@@ -180,6 +181,6 @@ struct LayoutPreviewTests {
     RawSourceItemObservation(runtimeID: "\(bundle):\(index)", processIdentifier: 100,
       bundleIdentifier: bundle, applicationName: name, role: "AXMenuBarItem",
       frame: ItemFrame(x: 1200, y: 0, width: 24, height: 24), actions: ["AXPress"],
-      metadata: LiveAccessibilityMetadata(identifierCandidate: "fixture-\(index)"), observedOrder: index)
+      metadata: LiveAccessibilityMetadata(identifierCandidate: index == 0 ? "fixture" : nil), observedOrder: index)
   }
 }

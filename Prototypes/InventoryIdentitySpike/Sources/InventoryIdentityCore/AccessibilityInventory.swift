@@ -103,6 +103,13 @@ func statusWindowVisibility(
   return matching.contains(where: \.isOnscreen)
 }
 
+func statusWindowIdentifier(
+  of item: RawSourceItemObservation, in windows: [StatusWindowObservation]
+) -> UInt32? {
+  let matching = windows.filter { statusWindow($0, overlaps: item) }
+  return matching.count == 1 ? matching[0].windowIdentifier : nil
+}
+
 func unrepresentedStatusWindows(
   _ windows: [StatusWindowObservation], comparedTo items: [RawSourceItemObservation]
 ) -> [StatusWindowObservation] {
@@ -303,7 +310,8 @@ public struct AccessibilityInventoryScanner: InventoryScanning, Sendable {
         bundleIdentifier: application?.bundleIdentifier,
         applicationName: application?.localizedName,
         role: "UnverifiedStatusWindow", frame: window.frame,
-        actions: [], metadata: LiveAccessibilityMetadata(), observedOrder: rawItems.count))
+        actions: [], metadata: LiveAccessibilityMetadata(), observedOrder: rawItems.count,
+        statusWindowIdentifier: window.windowIdentifier))
     }
 
     if issueTracker.incompleteApplicationCount > 0 {
@@ -328,7 +336,8 @@ public struct AccessibilityInventoryScanner: InventoryScanning, Sendable {
           actions: item.actions,
           metadata: item.metadata,
           observedOrder: index,
-          isOnscreen: statusWindowVisibility(of: item, in: statusWindows)
+          isOnscreen: statusWindowVisibility(of: item, in: statusWindows),
+          statusWindowIdentifier: statusWindowIdentifier(of: item, in: statusWindows)
         )
       }
     let classifiedItems = assessor.classify(orderedItems)
