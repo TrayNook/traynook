@@ -26,6 +26,14 @@ Updated 2026-10-28. Build 18's measurements and verified checks are in
 
 ## Native acceptance to run first (needs the user's go-ahead)
 
+Every harness checks `AXIsProcessTrusted()` for the process that launches it
+and refuses to post input otherwise. On 2026-10-28 no terminal on the machine
+(Terminal.app, iTerm, the Claude app shell) had Accessibility, so the checks
+below could not start. Grant Accessibility to the terminal that runs them
+(System Settings > Privacy & Security > Accessibility, add Terminal.app) and
+quit Hidden Bar first: its expanded separator and TrayNook's compete for the
+same menu-bar space.
+
 1. `Scripts/test-dropdown-ui.sh --layout "$HOME/Library/Application Support/io.github.mahenzon.TrayNook.dev/layout.json" --invalid-positions "dist/TrayNook Dev.app"`.
    Its cursor witness samples pointer **position**, so displacement is expected;
    watch the screen for a visible pointer during promotion. If the pointer is
@@ -38,7 +46,7 @@ Updated 2026-10-28. Build 18's measurements and verified checks are in
    `defer`, and `reveal()` shows it).
 3. Grant Screen Recording to the rebuilt app, quit and reopen it, open the
    dropdown: proxies should be captured glyphs on a dark or light backdrop.
-   Run `--diagnose` to confirm "Status windows captured".
+   Run `--diagnose` to confirm "Captured onscreen: N of N".
 4. A multi-item app (two `AXMenuBarItem`s in one process): both appear in
    Layout with distinct keys; promoting one moves only that one. Quit and
    relaunch the app while concealed: the proxies keep working, no reveal.

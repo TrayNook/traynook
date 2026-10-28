@@ -17,17 +17,21 @@ enum TrayNookApp {
       if ProxyImageCapture.isAuthorized {
         let windows = CGWindowListCopyWindowInfo(.optionAll, kCGNullWindowID) as? [[String: Any]] ?? []
         let status = windows.filter { ($0[kCGWindowLayer as String] as? Int) == Int(CGWindowLevelForKey(.statusWindow)) }
-        var captured = 0, offscreenCaptured = 0
+        var onscreen = 0, captured = 0, offscreenCaptured = 0
         for window in status {
+          let isOnscreen = window[kCGWindowIsOnscreen as String] as? Bool == true
+          if isOnscreen { onscreen += 1 }
           guard let id = window[kCGWindowNumber as String] as? UInt32,
             let bounds = window[kCGWindowBounds as String] as? [String: Any],
             let rect = CGRect(dictionaryRepresentation: bounds as CFDictionary) else { continue }
           let frame = ItemFrame(x: rect.minX, y: rect.minY, width: rect.width, height: rect.height)
           guard ProxyImageCapture.capture(windowID: id, frame: frame) != nil else { continue }
           captured += 1
-          if window[kCGWindowIsOnscreen as String] as? Bool != true { offscreenCaptured += 1 }
+          if !isOnscreen { offscreenCaptured += 1 }
         }
-        print("Status windows captured: \(captured) of \(status.count) (\(offscreenCaptured) offscreen)")
+        // Offscreen windows are expected to fail: the public API does not composite them.
+        print("Status windows: \(status.count) (\(onscreen) onscreen, \(status.count - onscreen) offscreen)")
+        print("Captured onscreen: \(captured - offscreenCaptured) of \(onscreen); captured offscreen: \(offscreenCaptured)")
       }
       return
     }
