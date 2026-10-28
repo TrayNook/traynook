@@ -1,6 +1,11 @@
 # TrayNook MVP status
 
-Updated 2026-09-19. Verified development build: **1.0.0 (18)**.
+Updated 2026-10-28. Last natively verified development build: **1.0.0 (18)**.
+Build 19 (hidden pointer, captured proxies, sibling identity, calmer recovery;
+see [ADR 0009](adr/0009-hidden-pointer-sibling-keys-and-session-image-cache.md)
+and [HANDOFF.md](HANDOFF.md)) passes the unit suite, smoke test, and harness
+compilation but has **not** run the native checks below. Everything after this
+paragraph describes build 18 unless marked otherwise.
 Locally tested, ad-hoc signed development preview; not a public release.
 
 **Menu opening is about twice as fast in the packaged fixture. Cursor
@@ -160,12 +165,16 @@ would change physical pointer behavior and was not adopted.
 ## Remaining limits and release blockers
 
 1. **Cursor-free interaction is unresolved.** Brief large jumps still occur on
-   the working public event route. Movement also requires a 200 ms quiet input
-   interval and can wait about ten seconds under continuing physical input.
+   the working public event route. Build 19 hides the pointer for the duration
+   of the move (unverified on device) and waits at most one second for released
+   buttons and keys instead of ten; the 200 ms quiet-input interval remains.
+   The strict `--require-still-pointer` check measures displacement and will
+   keep failing; it is no longer a release criterion.
    A successful menu-open check does not establish native-feeling interaction.
 2. **Intermittent inventory recovery remains.** One ChatGPT run returned its
    source and then revealed peers on the next poll with an inventory-change
-   message. Its repeat passed; the exact inventory change is unresolved.
+   message. Build 19 no longer reveals on window-ID churn or a restarted hidden
+   source; whether that removes this case is unverified.
 3. **Custom panels and secondary actions need broader acceptance.** NSMenu
    lifecycle is covered. A panel without those events can leave the selected
    source visible until the next launcher click. Unknown status-level windows
@@ -175,9 +184,10 @@ would change physical pointer behavior and was not adopted.
 5. **Other environments remain unverified:** other macOS versions, Intel,
    multiple displays, Spaces/fullscreen, auto-hidden menu bars, and sleep/wake.
    The 50 ms down dwell needs validation on each supported configuration.
-6. **Management remains conservative.** Apple/system and ambiguous multi-item
-   sources stay protected. App icons stand in for status images without Screen
-   Recording. Own-control positioning still uses undocumented AppKit preference
+6. **Management remains conservative.** Apple/system and indistinguishable
+   multi-item sources stay protected; build 19 manages siblings it can tell
+   apart. Proxies are last-seen captures with Screen Recording and app icons
+   without it; neither path is natively verified on build 19. Own-control positioning still uses undocumented AppKit preference
    keys; no private API or source-application preference writes were added.
 7. **Local launch approval and distribution remain pending:** renewed
    Accessibility approval for normal Finder launch; Developer ID signing, notarization, public

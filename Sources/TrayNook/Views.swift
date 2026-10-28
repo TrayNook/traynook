@@ -180,7 +180,7 @@ struct SettingsView: View {
           Button(L("Copy Diagnostics")) { model.copyDiagnostics() }
           Button(L("Reset Layout…")) { confirmReset = true }.disabled(model.busy)
         }
-        Text(L("TrayNook stores bundle identities, placements, order, and row capacity locally. It makes no network requests and includes no analytics or updater."))
+        Text(L("TrayNook stores bundle identities, sibling discriminators, placements, order, and row capacity locally. It makes no network requests and includes no analytics or updater."))
           .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         Divider()
         Text(L("To uninstall, turn off Launch at Login, quit TrayNook, and move the app to Trash. Quit removes TrayNook’s separator and reveals items. You can remove its Accessibility entry in System Settings."))
@@ -248,7 +248,9 @@ struct DropdownIcons: View {
             proxy(item, bundle: bundle)
           }
           .disabled(!model.canEdit || !model.isManageable(item) || model.native.hasPendingActivation)
-          .help(model.name(for: bundle)).accessibilityLabel(model.name(for: bundle))
+          .help(model.proxyImages[bundle] != nil && item.observation.isOnscreen != true
+            ? model.name(for: bundle) + " — " + L("as last seen in the menu bar") : model.name(for: bundle))
+          .accessibilityLabel(model.name(for: bundle))
           .contextMenu {
             Button(L("Open Secondary Menu")) { model.activate(item, secondary: true) }
               .disabled(!model.canEdit || !model.isManageable(item) || model.native.hasPendingActivation)

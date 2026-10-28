@@ -34,7 +34,8 @@ for reveal, Settings, and Quit commands.
 3. **Show Items** temporarily reveals the section; **Hide Items** or
    **Apply Saved Layout** arranges and collapses it again. **Reveal All Items**
    also cancels an operation in progress.
-4. Click the tray icon for app-icon proxies. If the section is revealed, TrayNook
+4. Click the tray icon for the proxies: captured menu-bar icons with Screen
+   Recording, application icons without it. If the section is revealed, TrayNook
    first applies the requested placements and hides it. Preparation errors appear
    in the dropdown. Right-click a proxy and choose
    **Open Secondary Menu** for the source item's secondary action.
@@ -47,8 +48,11 @@ all icons. Custom panels without menu lifecycle events can leave the selected
 source visible until the next launcher click. Unrecognized windows, changed
 inventory, or display changes can still trigger conservative recovery.
 
-Screen Recording is unnecessary: this preview uses application icons. Multiple
-items from one app and Apple system controls stay protected. An offscreen item
+Screen Recording is optional: with it, each proxy shows the item's real menu-bar
+icon as last seen while visible (public capture cannot read offscreen windows);
+without it, proxies are application icons. Several items from one app are
+managed individually when they can be told apart; indistinguishable siblings and
+Apple system controls stay protected. An offscreen item
 is moved through verified PID/window-targeted public events, and must reach a
 safe visible position before activation. The total hidden section may exceed the
 screen width, but there must still be room for one selected source. Dropdown
@@ -60,7 +64,8 @@ Layout and General now include a read-only **Saved layout preview**: a Menu Bar
 strip with the launcher, the same icon grid used by the dropdown, and a separate
 Always Hidden area. Changing row capacity updates it immediately; the gear
 occupies the first slot. Missing apps consume no dropdown slots, protected apps
-are marked as kept visible, and unavailable inventory is identified. Application
+are marked as kept visible, ambiguous siblings are not listed, and unavailable
+inventory is identified. Application
 icons illustrate saved placements; native order and spacing can differ.
 
 Settings uses native segmented navigation. Ordering arrows appear only for
@@ -108,7 +113,8 @@ that case. Smoke and backend checks alone do not establish the native flow.
 
 Smoke mode opens Settings, verifies launcher/window creation, then exits without
 requesting permissions, changing layout, or writing app preferences. `--diagnose`
-is read-only and prints only permission state and aggregate scan metrics.
+is read-only and prints permission state, aggregate scan metrics, and how many
+status windows Screen Recording can capture; no image is kept.
 
 Development builds use `io.github.mahenzon.TrayNook.dev` and ad-hoc signing.
 Rebuilding may invalidate macOS Accessibility approval; remove the old entry and

@@ -78,9 +78,9 @@ The full comparison and confidence labels are in [Reference analysis](REFERENCE_
 
 Build an in-memory Observed Layout of menu-bar windows and their accessibility elements. Associate each candidate at runtime with source process identity, bundle identifier, accessibility metadata, geometry, and an occurrence discriminator, but persist only bundle identity plus a non-content stable discriminator.
 
-Identity must be treated as best effort. Process IDs and window IDs change on relaunch; bundle identifiers are not unique when one app owns multiple items; accessibility titles can be absent, dynamic, or content-bearing. Dynamic Accessibility titles or labels, geometry, process/window IDs, and hashes of content-bearing strings are never persisted. If non-content identity is insufficient, the item becomes Ambiguous.
+Identity must be treated as best effort. Process IDs and window IDs change on relaunch; bundle identifiers are not unique when one app owns multiple items; accessibility titles can be absent, dynamic, or content-bearing. Dynamic Accessibility titles or labels, geometry, process/window IDs, and hashes of content-bearing strings are never persisted. Siblings of one application persist an identifier-shaped AXIdentifier or their status-window creation rank as the discriminator ([ADR 0009](adr/0009-hidden-pointer-sibling-keys-and-session-image-cache.md)); if neither is available, the item becomes Ambiguous.
 
-An identity mismatch is never guessed. The candidate becomes an Ambiguous Item, remains visible in Menu Bar, and is excluded from automatic placement. Settings can match it to a compatible retained identity, treat it as a fresh Menu Bar identity, or persist an acknowledged Unmanaged state; stale retained identities have a separate Forget action. Unmanaged clears ongoing attention, remains visible and outside automatic placement, retains Resolve for later, and alerts again only for a materially new identity conflict. A user-selected match is authoritative but is never represented as independently verified recognition of indistinguishable instances.
+An identity mismatch is never guessed; a ranked sibling whose set or window changes while concealed reveals the section instead of being rebound. Otherwise the candidate becomes an Ambiguous Item, remains visible in Menu Bar, and is excluded from automatic placement. Settings can match it to a compatible retained identity, treat it as a fresh Menu Bar identity, or persist an acknowledged Unmanaged state; stale retained identities have a separate Forget action. Unmanaged clears ongoing attention, remains visible and outside automatic placement, retains Resolve for later, and alerts again only for a materially new identity conflict. A user-selected match is authoritative but is never represented as independently verified recognition of indistinguishable instances.
 
 An absent known identity retains Placement and order indefinitely rather than expiring on a timer. Settings provides explicit Forget Item; reappearance reconciles against the retained identity before placement is applied.
 
@@ -115,7 +115,7 @@ The alternative per-item model offers more control but is more complex and can l
 
 ### 3. Proxy rendering
 
-When the Dropdown or Layout editor becomes visible, obtain a current image for each visible Running Proxy Item, then refresh visible proxies at most once per second while one of those surfaces remains visible. Not Running and App Missing placeholders render only in Settings and consume no Dropdown slot. Stop pixel capture and purge buffers when neither proxy-bearing surface is visible. Frame-perfect animation is not a requirement, and the prototype may lower the refresh rate if energy testing requires it.
+Capture each Dropdown item whenever its status window is onscreen (launch before concealment, Apply, promotion) and refresh visible proxies at most once per second while the Dropdown is open. Hidden items show their last-seen capture for the session, because public capture cannot composite offscreen windows ([ADR 0009](adr/0009-hidden-pointer-sibling-keys-and-session-image-cache.md)). Not Running and App Missing placeholders render only in Settings and consume no Dropdown slot. Frame-perfect animation is not a requirement, and the prototype may lower the refresh rate if energy testing requires it.
 
 A captured proxy retains the Source Item's native visual width and appearance without a permanent text label. Its accessible item or application name appears through the standard hover tooltip and VoiceOver label.
 
@@ -123,11 +123,11 @@ Pixel-faithful arbitrary third-party imagery requires cross-process screen captu
 
 Fallback hierarchy while Screen Recording remains granted:
 
-1. Current captured image of the exact Source Item
-2. Recently captured in-memory image from the current session after a transient capture failure
+1. Current captured image of the exact Source Item while it is onscreen
+2. Last in-memory capture from the current session while it is hidden, labelled as last seen
 3. Source application's app icon plus accessible label
 
-Do not persist captured screen pixels to disk. Purge captured buffers when neither Dropdown nor the proxy-bearing Layout tab is visible and immediately on Screen Recording denial or revocation; after permission loss use only the source-app icon fallback. A stale proxy must be visibly identifiable and must never be used to infer sensitive content.
+Do not persist captured screen pixels to disk. Purge a capture when its item leaves the Dropdown placement and all captures immediately on Screen Recording denial or revocation; after permission loss use only the source-app icon fallback. A last-seen proxy is identified in its tooltip and must never be used to infer sensitive content.
 
 Persistence is limited to the minimum local state needed to operate: source bundle identity, a non-content stable discriminator where necessary, Placement, order, explicit preferences, onboarding acknowledgements, state-schema version, and the clean-Quit baseline. Never store dynamic Accessibility titles or labels, geometry, process/window IDs, hashes of content-bearing strings, captured pixels, menu or popover contents, interaction history, usage frequency, or analytics identifiers.
 

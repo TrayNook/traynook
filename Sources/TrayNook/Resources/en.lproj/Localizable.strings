@@ -107,7 +107,7 @@
 "TrayNook needs Accessibility to identify menu-bar items, apply your chosen placements, and open items from the dropdown. Until permission is granted, it leaves your menu bar visible." = "TrayNook needs Accessibility to identify menu-bar items, apply your chosen placements, and open items from the dropdown. Until permission is granted, it leaves your menu bar visible.";
 "TrayNook separator — Command-drag left of the tray icon" = "TrayNook separator — Command-drag left of the tray icon";
 "TrayNook stays here" = "TrayNook stays here";
-"TrayNook stores bundle identities, placements, order, and row capacity locally. It makes no network requests and includes no analytics or updater." = "TrayNook stores bundle identities, placements, order, and row capacity locally. It makes no network requests and includes no analytics or updater.";
+"TrayNook stores bundle identities, sibling discriminators, placements, order, and row capacity locally. It makes no network requests and includes no analytics or updater." = "TrayNook stores bundle identities, sibling discriminators, placements, order, and row capacity locally. It makes no network requests and includes no analytics or updater.";
 "TrayNook — click for dropdown, right-click for controls" = "TrayNook — click for dropdown, right-click for controls";
 "TrayNook" = "TrayNook";
 "Undo" = "Undo";
@@ -139,6 +139,7 @@
 "This item's native window cannot be identified safely. Other hidden items remain hidden." = "This item's native window cannot be identified safely. Other hidden items remain hidden.";
 "This item's original position cannot be restored safely. Other hidden items remain hidden." = "This item's original position cannot be restored safely. Other hidden items remain hidden.";
 "TrayNook's native controls are unavailable." = "TrayNook's native controls are unavailable.";
+"as last seen in the menu bar" = "as last seen in the menu bar";
 "macOS applies Screen Recording after TrayNook is quit and reopened." = "macOS applies Screen Recording after TrayNook is quit and reopened.";
 "macOS could not route this item's move. Other hidden items remain hidden." = "macOS could not route this item's move. Other hidden items remain hidden.";
 "macOS could not show this item safely. Its return position is retained; other hidden items remain hidden." = "macOS could not show this item safely. Its return position is retained; other hidden items remain hidden.";
