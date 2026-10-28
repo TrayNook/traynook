@@ -299,11 +299,14 @@ struct DropdownIcons: View {
     if let captured = model.proxyImages[bundle] {
       // ponytail: fixed 34pt cell; wide text items scale down. Variable-width
       // cells if that reads badly on real bars.
-      Image(nsImage: captured.image).resizable().aspectRatio(contentMode: .fit)
+      // Template glyphs take the label color like in the menu bar; colored
+      // icons keep their pixels. No backdrop either way.
+      Image(nsImage: captured.image)
+        .renderingMode(captured.isMonochrome ? .template : .original)
+        .resizable().aspectRatio(contentMode: .fit)
+        .foregroundStyle(Color.primary)
         .frame(maxWidth: 30, maxHeight: 22)
         .frame(width: 34, height: 34)
-        .background(captured.hasLightGlyphs ? Color.black.opacity(0.78) : Color.white.opacity(0.9),
-          in: RoundedRectangle(cornerRadius: 7))
     } else {
       Image(nsImage: model.icon(for: bundle)).resizable().frame(width: 26, height: 26).padding(4)
     }

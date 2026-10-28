@@ -6,9 +6,11 @@ import InventoryIdentityCore
 /// onscreen, so hidden items show their last image from when they were visible.
 struct ProxyImage {
   let image: NSImage
-  /// Light glyphs mean the source draws for a dark menu bar. The proxy cell
-  /// uses a matching backdrop so the glyph stays visible in the dropdown.
+  /// Light glyphs mean the source draws for a dark menu bar.
   let hasLightGlyphs: Bool
+  /// Monochrome glyphs (template icons) are drawn in the label color, like
+  /// the menu bar does; colored icons keep their pixels.
+  let isMonochrome: Bool
 }
 
 enum ProxyImageCapture {
@@ -37,7 +39,9 @@ enum ProxyImageCapture {
       let light = glyphsAreLight(rgba: pixels, width: cgImage.width, height: cgImage.height)
     else { return nil }
     let image = NSImage(cgImage: cgImage, size: NSSize(width: frame.width, height: frame.height))
-    return ProxyImage(image: image, hasLightGlyphs: light)
+    let monochrome = glyphsAreMonochrome(rgba: pixels)
+    image.isTemplate = monochrome
+    return ProxyImage(image: image, hasLightGlyphs: light, isMonochrome: monochrome)
   }
 
   private static func rgba(of image: CGImage) -> [UInt8]? {
@@ -50,6 +54,20 @@ enum ProxyImageCapture {
       return true
     }
     return drawn ? pixels : nil
+  }
+
+  /// True when almost no opaque pixel carries color (a template glyph).
+  static func glyphsAreMonochrome(rgba: [UInt8]) -> Bool {
+    var opaque = 0, colored = 0
+    for offset in stride(from: 0, to: rgba.count - 3, by: 4) {
+      let alpha = Int(rgba[offset + 3])
+      guard alpha >= 128 else { continue }
+      opaque += 1
+      let r = Int(rgba[offset]), g = Int(rgba[offset + 1]), b = Int(rgba[offset + 2])
+      // Premultiplied: a spread above ~12% of alpha is real color, not antialiasing.
+      if max(abs(r - g), abs(g - b), abs(r - b)) * 255 > 30 * alpha { colored += 1 }
+    }
+    return opaque == 0 || colored * 20 < opaque
   }
 
   /// Majority luminance of the opaque pixels. nil when the capture is empty,
