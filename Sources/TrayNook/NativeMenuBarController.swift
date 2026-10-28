@@ -43,10 +43,25 @@ final class NativeMenuBarController: NSObject {
   private var generation = 0
   private var pendingRelease: CGEvent?
   private var concealedSourcePIDs: [String: Int32] = [:]
+  private var cursorHidden = false
   private(set) var isConcealed = false
   private(set) var isBusy = false
   var onReveal: (() -> Void)?
   var onExternalReveal: (() -> Void)?
+
+  /// Status-item reordering needs the real pointer path, so the pointer does
+  /// jump during a move. Hiding it makes the jump invisible; the pointer is
+  /// warped back and shown again as soon as the synthesized input is done.
+  private func hideCursor() {
+    guard !cursorHidden else { return }
+    cursorHidden = CGDisplayHideCursor(CGMainDisplayID()) == .success
+  }
+
+  private func showCursor() {
+    guard cursorHidden else { return }
+    cursorHidden = false
+    CGDisplayShowCursor(CGMainDisplayID())
+  }
 
   init(launcher: NSStatusItem) {
     self.launcher = launcher
@@ -563,10 +578,12 @@ final class NativeMenuBarController: NSObject {
         y: min(max(point.y, display.y), display.maxY - 1))
     }
     var lastPointer = pointer
+    hideCursor()
     defer {
       releasePointer()
       if let current = CGEvent(source: nil)?.location, Self.near(current, lastPointer),
         Self.physicalInputIsIdle(recentMovement: false) { CGWarpMouseCursorPosition(pointer) }
+      showCursor()
     }
     lastPointer = expectedPointer(at: downPoint)
     try await sendTargeted(down, pid: source.pid, onPosting: {
@@ -865,12 +882,14 @@ final class NativeMenuBarController: NSObject {
       mouseCursorPosition: originalPointer, mouseButton: button)
     else { throw MenuBarFailure(L("macOS could not prepare the pointer release.")) }
     var lastPoint = originalPointer
+    hideCursor()
     defer {
       releasePointer()
       if let current = CGEvent(source: nil)?.location,
         Self.near(current, lastPoint), Self.physicalInputIsIdle(recentMovement: false) {
         CGWarpMouseCursorPosition(originalPointer)
       }
+      showCursor()
     }
     for event in events {
       try checkOperation(token)
@@ -888,6 +907,7 @@ final class NativeMenuBarController: NSObject {
   private func releasePointer() {
     activeEventRelay?.cancel()
     activeEventRelay = nil
+    defer { showCursor() }
     guard let release = pendingRelease else { return }
     if let pid = pendingReleasePID {
       release.flags = []
@@ -935,8 +955,10 @@ final class NativeMenuBarController: NSObject {
     }
   }
 
+  /// Waits at most one second for buttons, modifiers, and keys to be released.
+  /// A long wait made the dropdown feel dead; a short one just reports it.
   private func waitForIdleInput(token: Int, checkingKeys: Bool = true, checkingPointer: Bool = true) async throws {
-    for _ in 0..<100 {
+    for _ in 0..<10 {
       try checkOperation(token)
       if Self.physicalInputIsIdle(recentMovement: checkingKeys && checkingPointer, checkingKeys: checkingKeys) { return }
       try await pause(0.1, token: token)
@@ -955,8 +977,10 @@ final class NativeMenuBarController: NSObject {
       if CGEventSource.keyState(.hidSystemState, key: key) { return false }
     }
     if recentMovement {
+      // The pointer is hidden during the move, so only input that could land
+      // between our down and up matters; a short settle window is enough.
       for type in [CGEventType.mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged, .scrollWheel, .keyDown] {
-        if CGEventSource.secondsSinceLastEventType(.hidSystemState, eventType: type) < 0.2 { return false }
+        if CGEventSource.secondsSinceLastEventType(.hidSystemState, eventType: type) < 0.05 { return false }
       }
     }
     return true
