@@ -200,6 +200,7 @@ final class AppModel: ObservableObject {
           self.launchRestoreRunning = true
           self.applySavedLayout()
         } else {
+          modelLog.notice("settings: nothing hidden in the saved layout")
           self.showSettings?() // nothing to hide yet: let the user arrange
         }
       }
@@ -234,7 +235,7 @@ final class AppModel: ObservableObject {
       modelLog.error("revealed: scan permission=\(snapshot.permission.rawValue, privacy: .public) completeness=\(snapshot.completeness.rawValue, privacy: .public) warnings=\(snapshot.warnings.joined(separator: " | "), privacy: .public)")
       guard !recoveryRequired else { return }
       if !permissionGranted {
-        if firstSnapshot || wasGranted { selectedTab = 1; showSettings?() }
+        if firstSnapshot || wasGranted { selectedTab = 1; modelLog.notice("settings: accessibility not granted (first=\(firstSnapshot))"); showSettings?() }
         message = L("Grant Accessibility to discover and organize menu-bar items.")
       } else {
         message = L("Some apps did not respond. Items are revealed; retry when those apps respond.")
@@ -497,7 +498,7 @@ final class AppModel: ObservableObject {
         if revealOnFailure { native.reveal() }
         message = error.localizedDescription
         modelLog.error("operation failed: \(error.localizedDescription, privacy: .public)")
-        if launchRestoreRunning { showSettings?() } // the launch restore needs the user
+        if launchRestoreRunning { modelLog.notice("settings: launch restore failed"); showSettings?() } // the launch restore needs the user
       }
       launchRestoreRunning = false
       concealed = native.isConcealed

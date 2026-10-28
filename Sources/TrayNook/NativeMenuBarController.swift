@@ -1159,8 +1159,10 @@ final class NativeMenuBarController: NSObject {
         && abs($0.frame.width - window.frame.width) < 0.5
     }
     guard mirrors.count == 1, let mirror = mirrors.first else { return nil }
+    // A 24 pt external bar is shorter than the home bar's button; clamp.
+    let height = min(button.height, mirror.frame.height)
     return CGRect(x: mirror.frame.minX + (button.minX - window.frame.minX),
-      y: mirror.frame.midY - button.height / 2, width: button.width, height: button.height)
+      y: mirror.frame.midY - height / 2, width: button.width, height: height)
   }
 
   private func environment() -> MenuBarEnvironment? {

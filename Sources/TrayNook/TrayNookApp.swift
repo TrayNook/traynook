@@ -113,6 +113,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
   func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
   func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+    modelLog.notice("settings: reopen event")
     openSettings(); return true
   }
   func windowWillReturnUndoManager(_ window: NSWindow) -> UndoManager? { model.undoManager }
