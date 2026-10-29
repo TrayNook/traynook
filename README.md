@@ -44,8 +44,11 @@ Launching restores saved placements after the first complete inventory. During
 normal interaction, only the selected source temporarily appears in the menu bar.
 Its original neighboring position is retained for restoration. A failed move
 preserves the hidden section and reports the problem; it does not silently reveal
-all icons. Custom panels without menu lifecycle events can leave the selected
-source visible until the next launcher click. Unrecognized windows, changed
+all icons. Dismissal uses native menu events or the lifetime of newly opened
+windows; an already-open app window does not keep the selected source visible.
+An interrupted return waits for idle input and retries only the move. Without
+confirmed dismissal, the source stays visible until the next launcher click.
+Unrecognized windows, changed
 inventory, or display changes can still trigger conservative recovery.
 Repeated Accessibility scan failures temporarily reveal items; the saved layout
 resumes after a complete scan unless identities changed or you chose Show Items.

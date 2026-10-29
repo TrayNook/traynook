@@ -168,12 +168,19 @@ private final class CancellationCheck: NSObject, NSApplicationDelegate {
         operation = task
         do {
           try await task.value
-          if !phase.hasSuffix("motion-up") { throw Failure("The scheduled interruption did not stop the operation.") }
+          if !returning && !phase.hasSuffix("motion-up") {
+            throw Failure("The scheduled interruption did not stop the operation.")
+          }
         }
         catch is CancellationError { }
         catch {
+          guard !returning else {
+            throw Failure("The interrupted return did not recover automatically: \(error.localizedDescription)")
+          }
           guard phase.hasSuffix("motion-down") && error.localizedDescription.hasPrefix("Physical input interrupted")
-            || phase.hasPrefix("queued-") && motion && error.localizedDescription.hasPrefix("macOS could not route")
+            || phase.hasPrefix("queued-") && motion
+              && (error.localizedDescription.hasPrefix("macOS could not route")
+                || error.localizedDescription.hasPrefix("Physical input interrupted"))
           else { throw error }
         }
         stage = "\(phase): counts"
@@ -184,7 +191,10 @@ private final class CancellationCheck: NSObject, NSApplicationDelegate {
         let expected = phase == "queued-down" || phase == "queued-motion" ? (0, 0, 0)
           : phase == "delivered-down" || phase.hasSuffix("motion-down") || phase == "queued-up-motion"
             ? (1, 0, 1) : (1, 1, 0)
-        guard counts == expected else {
+        // The recovery mouse-up can complete the return before its retry revalidates.
+        let automaticReturnCounts = phase == "return-motion-down"
+          && (counts == (1, 0, 1) || counts == (2, 1, 1))
+        guard automaticReturnCounts || (phase != "return-motion-down" && counts == expected) else {
           throw Failure("Unexpected posted down/up/recovery counts at \(phase): \(counts).")
         }
         // Let asynchronously posted recovery input finish before verifying it.
@@ -193,6 +203,9 @@ private final class CancellationCheck: NSObject, NSApplicationDelegate {
           throw Failure("Interruption or delayed completion stole the user's new pointer position.")
         }
         stage = "\(phase): restore"
+        if returning && native.hasPendingActivation {
+          throw Failure("The interrupted return still needs a manual retry.")
+        }
         if native.hasPendingActivation { try await native.restoreActivation() }
         try await Task.sleep(for: .milliseconds(250))
         if motion, CGEvent(source: nil)?.location != userPointer {
@@ -214,7 +227,8 @@ private final class CancellationCheck: NSObject, NSApplicationDelegate {
             throw Failure("The cancelled source did not return behind the still-expanded separator.")
           }
         }
-        print("PASS: \(phase), posted down/up/recovery=\(counts), no source action, no held button")
+        let returnResult = returning ? ", returned automatically" : ""
+        print("PASS: \(phase), posted down/up/recovery=\(counts), no source action, no held button\(returnResult)")
       }
       stage = "no safe slot"
       SelectiveCancellationHooks.callback = nil

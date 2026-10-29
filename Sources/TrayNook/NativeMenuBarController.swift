@@ -20,6 +20,7 @@ enum NativeMenuActionError: LocalizedError, Equatable {
   // Callers must verify an observed menu cycle, and must never retry the press.
   case responseTimedOut
   case inputNotIdle
+  case inputInterrupted
 
   var errorDescription: String? {
     switch self {
@@ -27,6 +28,8 @@ enum NativeMenuActionError: LocalizedError, Equatable {
       L("The native action did not confirm a response. Check the app before trying again.")
     case .inputNotIdle:
       L("Release the mouse and keyboard, stop moving the pointer, then try again.")
+    case .inputInterrupted:
+      L("Physical input interrupted the action. The selected item can be restored without revealing the section.")
     }
   }
 }
@@ -554,29 +557,38 @@ final class NativeMenuBarController: NSObject {
     isBusy = true
     defer { isBusy = false }
     let token = generation
-    _ = try await stableTarget(pending.source, token: token,
-      allowingClipped: true, allowingConcealed: true)
     func restored() throws -> Bool {
       let source = try statusWindowFrame(pending.sourceWindow)
       let anchor = try statusWindowFrame(pending.returnWindow)
       return abs(anchor.minX - source.maxX - pending.originalGap) <= 2
         && source.minX < anchor.minX
     }
-    if try !restored() {
-      try await waitForIdleInput(token: token)
-      try await moveTargeted(source: pending.sourceWindow, before: pending.returnWindow,
-        fallbackBefore: pending.returnWindow, token: token)
-      let deadline = ContinuousClock.now.advanced(by: .milliseconds(500))
-      while ContinuousClock.now < deadline {
-        try checkOperation(token)
-        if try restored() { break }
-        try await pause(0.02, token: token)
+    while true {
+      do {
+        _ = try await stableTarget(pending.source, token: token,
+          allowingClipped: true, allowingConcealed: true)
+        if try !restored() {
+          try await waitForIdleInput(token: token)
+          try await moveTargeted(source: pending.sourceWindow, before: pending.returnWindow,
+            fallbackBefore: pending.returnWindow, token: token)
+          let deadline = ContinuousClock.now.advanced(by: .milliseconds(500))
+          while ContinuousClock.now < deadline {
+            try checkOperation(token)
+            if try restored() { break }
+            try await pause(0.02, token: token)
+          }
+        }
+        guard try restored() else {
+          throw MenuBarFailure(L("The item could not return to its original position. Try restoring it again; other hidden items remain hidden."))
+        }
+        pendingActivation = nil
+        return
+      } catch NativeMenuActionError.inputNotIdle, NativeMenuActionError.inputInterrupted {
+        // The click dismissing a menu can overlap its return; retry only the move.
+        nativeLog.notice("return interrupted; waiting for idle input")
+        try await pause(0.3, token: token)
       }
     }
-    guard try restored() else {
-      throw MenuBarFailure(L("The item could not return to its original position. Try restoring it again; other hidden items remain hidden."))
-    }
-    pendingActivation = nil
   }
 
   /// Runtime window identity and bounds for proxy capture. nil when the item's
@@ -702,7 +714,7 @@ final class NativeMenuBarController: NSObject {
     // Keep the macOS 15-tested 50 ms until a processing acknowledgment exists.
     try await pause(0.05, token: token)
     guard let current = CGEvent(source: nil)?.location, Self.near(current, lastPointer) else {
-      throw MenuBarFailure(L("Physical input interrupted the action. The selected item can be restored without revealing the section."))
+      throw NativeMenuActionError.inputInterrupted
     }
     try requireIdleInput(checkingPointer: false)
     lastPointer = expectedPointer(at: endPoint)
@@ -1312,6 +1324,7 @@ private final class TargetedMenuBarEventRelay {
   private var processTap: CFMachPort?
   private var sessionTap: CFMachPort?
   private var delivered = false
+  private var postingRejected = false
   private var cancelled = false
   private let onPosting: (() -> Bool)?
   private let onDelivered: (() -> Void)?
@@ -1342,7 +1355,7 @@ private final class TargetedMenuBarEventRelay {
           guard !relay.cancelled, type == .null,
             incoming.getIntegerValueField(.eventSourceUserData) == relay.tag else { return false }
           if let tap = relay.processTap { CGEvent.tapEnable(tap: tap, enable: false) }
-          guard relay.onPosting?() != false else { return true }
+          guard relay.onPosting?() != false else { relay.postingRejected = true; return true }
           relay.event.post(tap: .cgSessionEventTap)
           return true
         }
@@ -1392,6 +1405,7 @@ private final class TargetedMenuBarEventRelay {
       if delivered { return }
       guard !cancelled else { throw CancellationError() }
       try Task.checkCancellation()
+      if postingRejected { throw NativeMenuActionError.inputInterrupted }
       do { try await Task.sleep(for: .milliseconds(10)) }
       catch {
         if delivered { return }
