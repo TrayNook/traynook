@@ -40,6 +40,7 @@ final class AppModel: ObservableObject {
   /// After sleep or a display change the section is revealed, then the saved
   /// layout is applied again once things have settled.
   private var reapplyNotBefore: Date?
+  private var recoveringLayout = false
   private var panelWatch: Task<Void, Never>?
   /// True while the dropdown is open; a promoted item waits until it closes.
   var dropdownShown = false
@@ -263,10 +264,9 @@ final class AppModel: ObservableObject {
     concealed = native.isConcealed
     guard acceptScanStatus(snapshot, firstSnapshot: firstSnapshot) else { return }
     let observed = snapshot.items.filter { $0.observation.bundleIdentifier != ownBundle }
-    // ponytail: polling diff. A restarted or relaunched known source keeps the
-    // section hidden and just rebinds its process; only an unknown bundle or an
-    // ambiguous group change reveals. Add AX observers only if idle cost demands.
-    if concealed || reapplyNotBefore != nil {
+    // Polling diff: hidden sources rebind, other additions reconcile, and
+    // ambiguous identities stop for review, including during recovery.
+    if concealed || reapplyNotBefore != nil || recoveringLayout {
       let changes = Self.keyedChanges(from: previousItems, to: observed)
       let known = Set(layout.items.map(\.id))
       let hidden = Set(layout.items.filter { $0.placement != .menuBar }.map(\.id))
@@ -280,9 +280,19 @@ final class AppModel: ObservableObject {
         }
       }
       if Self.inventoryRequiresReveal(changes, known: known, hidden: hidden, verifiedVisible: verifiedVisible) {
-        reveal()
-        message = L("Menu-bar items changed. Review the layout before hiding again.")
-        modelLog.notice("inventory change revealed: \(changes.map { "\($0.change.kind):\($0.key ?? "nil")" }.joined(separator: " "), privacy: .public)")
+        let needsReview = Self.inventoryRequiresReview(changes)
+        if needsReview {
+          reveal()
+          message = L("Menu-bar items changed. Review the layout before hiding again.")
+        } else if !recoveringLayout {
+          revealForInventoryRecovery()
+        }
+        // Log each actual trigger separately: order changes used to fill the
+        // log entry and truncate the source that caused the reveal.
+        for change in changes where Self.inventoryRequiresReveal([change], known: known,
+          hidden: hidden, verifiedVisible: verifiedVisible) {
+          modelLog.notice("inventory change: \(change.change.kind.rawValue, privacy: .public) key=\(change.key ?? "ambiguous", privacy: .public) review=\(needsReview)")
+        }
       }
     }
     previousItems = observed
@@ -407,23 +417,26 @@ final class AppModel: ObservableObject {
   /// changing. Ranks are assumed stable across a relaunch (ADR 0009).
   static func inventoryRequiresReveal(_ changes: [KeyedChange], known: Set<String>,
     hidden: Set<String>, verifiedVisible: Set<String>) -> Bool {
-    changes.contains { change in
-      if change.change.kind == .ambiguousInventoryChanged { return true }
+    if inventoryRequiresReview(changes) { return true }
+    return changes.contains { change in
       guard let key = change.key else { return false } // runtime-only window rows
       // System items are never hidden by TrayNook; one appearing (Control
       // Centre's camera indicator) changes nothing about the hidden section.
       if key.hasPrefix("com.apple.") && change.change.kind == .created { return false }
-      // A ranked sibling leaving re-keys the survivors, and its window changing
-      // within one process can swap ranks. Identifier-keyed siblings keep their
-      // keys (Control Centre's camera indicator comes and goes); when one of
-      // them is re-keyed to the plain bundle, that key shows up as created.
-      if change.isRankedSibling && (change.change.kind == .removed || change.windowReplaced) { return true }
-      if change.isSibling && change.change.kind == .removed && change.survivorsRekeyed { return true }
       switch change.change.kind {
       case .created: return !known.contains(key) || (!hidden.contains(key) && !verifiedVisible.contains(key))
       case .processReplaced: return !hidden.contains(key) && !verifiedVisible.contains(key)
       case .removed, .orderChanged, .runtimeMetadataChanged, .ambiguousInventoryChanged: return false
       }
+    }
+  }
+
+  static func inventoryRequiresReview(_ changes: [KeyedChange]) -> Bool {
+    changes.contains { change in
+      if change.change.kind == .ambiguousInventoryChanged { return true }
+      // Re-keyed siblings can inherit another source's saved placement.
+      if change.isRankedSibling && (change.change.kind == .removed || change.windowReplaced) { return true }
+      return change.isSibling && change.change.kind == .removed && change.survivorsRekeyed
     }
   }
 
@@ -502,12 +515,22 @@ final class AppModel: ObservableObject {
     attemptedLaunchRestore = true
     message = L("Applying placements…")
     runOperation {
+      self.recoveringLayout = recovering
+      defer { self.recoveringLayout = false }
       do { try await self.applyAndConceal(restoringToMenuBar: key) }
-      catch NativeMenuActionError.inputNotIdle {
-        if recovering && !Task.isCancelled { self.reapplyNotBefore = Date().addingTimeInterval(3) }
-        throw NativeMenuActionError.inputNotIdle
+      catch {
+        self.retryLayoutRecovery(after: error, recovering: recovering)
+        throw error
       }
     }
+  }
+
+  private func retryLayoutRecovery(after error: Error, recovering: Bool) {
+    guard recovering, !Task.isCancelled, permissionGranted, !recoveryRequired,
+      let error = error as? NativeMenuActionError,
+      [.inputNotIdle, .inputInterrupted, .inventoryUnavailable].contains(error) else { return }
+    reapplyNotBefore = Date().addingTimeInterval(3)
+    modelLog.notice("temporary layout failure; retrying after input and inventory settle: \(error.localizedDescription, privacy: .public)")
   }
 
   private func freshOperationInventory() async throws {
@@ -516,8 +539,12 @@ final class AppModel: ObservableObject {
     }.value
     try Task.checkCancellation()
     accept(snapshot)
-    guard permissionGranted, scanComplete, !recoveryRequired else {
+    try Task.checkCancellation() // identity review or a failed save cancels recovery
+    guard permissionGranted, !recoveryRequired else {
       throw AppError.message(message ?? L("A complete, fresh menu-bar inventory is unavailable. Refresh and try again."))
+    }
+    guard scanComplete, Date().timeIntervalSince(snapshot.capturedAt) <= 3 else {
+      throw NativeMenuActionError.inventoryUnavailable
     }
   }
 
@@ -542,6 +569,7 @@ final class AppModel: ObservableObject {
       if hidden ? behind == true : behind != true { continue }
       do { try await native.move(item, toHidden: hidden) }
       catch is CancellationError { throw CancellationError() }
+      catch let error as NativeMenuActionError { throw error }
       catch { throw AppError.message("\(name(for: saved.id)): \(error.localizedDescription)") }
       try await freshOperationInventory()
     }
@@ -811,7 +839,57 @@ final class AppModel: ObservableObject {
     recovering.accept(InventorySnapshot(capturedAt: Date(), permission: .granted, completeness: .complete,
       items: siblings(firstWindow: 3), warnings: [],
       metrics: ScanMetrics(durationMilliseconds: 0, inspectedApplicationCount: 0, sourceItemCount: 2)))
-    return recovering.reapplyNotBefore == nil
+    guard recovering.reapplyNotBefore == nil else { return false }
+
+    let hiddenSource = RawSourceItemObservation(runtimeID: "10:0", processIdentifier: 10,
+      bundleIdentifier: "example.hidden", applicationName: "Hidden fixture", role: "AXMenuBarItem",
+      frame: ItemFrame(x: -100, y: 0, width: 24, height: 24), actions: ["AXPress"],
+      metadata: LiveAccessibilityMetadata(), observedOrder: 0, isOnscreen: false, statusWindowIdentifier: 10)
+    let returnedSource = RawSourceItemObservation(runtimeID: "20:0", processIdentifier: 20,
+      bundleIdentifier: "example.bar", applicationName: "Menu Bar fixture", role: "AXMenuBarItem",
+      frame: ItemFrame(x: 900, y: 0, width: 24, height: 24), actions: ["AXPress"],
+      metadata: LiveAccessibilityMetadata(), observedOrder: 1, isOnscreen: false, statusWindowIdentifier: 20)
+    for alreadyKnown in [true, false] {
+      recovering.layout.items = [SavedItem(id: "example.hidden", placement: .dropdown)]
+      if alreadyKnown { recovering.layout.items.append(SavedItem(id: "example.bar")) }
+      recovering.previousItems = IdentityAssessor().classify([hiddenSource])
+      recovering.reapplyNotBefore = .distantPast
+      recovering.accept(InventorySnapshot(capturedAt: Date(), permission: .granted, completeness: .complete,
+        items: IdentityAssessor().classify([hiddenSource, returnedSource]), warnings: [],
+        metrics: ScanMetrics(durationMilliseconds: 0, inspectedApplicationCount: 0, sourceItemCount: 2)))
+      guard recovering.layout.items.first(where: { $0.id == "example.bar" })?.placement == .menuBar,
+        recovering.takeLayoutRecovery(now: .distantFuture) else {
+        fputs("TRAYNOOK_NEW_ITEM_DROPPED_RECOVERY\n", stderr)
+        return false
+      }
+    }
+
+    // Recovery is consumed before attempting native work. A transient failure
+    // at any stage must re-arm it, while user actions and permanent errors stop.
+    for error in [NativeMenuActionError.inputNotIdle, .inputInterrupted, .inventoryUnavailable] {
+      recovering.retryLayoutRecovery(after: error, recovering: true)
+      guard let retry = recovering.reapplyNotBefore,
+        !recovering.takeLayoutRecovery(now: retry.addingTimeInterval(-1)),
+        recovering.takeLayoutRecovery(now: retry) else { return false }
+      recovering.retryLayoutRecovery(after: error, recovering: false)
+      guard recovering.reapplyNotBefore == nil else { return false }
+    }
+    recovering.retryLayoutRecovery(after: NativeMenuActionError.responseTimedOut, recovering: true)
+    recovering.retryLayoutRecovery(after: CancellationError(), recovering: true)
+    recovering.retryLayoutRecovery(after: AppError.message("placement mismatch"), recovering: true)
+    guard recovering.reapplyNotBefore == nil else { return false }
+    recovering.permissionGranted = false
+    recovering.retryLayoutRecovery(after: NativeMenuActionError.inventoryUnavailable, recovering: true)
+    guard recovering.reapplyNotBefore == nil else { return false }
+    recovering.permissionGranted = true
+    recovering.recoveryRequired = true
+    recovering.retryLayoutRecovery(after: NativeMenuActionError.inventoryUnavailable, recovering: true)
+    guard recovering.reapplyNotBefore == nil else { return false }
+    recovering.recoveryRequired = false
+    recovering.retryLayoutRecovery(after: NativeMenuActionError.inventoryUnavailable, recovering: true)
+    recovering.reveal()
+    guard recovering.reapplyNotBefore == nil else { return false }
+    return true
   }
 }
 

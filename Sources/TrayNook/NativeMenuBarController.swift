@@ -21,6 +21,7 @@ enum NativeMenuActionError: LocalizedError, Equatable {
   case responseTimedOut
   case inputNotIdle
   case inputInterrupted
+  case inventoryUnavailable
 
   var errorDescription: String? {
     switch self {
@@ -30,6 +31,8 @@ enum NativeMenuActionError: LocalizedError, Equatable {
       L("Release the mouse and keyboard, stop moving the pointer, then try again.")
     case .inputInterrupted:
       L("Physical input interrupted the action. The selected item can be restored without revealing the section.")
+    case .inventoryUnavailable:
+      L("A complete, fresh menu-bar inventory is unavailable. Refresh and try again.")
     }
   }
 }
@@ -331,6 +334,11 @@ final class NativeMenuBarController: NSObject {
       guard Self.canConceal(items, allowedKeys: allowedKeys,
         boundary: before.boundary, safeFrame: before.safeFrame, displayFrame: before.displayFrame,
         occlusionFrame: before.occlusionFrame) else {
+        for item in items where !Self.canConceal([item], allowedKeys: allowedKeys,
+          boundary: before.boundary, safeFrame: before.safeFrame, displayFrame: before.displayFrame,
+          occlusionFrame: before.occlusionFrame) {
+          nativeLog.error("conceal blocked: \(item.identity.persistentKey ?? item.observation.runtimeID, privacy: .public) frame=\(String(describing: item.observation.frame), privacy: .public) onscreen=\(String(describing: item.observation.isOnscreen), privacy: .public) boundary=\(String(describing: before.boundary), privacy: .public)")
+        }
         throw MenuBarFailure(L("A new, protected, or unassigned item is behind the separator. Keep it on the right before hiding."))
       }
       try requireIdleInput(checkingKeys: false)
@@ -989,9 +997,12 @@ final class NativeMenuBarController: NSObject {
       AccessibilityInventoryScanner().scan(promptForPermission: false)
     }.value
     try checkOperation(token)
-    guard snapshot.permission == .granted, snapshot.completeness == .complete,
+    guard snapshot.permission == .granted else {
+      throw MenuBarFailure(L("Allow TrayNook in System Settings → Privacy & Security → Accessibility, then try again."))
+    }
+    guard snapshot.completeness == .complete,
       Date().timeIntervalSince(snapshot.capturedAt) <= 3
-    else { throw MenuBarFailure(L("A complete, fresh menu-bar inventory is unavailable. Refresh and try again.")) }
+    else { throw NativeMenuActionError.inventoryUnavailable }
     noteInventory(snapshot)
     return snapshot
   }

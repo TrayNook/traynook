@@ -55,11 +55,13 @@ struct AppModelInventoryTests {
     let restarted = AppModel.keyedChanges(from: before, to: assessor.classify([item(bundle: "example.bar", pid: 51)]))
     #expect(!restarted.contains { AppModel.rebindsProcess($0, hidden: hidden) })
     #expect(reveals(restarted))
+    #expect(!AppModel.inventoryRequiresReview(restarted))
     #expect(!reveals(restarted, visible: ["example.bar"]))
 
     let relaunched = AppModel.keyedChanges(from: [], to: assessor.classify([item(bundle: "example.bar", pid: 52)]))
     #expect(!relaunched.contains { AppModel.rebindsProcess($0, hidden: hidden) })
     #expect(reveals(relaunched))
+    #expect(!AppModel.inventoryRequiresReview(relaunched))
     #expect(!reveals(relaunched, visible: ["example.bar"]))
   }
 
@@ -67,11 +69,30 @@ struct AppModelInventoryTests {
   func realInventoryChangesReveal() {
     let assessor = IdentityAssessor()
     let original = assessor.classify([item(identifier: "primary")])
-    #expect(reveals(AppModel.keyedChanges(from: original,
-      to: assessor.classify([item(identifier: "primary"), item(bundle: "example.new", pid: 30)]))))
-    #expect(reveals(AppModel.keyedChanges(
+    let newSource = AppModel.keyedChanges(from: original,
+      to: assessor.classify([item(identifier: "primary"), item(bundle: "example.new", pid: 30)]))
+    #expect(reveals(newSource))
+    #expect(!AppModel.inventoryRequiresReview(newSource))
+    let ambiguous = AppModel.keyedChanges(
       from: assessor.classify([item(index: 0), item(index: 1)]),
-      to: assessor.classify([item(index: 0), item(index: 1), item(index: 2)]))))
+      to: assessor.classify([item(index: 0), item(index: 1), item(index: 2)]))
+    #expect(reveals(ambiguous))
+    #expect(AppModel.inventoryRequiresReview(ambiguous))
+  }
+
+  @Test("Ambiguous identity blocks recovery even alongside a returning Menu Bar source")
+  func ambiguityWinsOverRecoverableChanges() {
+    let assessor = IdentityAssessor()
+    let returning = AppModel.keyedChanges(from: [],
+      to: assessor.classify([item(bundle: "example.bar", pid: 50)]))
+    let ambiguous = AppModel.keyedChanges(
+      from: assessor.classify([item(index: 0), item(index: 1)]),
+      to: assessor.classify([item(index: 0), item(index: 1), item(index: 2)]))
+
+    for changes in [returning + ambiguous, ambiguous + returning] {
+      #expect(reveals(changes))
+      #expect(AppModel.inventoryRequiresReview(changes))
+    }
   }
 
   @Test("Ranked siblings reveal whenever their set or windows change")
@@ -92,6 +113,7 @@ struct AppModelInventoryTests {
     let survivor = assessor.classify([item(bundle: "example.pair", pid: 40, index: 1, window: 11)])
     let removal = AppModel.keyedChanges(from: pair, to: survivor)
     #expect(AppModel.inventoryRequiresReveal(removal, known: pairKeys.union(["example.pair"]), hidden: pairKeys, verifiedVisible: []))
+    #expect(AppModel.inventoryRequiresReview(removal))
 
     // A sibling is recreated with a newer window: ranks swap with no created/removed change.
     let recreated = assessor.classify([
@@ -101,6 +123,7 @@ struct AppModelInventoryTests {
     let swap = AppModel.keyedChanges(from: pair, to: recreated)
     #expect(swap.contains { $0.windowReplaced })
     #expect(AppModel.inventoryRequiresReveal(swap, known: pairKeys, hidden: pairKeys, verifiedVisible: []))
+    #expect(AppModel.inventoryRequiresReview(swap))
     #expect(!swap.contains { AppModel.rebindsProcess($0, hidden: pairKeys) })
 
     // From one item to two: the plain key disappears and two unknown keys appear.
@@ -121,6 +144,7 @@ struct AppModelInventoryTests {
     #expect(survivor[0].identity.persistentKey == "example.pair")
     let removal = AppModel.keyedChanges(from: pair, to: survivor)
     #expect(AppModel.inventoryRequiresReveal(removal, known: keys, hidden: keys, verifiedVisible: []))
+    #expect(AppModel.inventoryRequiresReview(removal))
 
     // A transient system sibling (Control Centre's camera indicator) leaving a
     // larger group changes no other key and must not reopen the section.

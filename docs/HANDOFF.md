@@ -1,16 +1,32 @@
-# TrayNook: build 19, first native run done on two displays
+# TrayNook: build 22, automatic inventory recovery
 
-Updated 2026-10-28 (evening). Build 18's measurements are in
+Updated 2026-10-29. Build 18's measurements are in
 [MVP_REPORT.md](MVP_REPORT.md); build 19's decisions are in
 [ADR 0009](adr/0009-hidden-pointer-sibling-keys-and-session-image-cache.md) and
 [ADR 0010](adr/0010-geometry-follows-the-active-menu-bar-row.md).
 
 ## Current state
 
-- Development app: `dist/TrayNook Dev.app`, **1.0.0 (19)**, signed with the
+- Development app: `dist/TrayNook Dev.app`, **1.0.0 (22)**, signed with the
   user's `TrayNook Dev` certificate (README "Development signing and
-  permissions"). Unit suite (72 tests), packaged smoke test, and both manual
-  harnesses compile.
+  permissions"). Unit suite (74 tests) and packaged smoke test pass.
+- **Idle recurrence (2026-10-29):** scan recovery succeeded three times in
+  build 21, then an inventory change at 20:31 revealed the section and
+  canceled recovery. The log truncated the triggering source's name; its
+  owning app is unconfirmed. Build 22 temporarily reveals new or returning
+  Menu Bar sources, then reapplies the saved layout through the existing
+  geometry checks. Ambiguous identities and sibling re-keying still stop
+  for review, including during recovery. Each actual trigger is now logged
+  separately without irrelevant order changes.
+- An incomplete/stale scan or interrupted input during automatic reapply
+  now retries after three seconds and a complete scan. Explicit Reveal,
+  identity review, permission/save failures, and placement errors stop
+  recovery. Native activation is never retried. The packaged model
+  regression failed before the fix and passes with build 22; prolonged
+  idle behavior remains for ongoing user observation.
+- Build 21 fixed promoted items staying visible when an already-open app
+  window dismissed the native menu. Native menu and cancellation regressions
+  passed, and the user confirmed the Macs Fan Control flow works.
 - **Verified on device (2026-10-28, notch MacBook + external display):**
   launch → automatic layout → two Command-drags (Macs Fan Control, Handy)
   → concealment with the separator at 2578 pt covering the wider display.
@@ -27,9 +43,9 @@ Updated 2026-10-28 (evening). Build 18's measurements are in
   menu bar is full"); on the wider external display they are visible and
   draggable, so arranging with a window active there works better.
 - Known false reveals fixed: Control Centre's camera indicator
-  (`#ax:...audiovideo`) appearing and disappearing; a single incomplete scan
-  (a launching app answers Accessibility late) now has to repeat three times
-  before the section reveals, and the scan warning names the slow apps.
+  (`#ax:...audiovideo`) appearing and disappearing; three incomplete scans
+  are tolerated before the fourth reveals the section, and the scan warning
+  names the slow apps. A subsequent complete scan restores the saved layout.
 - Spurious "unassigned or protected item is behind the separator" reveals
   came from one poll reading Control Centre's Now Playing item mid-relayout
   (its frame overlapped the separator edge, `isBehindBoundary` was nil). The
@@ -103,7 +119,7 @@ action. `.optionAll` is required to find offscreen windows.
 
 ```sh
 Scripts/test.sh
-TRAYNOOK_BUILD=19 Scripts/build-app.sh
+TRAYNOOK_DEV_SIGNING_IDENTITY='TrayNook Dev' TRAYNOOK_BUILD=22 Scripts/build-app.sh
 Scripts/smoke-test.sh
 Scripts/test-native-cancellation.sh --compile-only
 "dist/TrayNook Dev.app/Contents/MacOS/TrayNook" --diagnose
