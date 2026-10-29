@@ -87,6 +87,7 @@
 "Selected" = "Selected";
 "Show Items" = "Show Items";
 "Some apps did not respond. Items are revealed; retry when those apps respond." = "Some apps did not respond. Items are revealed; retry when those apps respond.";
+"Some apps did not respond. Items are revealed until a complete scan succeeds." = "Some apps did not respond. Items are revealed until a complete scan succeeds.";
 "System items and TrayNook's own items cannot be controlled." = "System items and TrayNook's own items cannot be controlled.";
 "The clipped item's native Accessibility action is unavailable. Free menu-bar space and try again." = "The clipped item's native Accessibility action is unavailable. Free menu-bar space and try again.";
 "The menu bar changed before the action. Try again." = "The menu bar changed before the action. Try again.";

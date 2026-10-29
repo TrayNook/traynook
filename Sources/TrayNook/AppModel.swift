@@ -68,6 +68,7 @@ final class AppModel: ObservableObject {
     }
     native.onExternalReveal = { [weak self] in
       self?.attemptedLaunchRestore = true
+      self?.reapplyNotBefore = nil
       self?.operationTask?.cancel()
     }
   }
@@ -226,7 +227,7 @@ final class AppModel: ObservableObject {
         try? await Task.sleep(for: .seconds(3))
         guard !Task.isCancelled, let self, self.scanGeneration == generation,
           self.scanning, self.concealed, !self.busy else { return }
-        self.reveal(cancelLaunchRestore: false)
+        self.revealForInventoryRecovery()
         self.message = L("Discovery is taking too long. Items are revealed until a fresh scan completes.")
         modelLog.error("revealed: discovery exceeded 3 s")
       }
@@ -237,10 +238,9 @@ final class AppModel: ObservableObject {
       guard !Task.isCancelled, let self else { return }
       self.accept(snapshot)
       self.scanning = false
-      if let notBefore = self.reapplyNotBefore, Date() >= notBefore, self.canEdit, !self.concealed {
-        self.reapplyNotBefore = nil
-        modelLog.notice("re-applying the saved layout after an environment change")
-        self.applySavedLayout()
+      if self.takeLayoutRecovery() {
+        modelLog.notice("re-applying the saved layout after a temporary reveal")
+        self.applySavedLayout(recovering: true)
       } else if !self.attemptedLaunchRestore && self.canEdit {
         self.attemptedLaunchRestore = true
         if self.layout.items.contains(where: { $0.placement != .menuBar }) {
@@ -256,45 +256,17 @@ final class AppModel: ObservableObject {
 
   func accept(_ snapshot: InventorySnapshot) {
     native.noteInventory(snapshot)
-    let wasGranted = permissionGranted
     let firstSnapshot = !hasAcceptedSnapshot
     hasAcceptedSnapshot = true
     loginEnabled = SMAppService.mainApp.status == .enabled
     screenRecordingGranted = ProxyImageCapture.isAuthorized
     concealed = native.isConcealed
-    permissionGranted = snapshot.permission == .granted
-    scanComplete = snapshot.completeness == .complete
-    // One app answering Accessibility late (a launching app, a busy main
-    // thread) makes a scan incomplete every few minutes on a crowded bar.
-    // Nothing moved, so the section stays hidden through a few such scans;
-    // the next complete scan diffs against the last complete one.
-    if permissionGranted, !scanComplete, concealed, !busy, incompleteScans < 3 {
-      incompleteScans += 1
-      modelLog.notice("incomplete scan \(self.incompleteScans) of 3 while concealed: \(snapshot.warnings.joined(separator: " | "), privacy: .public)")
-      return
-    }
-    incompleteScans = 0
-    guard permissionGranted, scanComplete else {
-      // A preparation error must reach the operation's completion UI. Only an
-      // external reveal cancels that task; failing its own scan is an error.
-      if busy { native.reveal(); concealed = false }
-      else { reveal(cancelLaunchRestore: false) }
-      modelLog.error("revealed: scan permission=\(snapshot.permission.rawValue, privacy: .public) completeness=\(snapshot.completeness.rawValue, privacy: .public) warnings=\(snapshot.warnings.joined(separator: " | "), privacy: .public)")
-      guard !recoveryRequired else { return }
-      if !permissionGranted {
-        if firstSnapshot || wasGranted { selectedTab = 1; modelLog.notice("settings: accessibility not granted (first=\(firstSnapshot))"); showSettings?() }
-        message = L("Grant Accessibility to discover and organize menu-bar items.")
-      } else {
-        message = L("Some apps did not respond. Items are revealed; retry when those apps respond.")
-      }
-      return
-    }
-    if !wasGranted && !recoveryRequired { selectedTab = 0; message = nil }
+    guard acceptScanStatus(snapshot, firstSnapshot: firstSnapshot) else { return }
     let observed = snapshot.items.filter { $0.observation.bundleIdentifier != ownBundle }
     // ponytail: polling diff. A restarted or relaunched known source keeps the
     // section hidden and just rebinds its process; only an unknown bundle or an
     // ambiguous group change reveals. Add AX observers only if idle cost demands.
-    if concealed {
+    if concealed || reapplyNotBefore != nil {
       let changes = Self.keyedChanges(from: previousItems, to: observed)
       let known = Set(layout.items.map(\.id))
       let hidden = Set(layout.items.filter { $0.placement != .menuBar }.map(\.id))
@@ -353,6 +325,41 @@ final class AppModel: ObservableObject {
     } else {
       unsafeScans = 0
     }
+  }
+
+  private func acceptScanStatus(_ snapshot: InventorySnapshot, firstSnapshot: Bool = false) -> Bool {
+    let wasGranted = permissionGranted
+    permissionGranted = snapshot.permission == .granted
+    scanComplete = snapshot.completeness == .complete
+    // One app answering Accessibility late (a launching app, a busy main
+    // thread) makes a scan incomplete every few minutes on a crowded bar.
+    // Nothing moved, so the section stays hidden through a few such scans;
+    // the next complete scan diffs against the last complete one.
+    if permissionGranted, !scanComplete, concealed, !busy, incompleteScans < 3 {
+      incompleteScans += 1
+      modelLog.notice("incomplete scan \(self.incompleteScans) of 3 while concealed: \(snapshot.warnings.joined(separator: " | "), privacy: .public)")
+      return false
+    }
+    incompleteScans = 0
+    guard permissionGranted, scanComplete else {
+      // A preparation error must reach the operation's completion UI. Only an
+      // external reveal cancels that task; failing its own scan is an error.
+      if busy { native.reveal(); concealed = false }
+      else { revealForInventoryRecovery() }
+      modelLog.error("revealed: scan permission=\(snapshot.permission.rawValue, privacy: .public) completeness=\(snapshot.completeness.rawValue, privacy: .public) warnings=\(snapshot.warnings.joined(separator: " | "), privacy: .public)")
+      guard !recoveryRequired else { return false }
+      if !permissionGranted {
+        if firstSnapshot || wasGranted { selectedTab = 1; modelLog.notice("settings: accessibility not granted (first=\(firstSnapshot))"); showSettings?() }
+        message = L("Grant Accessibility to discover and organize menu-bar items.")
+      } else {
+        message = reapplyNotBefore != nil
+          ? L("Some apps did not respond. Items are revealed until a complete scan succeeds.")
+          : L("Some apps did not respond. Items are revealed; retry when those apps respond.")
+      }
+      return false
+    }
+    if !wasGranted && !recoveryRequired { selectedTab = 0; message = nil }
+    return true
   }
 
   /// An inventory change together with the persistent key it concerns.
@@ -429,8 +436,24 @@ final class AppModel: ObservableObject {
     }
   }
 
+  private func takeLayoutRecovery(now: Date = Date()) -> Bool {
+    guard let notBefore = reapplyNotBefore, now >= notBefore, canEdit, !concealed else { return false }
+    reapplyNotBefore = nil
+    return true
+  }
+
+  private func revealForInventoryRecovery() {
+    let shouldRecover = concealed && layout.items.contains { $0.placement != .menuBar }
+    reveal(cancelLaunchRestore: false)
+    // A transient scan failure must not permanently turn off the saved layout.
+    if shouldRecover { reapplyNotBefore = Date() }
+  }
+
   func reveal(cancelLaunchRestore: Bool = true) {
-    if cancelLaunchRestore { attemptedLaunchRestore = true }
+    if cancelLaunchRestore {
+      attemptedLaunchRestore = true
+      reapplyNotBefore = nil
+    }
     operationTask?.cancel(); native.reveal(); concealed = false
   }
 
@@ -474,11 +497,17 @@ final class AppModel: ObservableObject {
     applySavedLayout(restoringToMenuBar: placement == .menuBar ? key : nil)
   }
 
-  func applySavedLayout(restoringToMenuBar key: String? = nil) {
+  func applySavedLayout(restoringToMenuBar key: String? = nil, recovering: Bool = false) {
     guard canEdit else { return }
     attemptedLaunchRestore = true
     message = L("Applying placements…")
-    runOperation { try await self.applyAndConceal(restoringToMenuBar: key) }
+    runOperation {
+      do { try await self.applyAndConceal(restoringToMenuBar: key) }
+      catch NativeMenuActionError.inputNotIdle {
+        if recovering && !Task.isCancelled { self.reapplyNotBefore = Date().addingTimeInterval(3) }
+        throw NativeMenuActionError.inputNotIdle
+      }
+    }
   }
 
   private func freshOperationInventory() async throws {
@@ -493,6 +522,7 @@ final class AppModel: ObservableObject {
   }
 
   private func applyAndConceal(restoringToMenuBar key: String?) async throws {
+    reapplyNotBefore = nil
     try await native.prepareLayout(keepingVisible: Set(layout.items.filter { $0.placement == .menuBar }.map(\.id)))
     try await freshOperationInventory()
     if let key, let item = liveItem(key), native.isClipped(item.observation) {
@@ -746,7 +776,53 @@ final class AppModel: ObservableObject {
     navigation.accept(denied)
     guard navigation.selectedTab == 2, !navigation.attemptedLaunchRestore else { return false }
     navigation.reveal()
-    return navigation.attemptedLaunchRestore
+    guard navigation.attemptedLaunchRestore else { return false }
+    let recovering = AppModel(native: native, store: nil)
+    recovering.layout.items = [SavedItem(id: "example.fixture", placement: .dropdown)]
+    recovering.concealed = true
+    let incomplete = InventorySnapshot(capturedAt: Date(), permission: .granted, completeness: .incomplete,
+      items: [], warnings: [], metrics: ScanMetrics(durationMilliseconds: 0, inspectedApplicationCount: 0, sourceItemCount: 0))
+    for _ in 0..<3 {
+      guard !recovering.acceptScanStatus(incomplete), recovering.concealed,
+        recovering.reapplyNotBefore == nil else { return false }
+    }
+    guard !recovering.acceptScanStatus(incomplete), !recovering.concealed,
+      let retry = recovering.reapplyNotBefore,
+      !recovering.takeLayoutRecovery(now: .distantFuture) else {
+      fputs("TRAYNOOK_INVENTORY_RECOVERY_NOT_SCHEDULED\n", stderr)
+      return false
+    }
+    guard !recovering.acceptScanStatus(incomplete), recovering.reapplyNotBefore == retry else { return false }
+    let complete = InventorySnapshot(capturedAt: Date(), permission: .granted, completeness: .complete,
+      items: [], warnings: [], metrics: ScanMetrics(durationMilliseconds: 0, inspectedApplicationCount: 0, sourceItemCount: 0))
+    guard recovering.acceptScanStatus(complete),
+      !recovering.takeLayoutRecovery(now: retry.addingTimeInterval(-1)),
+      recovering.takeLayoutRecovery(now: retry),
+      !recovering.takeLayoutRecovery(now: .distantFuture) else { return false }
+    recovering.environmentChanged("smoke check")
+    recovering.reveal()
+    guard recovering.reapplyNotBefore == nil else { return false }
+    recovering.environmentChanged("smoke check")
+    native.onExternalReveal?()
+    guard recovering.reapplyNotBefore == nil else { return false }
+
+    // A sibling recreated during the outage must still require identity review.
+    func siblings(firstWindow: UInt32) -> [ClassifiedSourceItem] {
+      IdentityAssessor().classify([firstWindow, 2].enumerated().map { index, window in
+        RawSourceItemObservation(runtimeID: "10:\(index)", processIdentifier: 10,
+          bundleIdentifier: "example.pair", applicationName: "Fixture", role: "AXMenuBarItem",
+          frame: ItemFrame(x: 1100 + Double(index) * 24, y: 0, width: 24, height: 24), actions: ["AXPress"],
+          metadata: LiveAccessibilityMetadata(), observedOrder: index, statusWindowIdentifier: window)
+      })
+    }
+    recovering.layout.items = [SavedItem(id: "example.pair#w0", placement: .dropdown),
+      SavedItem(id: "example.pair#w1", placement: .alwaysHidden)]
+    recovering.previousItems = siblings(firstWindow: 1)
+    recovering.reapplyNotBefore = .distantPast
+    recovering.accept(InventorySnapshot(capturedAt: Date(), permission: .granted, completeness: .complete,
+      items: siblings(firstWindow: 3), warnings: [],
+      metrics: ScanMetrics(durationMilliseconds: 0, inspectedApplicationCount: 0, sourceItemCount: 2)))
+    return recovering.reapplyNotBefore == nil
   }
 }
 

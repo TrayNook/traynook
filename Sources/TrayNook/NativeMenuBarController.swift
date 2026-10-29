@@ -1299,7 +1299,7 @@ final class NativeMenuBarController: NSObject {
   }
 
   @objc private func separatorClicked() { reveal(); onExternalReveal?() }
-  @objc private func environmentChanged(_ notification: Notification) { reveal(); onExternalReveal?() }
+  @objc private func environmentChanged(_ notification: Notification) { reveal() }
 }
 
 /// Short-lived public event taps route only our tagged move events. Unrelated

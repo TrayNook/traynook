@@ -47,6 +47,8 @@ preserves the hidden section and reports the problem; it does not silently revea
 all icons. Custom panels without menu lifecycle events can leave the selected
 source visible until the next launcher click. Unrecognized windows, changed
 inventory, or display changes can still trigger conservative recovery.
+Repeated Accessibility scan failures temporarily reveal items; the saved layout
+resumes after a complete scan unless identities changed or you chose Show Items.
 
 Screen Recording is optional: with it, each proxy shows the item's real menu-bar
 icon as last seen while visible (public capture cannot read offscreen windows);
