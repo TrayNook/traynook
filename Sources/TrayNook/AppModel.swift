@@ -778,6 +778,10 @@ final class AppModel: ObservableObject {
   static func verifyRecoveryBehavior(native: NativeMenuBarController) -> Bool {
     let failing = AppModel(native: native,
       store: LayoutStore(url: URL(fileURLWithPath: "/dev/null/traynook-layout.json")))
+    // Loading an invalid parent is already a recovery error. Clear it here
+    // so this check exercises a failed write rather than the load guard.
+    failing.recoveryRequired = false
+    failing.message = nil
     failing.layout.items = [SavedItem(id: "example.fixture", placement: .dropdown)]
     failing.restoreAll()
     let saveError = L("Could not save layout. Check available disk space and folder permissions.")

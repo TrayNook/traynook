@@ -54,8 +54,15 @@ struct LayoutStore {
   let url: URL
 
   func load() throws -> SavedLayout {
-    guard FileManager.default.fileExists(atPath: url.path) else { return SavedLayout() }
-    return try JSONDecoder().decode(SavedLayout.self, from: Data(contentsOf: url)).validated()
+    // fileExists also returns false for inaccessible or invalid parent paths.
+    // Only an absent file may start a new layout.
+    let data: Data
+    do {
+      data = try Data(contentsOf: url)
+    } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
+      return SavedLayout()
+    }
+    return try JSONDecoder().decode(SavedLayout.self, from: data).validated()
   }
 
   func save(_ layout: SavedLayout) throws {

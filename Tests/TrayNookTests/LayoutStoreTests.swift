@@ -1,10 +1,51 @@
 import Foundation
+import Darwin
 import Testing
 
 @testable import TrayNook
 
 @Suite("Saved layout")
 struct LayoutStoreTests {
+  @Test("A missing layout defaults without creating a file")
+  func missingLayout() throws {
+    try withStore { store in
+      let loaded = try store.load()
+      #expect(loaded == SavedLayout())
+      #expect(!FileManager.default.fileExists(atPath: store.url.deletingLastPathComponent().path))
+    }
+  }
+
+  @Test("A regular file blocking the layout directory is a read error")
+  func invalidParent() throws {
+    try withStore { store in
+      let parent = store.url.deletingLastPathComponent()
+      try FileManager.default.createDirectory(at: parent.deletingLastPathComponent(), withIntermediateDirectories: true)
+      let original = Data("existing parent file".utf8)
+      try original.write(to: parent)
+
+      #expect(throws: (any Error).self) { try store.load() }
+      #expect(try Data(contentsOf: parent) == original)
+    }
+  }
+
+  @Test("An inaccessible layout directory cannot be mistaken for a new layout", .enabled(if: geteuid() != 0))
+  func inaccessibleParent() throws {
+    try withStore { store in
+      let original = SavedLayout(items: [SavedItem(id: "example.original", placement: .dropdown)])
+      try store.save(original)
+      let originalData = try Data(contentsOf: store.url)
+      let parent = store.url.deletingLastPathComponent()
+      defer { try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: parent.path) }
+      try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: parent.path)
+
+      #expect(throws: (any Error).self) { try store.load() }
+
+      try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: parent.path)
+      #expect(try Data(contentsOf: store.url) == originalData)
+      #expect(try store.load() == original)
+    }
+  }
+
   @Test("Round trip persists only bundle identity, placement, and preferences")
   func roundTrip() throws {
     try withStore { store in
