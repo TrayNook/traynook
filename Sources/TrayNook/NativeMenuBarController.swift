@@ -100,9 +100,7 @@ final class NativeMenuBarController: NSObject {
     if !smokeTest {
       Self.restorePosition(of: separator, name: "TrayNook.HiddenBoundary", fallback: initialBoundaryPosition)
     }
-    separator.button?.title = "│"
-    separator.button?.alignment = .right
-    separator.button?.toolTip = L("TrayNook separator — Command-drag left of the tray icon")
+    // Keep the concealment boundary's geometry without drawing a menu-bar divider.
     separator.button?.setAccessibilityLabel(L("TrayNook hidden section separator"))
     separator.button?.target = self
     separator.button?.action = #selector(separatorClicked)
@@ -123,14 +121,14 @@ final class NativeMenuBarController: NSObject {
       let edge = ItemFrame(x: environment.boundary.maxX - 2, y: environment.boundary.y,
         width: 2, height: environment.boundary.height)
       if !environment.safeFrame.contains(environment.launcher) || !environment.safeFrame.contains(edge) {
-        return L("There is not enough visible menu-bar space for TrayNook's controls. Temporarily quit a menu-bar app to free space, then Command-drag the │ separator to the left of TrayNook's tray icon.")
+        return L("There is not enough visible menu-bar space for TrayNook's controls. Temporarily quit a menu-bar app to free space, then choose Apply Saved Layout.")
       }
     }
     guard let environment = environment(),
       Self.launcherIsSafe(environment.launcher, boundary: environment.boundary,
         safeFrame: environment.safeFrame, expanded: isConcealed)
     else {
-      return L("Hold Command and drag the │ separator to the left of the TrayNook tray icon. Keep both on the visible right side of the menu bar.")
+      return L("Choose Apply Saved Layout to position TrayNook's controls automatically. Keep the tray icon on the visible right side of the menu bar.")
     }
     return nil
   }
@@ -257,7 +255,7 @@ final class NativeMenuBarController: NSObject {
         }
         guard placed else {
           let names = Set(blocking).sorted().joined(separator: ", ")
-          throw MenuBarFailure(String(format: L("macOS could not place the separator to the left of %@. Command-drag them to the right of the │ separator."), names))
+          throw MenuBarFailure(String(format: L("macOS could not keep %@ visible. Command-drag these items to the right of TrayNook's tray icon, then choose Apply Saved Layout."), names))
         }
       }
     } catch {
@@ -344,7 +342,7 @@ final class NativeMenuBarController: NSObject {
           occlusionFrame: before.occlusionFrame) {
           nativeLog.error("conceal blocked: \(item.identity.persistentKey ?? item.observation.runtimeID, privacy: .public) frame=\(String(describing: item.observation.frame), privacy: .public) onscreen=\(String(describing: item.observation.isOnscreen), privacy: .public) boundary=\(String(describing: before.boundary), privacy: .public)")
         }
-        throw MenuBarFailure(L("A new, protected, or unassigned item is behind the separator. Keep it on the right before hiding."))
+        throw MenuBarFailure(L("A new, protected, or unassigned item would be hidden. Choose Apply Saved Layout to keep it visible before hiding."))
       }
       try requireIdleInput(checkingKeys: false)
       guard try checkedEnvironment() == before else {
@@ -807,7 +805,7 @@ final class NativeMenuBarController: NSObject {
       let events: [(CGEventType, CGPoint, Bool)]
       if let toHidden = movingToHidden {
         guard let alreadyHidden = Self.hiddenSide(frame, boundary: environment.boundary) else {
-          throw MenuBarFailure(L("This item's position overlaps the separator. Move it manually first."))
+          throw MenuBarFailure(L("This item's position overlaps the hidden section boundary. Command-drag it to the right of the tray icon, then retry."))
         }
         if alreadyHidden == toHidden { return }
         if toHidden {
@@ -843,7 +841,7 @@ final class NativeMenuBarController: NSObject {
         // dragged there is clipped. Clipped on the hidden side is success.
         let result = try await stableTarget(original, token: token, allowingClipped: toHidden)
         guard Self.hiddenSide(result.item.observation.frame!, boundary: result.environment.boundary) == toHidden else {
-          throw MenuBarFailure(L("macOS did not move this item across the separator. Hold Command and drag it manually, then refresh."))
+          throw MenuBarFailure(L("macOS did not move this item to its saved section. Command-drag it to the right of the tray icon, then retry."))
         }
       }
     } catch {

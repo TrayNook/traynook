@@ -1,7 +1,7 @@
 /* US English. Keep keys stable for community translations. */
 "A complete, fresh menu-bar inventory is unavailable. Refresh and try again." = "A complete, fresh menu-bar inventory is unavailable. Refresh and try again.";
 "A little room for your menu bar." = "A little room for your menu bar.";
-"A new, protected, or unassigned item is behind the separator. Keep it on the right before hiding." = "A new, protected, or unassigned item is behind the separator. Keep it on the right before hiding.";
+"A new, protected, or unassigned item would be hidden. Choose Apply Saved Layout to keep it visible before hiding." = "A new, protected, or unassigned item would be hidden. Choose Apply Saved Layout to keep it visible before hiding.";
 "Accessibility" = "Accessibility";
 "Add items to Dropdown in Settings." = "Add items to Dropdown in Settings.";
 "Add this whole app in Privacy & Security → Accessibility. After rebuilding an ad-hoc development app, you may need to remove the old entry and grant the new build. Then click Refresh." = "Add this whole app in Privacy & Security → Accessibility. After rebuilding an ad-hoc development app, you may need to remove the old entry and grant the new build. Then click Refresh.";
@@ -42,7 +42,7 @@
 "Hidden — available in dropdown" = "Hidden — available in dropdown";
 "Hidden" = "Hidden";
 "Hide Items" = "Hide Items";
-"Hold Command and drag the │ separator to the left of the TrayNook tray icon. Keep both on the visible right side of the menu bar." = "Hold Command and drag the │ separator to the left of the TrayNook tray icon. Keep both on the visible right side of the menu bar.";
+"Choose Apply Saved Layout to position TrayNook's controls automatically. Keep the tray icon on the visible right side of the menu bar." = "Choose Apply Saved Layout to position TrayNook's controls automatically. Keep the tray icon on the visible right side of the menu bar.";
 "Item geometry is unavailable." = "Item geometry is unavailable.";
 "This app stays visible while its panel is in use. Open TrayNook again to return it to the hidden section." = "This app stays visible while its panel is in use. Open TrayNook again to return it to the hidden section.";
 "LOCAL PREVIEW" = "LOCAL PREVIEW";
@@ -99,17 +99,16 @@
 "The menu-bar geometry is unavailable." = "The menu-bar geometry is unavailable.";
 "The native action did not confirm a response. Check the app before trying again." = "The native action did not confirm a response. Check the app before trying again.";
 "The settings button occupies the first slot. Rows wrap earlier on narrow displays." = "The settings button occupies the first slot. Rows wrap earlier on narrow displays.";
-"There is not enough visible menu-bar space for TrayNook's controls. Temporarily quit a menu-bar app to free space, then Command-drag the │ separator to the left of TrayNook's tray icon." = "There is not enough visible menu-bar space for TrayNook's controls. Temporarily quit a menu-bar app to free space, then Command-drag the │ separator to the left of TrayNook's tray icon.";
+"There is not enough visible menu-bar space for TrayNook's controls. Temporarily quit a menu-bar app to free space, then choose Apply Saved Layout." = "There is not enough visible menu-bar space for TrayNook's controls. Temporarily quit a menu-bar app to free space, then choose Apply Saved Layout.";
 "This clipped item does not provide a native secondary action. Use Open, or free menu-bar space first." = "This clipped item does not provide a native secondary action. Use Open, or free menu-bar space first.";
 "This deletes saved placements and order. All items will be revealed. Privacy permissions and Launch at Login are unchanged." = "This deletes saved placements and order. All items will be revealed. Privacy permissions and Launch at Login are unchanged.";
 "This item cannot be reached safely at its reported position." = "This item cannot be reached safely at its reported position.";
 "This item is unavailable, ambiguous, or outside the visible menu bar. Reveal it manually and refresh." = "This item is unavailable, ambiguous, or outside the visible menu bar. Reveal it manually and refresh.";
-"This item's position overlaps the separator. Move it manually first." = "This item's position overlaps the separator. Move it manually first.";
+"This item's position overlaps the hidden section boundary. Command-drag it to the right of the tray icon, then retry." = "This item's position overlaps the hidden section boundary. Command-drag it to the right of the tray icon, then retry.";
 "To uninstall, turn off Launch at Login, quit TrayNook, and move the app to Trash. Quit removes TrayNook’s separator and reveals items. You can remove its Accessibility entry in System Settings." = "To uninstall, turn off Launch at Login, quit TrayNook, and move the app to Trash. Quit removes TrayNook’s separator and reveals items. You can remove its Accessibility entry in System Settings.";
 "TrayNook Settings" = "TrayNook Settings";
 "TrayNook hidden section separator" = "TrayNook hidden section separator";
 "TrayNook needs Accessibility to identify menu-bar items, apply your chosen placements, and open items from the dropdown. Until permission is granted, it leaves your menu bar visible." = "TrayNook needs Accessibility to identify menu-bar items, apply your chosen placements, and open items from the dropdown. Until permission is granted, it leaves your menu bar visible.";
-"TrayNook separator — Command-drag left of the tray icon" = "TrayNook separator — Command-drag left of the tray icon";
 "TrayNook stays here" = "TrayNook stays here";
 "TrayNook stores bundle identities, sibling discriminators, placements, order, and row capacity locally. It makes no network requests and includes no analytics or updater." = "TrayNook stores bundle identities, sibling discriminators, placements, order, and row capacity locally. It makes no network requests and includes no analytics or updater.";
 "TrayNook — click for dropdown, right-click for controls" = "TrayNook — click for dropdown, right-click for controls";
@@ -117,9 +116,9 @@
 "Undo" = "Undo";
 "macOS could not create a pointer event." = "macOS could not create a pointer event.";
 "macOS could not hide this section while keeping TrayNook accessible. The section has been revealed." = "macOS could not hide this section while keeping TrayNook accessible. The section has been revealed.";
-"macOS could not place the separator to the left of %@. Command-drag them to the right of the │ separator." = "macOS could not place the separator to the left of %@. Command-drag them to the right of the │ separator.";
+"macOS could not keep %@ visible. Command-drag these items to the right of TrayNook's tray icon, then choose Apply Saved Layout." = "macOS could not keep %@ visible. Command-drag these items to the right of TrayNook's tray icon, then choose Apply Saved Layout.";
 "macOS could not prepare the pointer release." = "macOS could not prepare the pointer release.";
-"macOS did not move this item across the separator. Hold Command and drag it manually, then refresh." = "macOS did not move this item across the separator. Hold Command and drag it manually, then refresh.";
+"macOS did not move this item to its saved section. Command-drag it to the right of the tray icon, then retry." = "macOS did not move this item to its saved section. Command-drag it to the right of the tray icon, then retry.";
 "macOS has clipped this item. Free some menu-bar space, then retry moving it to Menu Bar." = "macOS has clipped this item. Free some menu-bar space, then retry moving it to Menu Bar.";
 /* Settings layout preview. */
 "Kept out of the menu bar and dropdown until you choose Show Items." = "Kept out of the menu bar and dropdown until you choose Show Items.";
