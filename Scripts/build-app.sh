@@ -29,6 +29,15 @@ export CLANG_MODULE_CACHE_PATH="$root/.build/ModuleCache"
 export SWIFTPM_MODULECACHE_OVERRIDE="$CLANG_MODULE_CACHE_PATH"
 mkdir -p "$CLANG_MODULE_CACHE_PATH" "$root/.build/cache" "$root/.build/config" "$root/.build/security" "$root/dist"
 app="$root/dist/$app_name.app"
+dev_signing_identity=${TRAYNOOK_DEV_SIGNING_IDENTITY:-}
+if [[ "$mode" == dev && -z "$dev_signing_identity" ]]; then
+    dev_signing_identity=$(/usr/bin/security find-identity -v -p codesigning |
+        /usr/bin/awk '/"TrayNook Dev"$/ { print $2; exit }') || dev_signing_identity=
+    if [[ -z "$dev_signing_identity" && -d "$app" ]]; then
+        echo "No TrayNook Dev signing identity is available. Allow keychain access or set TRAYNOOK_DEV_SIGNING_IDENTITY explicitly; refusing an ad-hoc replacement that would invalidate macOS permissions." >&2
+        exit 1
+    fi
+fi
 staging=$(mktemp -d "$root/dist/.bundle.XXXXXX")
 trap 'rm -rf "$staging"' EXIT
 contents="$staging/$app_name.app/Contents"
@@ -69,10 +78,10 @@ cp "$root/Support/AppIcon.icns" "$contents/Resources/AppIcon.icns"
 if [[ "$mode" == release ]]; then
     /usr/bin/codesign --force --sign "$TRAYNOOK_SIGNING_IDENTITY" --options runtime --timestamp "$staging/$app_name.app"
     /usr/bin/codesign --verify --strict -R='anchor apple generic and certificate leaf[field.1.2.840.113635.100.6.1.13] exists' "$staging/$app_name.app"
-elif [[ -n "${TRAYNOOK_DEV_SIGNING_IDENTITY:-}" ]]; then
+elif [[ -n "$dev_signing_identity" ]]; then
     # A self-signed code-signing certificate keeps macOS privacy grants across
     # rebuilds; ad-hoc signatures change with every build. See README.
-    /usr/bin/codesign --force --sign "$TRAYNOOK_DEV_SIGNING_IDENTITY" "$staging/$app_name.app"
+    /usr/bin/codesign --force --sign "$dev_signing_identity" "$staging/$app_name.app"
 else
     /usr/bin/codesign --force --sign - "$staging/$app_name.app"
 fi

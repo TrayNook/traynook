@@ -58,7 +58,8 @@ private struct MenuBarEnvironment: Equatable {
 final class NativeMenuBarController: NSObject {
   private let launcher: NSStatusItem
   private var separator: NSStatusItem?
-  private let compactWidth: CGFloat = 18
+  // Two points keep the drag target and safety edge usable without an empty icon slot.
+  private let compactWidth: CGFloat = 2
   private var generation = 0
   private var pendingRelease: CGEvent?
   /// Persistent identity key → process trusted to own that concealed item.

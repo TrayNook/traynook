@@ -103,6 +103,23 @@ struct NativeGeometryTests {
       safeFrame: safeFrame, expanded: false))
   }
 
+  @Test("A two-point invisible boundary preserves safe placement without an icon-sized gap")
+  func compactInvisibleBoundary() {
+    let compact = ItemFrame(x: 1238, y: 0, width: 2, height: 24)
+    let hidden = observation(bundle: "example.hidden", x: 1214)
+    #expect(NativeMenuBarController.launcherIsSafe(
+      launcher, boundary: compact, safeFrame: safeFrame, expanded: false))
+    #expect(NativeMenuBarController.hiddenSide(hidden.frame!, boundary: compact) == true)
+    #expect(NativeMenuBarController.hiddenSide(launcher, boundary: compact) == false)
+    #expect(NativeMenuBarController.hiddenSide(
+      ItemFrame(x: 1237, y: 0, width: 4, height: 24), boundary: compact) == nil)
+    let inventory = IdentityAssessor().classify([hidden])
+    #expect(NativeMenuBarController.canConceal(inventory, allowedKeys: ["example.hidden"],
+      boundary: compact, safeFrame: safeFrame))
+    #expect(!NativeMenuBarController.canConceal(inventory, allowedKeys: [],
+      boundary: compact, safeFrame: safeFrame))
+  }
+
   @Test("Expanded separator may extend offscreen only while its recovery edge remains visible")
   func expandedRecoveryEdge() {
     let expanded = ItemFrame(x: -218, y: 0, width: 1458, height: 24)
