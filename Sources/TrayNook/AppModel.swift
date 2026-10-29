@@ -15,6 +15,9 @@ final class AppModel: ObservableObject {
   @Published var scanComplete = false
   @Published var scanning = false
   @Published var busy = false
+  @Published private(set) var pendingPlacementKeys: Set<String> = []
+  private var placementOperationRunning = false
+  private var placementStatuses: [String: String] = [:]
   @Published var concealed = false
   @Published var message: String?
   @Published var recoveryRequired = false
@@ -77,6 +80,11 @@ final class AppModel: ObservableObject {
   }
 
   var canEdit: Bool { permissionGranted && scanComplete && !busy && !recoveryRequired }
+  func canEditPlacement(_ key: String) -> Bool {
+    permissionGranted && scanComplete && !recoveryRequired
+      && (!busy || (placementOperationRunning && operationTask?.isCancelled == false))
+      && !pendingPlacementKeys.contains(key)
+  }
   var ownBundle: String { Bundle.main.bundleIdentifier ?? "io.github.mahenzon.TrayNook.dev" }
   var dropdownItems: [ClassifiedSourceItem] {
     layout.items.filter { $0.placement == .dropdown }.compactMap { liveItem($0.id) }
@@ -183,6 +191,8 @@ final class AppModel: ObservableObject {
   }
 
   func status(for saved: SavedItem) -> String {
+    if placementOperationRunning, !pendingPlacementKeys.contains(saved.id),
+      let status = placementStatuses[saved.id] { return status }
     guard let item = liveItem(saved.id) else {
       let bundle = Self.bundle(ofKey: saved.id)
       if items.contains(where: { $0.observation.bundleIdentifier == bundle && $0.identity.persistentKey == nil }) {
@@ -501,16 +511,71 @@ final class AppModel: ObservableObject {
     }
     guard !concealed, canEdit else { dropdownShown = true; show(); return }
     runOperation(restoreSettingsFocus: false, completion: { self.dropdownShown = true; show() }) {
-      try await self.applyAndConceal(restoringToMenuBar: nil)
+      try await self.applyAndConceal(restoringToMenuBar: [])
     }
   }
 
   func setPlacement(_ key: String, _ placement: Placement) {
-    guard canEdit, let item = liveItem(key), isManageable(item) else { return }
+    guard canEditPlacement(key), let item = liveItem(key), isManageable(item),
+      let previous = layout.items.first(where: { $0.id == key })?.placement,
+      previous != placement else { return }
     var next = layout
     next.place(key, in: placement)
     guard replaceLayout(next, undoable: true) else { return }
-    applySavedLayout(restoringToMenuBar: placement == .menuBar ? key : nil)
+    applyPlacementChange(key, from: previous, item: item)
+  }
+
+  func retryPlacement(_ key: String) {
+    guard canEditPlacement(key), let item = liveItem(key), isManageable(item) else { return }
+    enqueuePlacement(key)
+  }
+
+  private func applyPlacementChange(_ key: String, from previous: Placement, item: ClassifiedSourceItem) {
+    // Both hidden lanes share one native section; only the proxy list changes.
+    if previous != .menuBar, layout.items.first(where: { $0.id == key })?.placement != .menuBar,
+      concealed, !native.hasPendingActivation, native.isBehindBoundary(item) == true {
+      if layout.items.first(where: { $0.id == key })?.placement == .alwaysHidden {
+        proxyImages.removeValue(forKey: key)
+      }
+      return
+    }
+    enqueuePlacement(key)
+  }
+
+  private func enqueuePlacement(_ key: String) {
+    if !placementOperationRunning {
+      placementStatuses = Dictionary(uniqueKeysWithValues: layout.items.map { ($0.id, status(for: $0)) })
+    }
+    pendingPlacementKeys.insert(key)
+    guard !placementOperationRunning else { return }
+    placementOperationRunning = true
+    attemptedLaunchRestore = true
+    message = nil
+    runOperation(deactivateApp: false) {
+      defer {
+        self.placementOperationRunning = false
+        self.pendingPlacementKeys.removeAll()
+        self.placementStatuses.removeAll()
+      }
+      while !self.pendingPlacementKeys.isEmpty {
+        try Task.checkCancellation()
+        let keys = self.pendingPlacementKeys
+        let requested = self.layout
+        let restoring = Set(requested.items.filter { keys.contains($0.id) && $0.placement == .menuBar }.map(\.id))
+        do { try await self.applyAndConceal(restoringToMenuBar: restoring, layout: requested) }
+        catch where Self.shouldRetryPlacement(after: error) {
+          // Editing another picker can interrupt the drag; keep every request.
+          try await Task.sleep(for: .milliseconds(300))
+          continue
+        }
+        self.pendingPlacementKeys.subtract(keys)
+      }
+    }
+  }
+
+  static func shouldRetryPlacement(after error: Error) -> Bool {
+    guard let error = error as? NativeMenuActionError else { return false }
+    return [.inputNotIdle, .inputInterrupted, .placementInterrupted].contains(error)
   }
 
   func applySavedLayout(restoringToMenuBar key: String? = nil, recovering: Bool = false) {
@@ -520,7 +585,7 @@ final class AppModel: ObservableObject {
     runOperation {
       self.recoveringLayout = recovering
       defer { self.recoveringLayout = false }
-      do { try await self.applyAndConceal(restoringToMenuBar: key) }
+      do { try await self.applyAndConceal(restoringToMenuBar: Set(key.map { [$0] } ?? [])) }
       catch {
         self.retryLayoutRecovery(after: error, recovering: recovering)
         throw error
@@ -551,12 +616,15 @@ final class AppModel: ObservableObject {
     }
   }
 
-  private func applyAndConceal(restoringToMenuBar key: String?) async throws {
+  private func applyAndConceal(restoringToMenuBar keys: Set<String>, layout requested: SavedLayout? = nil) async throws {
+    let layout = requested ?? self.layout
     reapplyNotBefore = nil
     try await native.prepareLayout(keepingVisible: Set(layout.items.filter { $0.placement == .menuBar }.map(\.id)))
     try await freshOperationInventory()
-    if let key, let item = liveItem(key), native.isClipped(item.observation) {
-      throw AppError.message("\(name(for: key)): \(L("macOS has clipped this item. Free some menu-bar space, then retry moving it to Menu Bar."))")
+    for key in keys {
+      if let item = liveItem(key), native.isClipped(item.observation) {
+        throw AppError.message("\(name(for: key)): \(L("macOS has clipped this item. Free some menu-bar space, then retry moving it to Menu Bar."))")
+      }
     }
     let placements = layout.items.filter { $0.placement != .menuBar }
       + layout.items.filter { $0.placement == .menuBar }
@@ -641,7 +709,7 @@ final class AppModel: ObservableObject {
     panelWatch = nil
   }
 
-  private func runOperation(restoreSettingsFocus: Bool = true, revealOnFailure: Bool = true,
+  private func runOperation(restoreSettingsFocus: Bool = true, revealOnFailure: Bool = true, deactivateApp: Bool = true,
     completion: (@MainActor () -> Void)? = nil,
     _ operation: @escaping @MainActor () async throws -> Void) {
     guard !busy else { return }
@@ -649,7 +717,7 @@ final class AppModel: ObservableObject {
     scanTask?.cancel(); scanning = false
     closeDropdown?()
     let wasActive = NSApp.isActive
-    NSApp.deactivate()
+    if deactivateApp { NSApp.deactivate() }
     operationTask = Task {
       do { try await operation() }
       catch is CancellationError { if revealOnFailure { native.reveal() } }
@@ -664,7 +732,7 @@ final class AppModel: ObservableObject {
       concealed = native.isConcealed
       busy = false
       operationTask = nil
-      if restoreSettingsFocus && wasActive { NSApp.activate(ignoringOtherApps: true) }
+      if deactivateApp && restoreSettingsFocus && wasActive { NSApp.activate(ignoringOtherApps: true) }
       refresh()
       if !Task.isCancelled { completion?() }
       if let queued = queuedDropdown {
@@ -717,7 +785,7 @@ final class AppModel: ObservableObject {
     guard next != layout else { return true }
     guard replaceLayout(next, undoable: true) else { return false }
     if previousPlacement != placement {
-      applySavedLayout(restoringToMenuBar: placement == .menuBar ? key : nil)
+      applyPlacementChange(key, from: previousPlacement, item: source)
     }
     return true
   }
@@ -965,6 +1033,15 @@ final class AppModel: ObservableObject {
       SavedItem(id: keys[3]),
     ])
     editing.layout = original
+    var dropdownClosed = false
+    editing.closeDropdown = { dropdownClosed = true }
+    editing.setPlacement(keys[0], .dropdown)
+    guard editing.layout == original, !editing.busy, !editing.undoManager.canUndo,
+      !dropdownClosed else {
+      editing.operationTask?.cancel()
+      fputs("TRAYNOOK_PLACEMENT_NOOP_REFRESHED\n", stderr)
+      return false
+    }
     guard !editing.commitPreviewMove(keys[3], to: .dropdown),
       !editing.commitPreviewMove("example.unknown", to: .dropdown),
       !editing.commitPreviewMove(keys[0], to: .dropdown, before: "example.missing"),
@@ -985,7 +1062,30 @@ final class AppModel: ObservableObject {
       editing.undoManager.canUndo, !editing.undoManager.canRedo else { return false }
     editing.busy = true
     let before = editing.layout
-    return !editing.commitPreviewMove(keys[0], to: .dropdown, before: keys[2]) && editing.layout == before
+    guard !editing.commitPreviewMove(keys[0], to: .dropdown, before: keys[2]),
+      editing.layout == before else { return false }
+    editing.busy = false
+    editing.undoManager.beginUndoGrouping()
+    defer { editing.undoManager.endUndoGrouping() }
+    dropdownClosed = false
+    editing.setPlacement(keys[0], .menuBar)
+    defer { editing.operationTask?.cancel() }
+    guard editing.busy, dropdownClosed, editing.message == nil,
+      !editing.canEdit, !editing.canEditPlacement(keys[0]), editing.canEditPlacement(keys[1]),
+      editing.pendingPlacementKeys == [keys[0]] else { return false }
+    // Another row remains usable, and joins the same serialized operation.
+    dropdownClosed = false
+    editing.setPlacement(keys[1], .alwaysHidden)
+    guard editing.pendingPlacementKeys == [keys[0], keys[1]], !dropdownClosed,
+      !editing.canEditPlacement(keys[1]), editing.canEditPlacement(keys[2]),
+      editing.layout.items.first(where: { $0.id == keys[0] })?.placement == .menuBar,
+      editing.layout.items.first(where: { $0.id == keys[1] })?.placement == .alwaysHidden else { return false }
+    let queued = editing.layout
+    editing.setPlacement(keys[0], .dropdown)
+    guard editing.layout == queued, editing.pendingPlacementKeys == [keys[0], keys[1]] else { return false }
+    editing.reveal()
+    editing.setPlacement(keys[2], .menuBar)
+    return !editing.canEditPlacement(keys[2]) && editing.layout == queued
   }
 }
 

@@ -21,6 +21,7 @@ enum NativeMenuActionError: LocalizedError, Equatable {
   case responseTimedOut
   case inputNotIdle
   case inputInterrupted
+  case placementInterrupted
   case inventoryUnavailable
 
   var errorDescription: String? {
@@ -31,6 +32,8 @@ enum NativeMenuActionError: LocalizedError, Equatable {
       L("Release the mouse and keyboard, stop moving the pointer, then try again.")
     case .inputInterrupted:
       L("Physical input interrupted the action. The selected item can be restored without revealing the section.")
+    case .placementInterrupted:
+      L("Physical input interrupted the action. The section remains revealed.")
     case .inventoryUnavailable:
       L("A complete, fresh menu-bar inventory is unavailable. Refresh and try again.")
     }
@@ -782,7 +785,7 @@ final class NativeMenuBarController: NSObject {
       reveal()
       didReveal = true
       token = generation
-      NSApp.deactivate()
+      if movingToHidden == nil { NSApp.deactivate() }
       try await pause(0.25, token: token)
       let prepared = try await stableTarget(original, token: token, allowingClipped: movingToHidden == nil)
       let target = prepared.item
@@ -1049,7 +1052,7 @@ final class NativeMenuBarController: NSObject {
       try checkOperation(token)
       guard Self.physicalInputIsIdle(recentMovement: false),
         let current = CGEvent(source: nil)?.location, Self.near(current, lastPoint)
-      else { throw MenuBarFailure(L("Physical input interrupted the action. The section remains revealed.")) }
+      else { throw NativeMenuActionError.placementInterrupted }
       if event.type == .leftMouseDown || event.type == .rightMouseDown { pendingRelease = release }
       event.post(tap: .cgSessionEventTap)
       if event.type == .leftMouseUp || event.type == .rightMouseUp { pendingRelease = nil }

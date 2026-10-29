@@ -33,6 +33,7 @@ struct SettingsView: View {
   private func reorderHandle(for key: String, in zone: Placement) -> some View {
     Image(systemName: "line.3.horizontal").foregroundStyle(.secondary)
       .frame(width: 22, height: 26).contentShape(Rectangle())
+      .allowsHitTesting(model.canEdit)
       .help(L("Drag to reorder"))
       .gesture(DragGesture(minimumDistance: 2, coordinateSpace: .global)
         .onChanged { value in dragChanged(key, in: zone, translation: value.translation.height) }
@@ -222,17 +223,19 @@ struct SettingsView: View {
         Picker(L("Placement"), selection: Binding(get: { saved.placement }, set: { model.setPlacement(saved.id, $0) })) {
           ForEach(Placement.allCases) { Text($0.title).tag($0) }
         }.labelsHidden().frame(width: 145).accessibilityLabel(L("Placement") + ": " + model.name(for: saved.id))
-        if model.native.isBehindBoundary(live) != (saved.placement != .menuBar) {
-          Button(L("Retry")) { model.setPlacement(saved.id, saved.placement) }
+        if model.pendingPlacementKeys.contains(saved.id) {
+          ProgressView().controlSize(.small)
+        } else if !model.busy && model.native.isBehindBoundary(live) != (saved.placement != .menuBar) {
+          Button(L("Retry")) { model.retryPlacement(saved.id) }
         }
       } else if model.liveItem(saved.id) == nil {
-        Button(L("Forget")) { model.forget(saved.id) }
+        Button(L("Forget")) { model.forget(saved.id) }.disabled(model.busy)
       } else {
         Image(systemName: "lock").accessibilityLabel(L("Protected — kept visible"))
       }
       handle
     }
-    .disabled(!model.canEdit)
+    .disabled(!model.canEditPlacement(saved.id))
     .padding(.vertical, 3)
   }
 

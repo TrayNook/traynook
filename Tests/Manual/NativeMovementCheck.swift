@@ -16,6 +16,11 @@ private final class MovementCheck: NSObject, NSApplicationDelegate, NSMenuDelega
   private var eventsURL: URL { directory.appendingPathComponent("events.txt") }
   private var controlURL: URL { directory.appendingPathComponent("control.txt") }
   private let fixtureBundle = "io.github.mahenzon.TrayNook.NativeCheck.Fixture"
+  private var lostPlacementFocus = false
+
+  @objc private func placementResignedActive(_ notification: Notification) {
+    lostPlacementFocus = true
+  }
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     if CommandLine.arguments.contains("--source") {
@@ -119,10 +124,7 @@ private final class MovementCheck: NSObject, NSApplicationDelegate, NSMenuDelega
         try await checkActivationDuringPointerMotion(source, native: native)
         print("PASS: exactly one AX primary action during continuous pointer-motion events")
       } else {
-        try await native.move(source, toHidden: true)
-        print("PASS: move fixture behind the boundary")
-        try await native.move(source, toHidden: false)
-        print("PASS: move fixture to the visible section")
+        try await checkPlacementFocus(source, native: native)
         try await checkActivation(source, native: native, secondary: false)
         print("PASS: primary native menu and observed dismissal")
         try await checkActivation(source, native: native, secondary: true)
@@ -144,6 +146,32 @@ private final class MovementCheck: NSObject, NSApplicationDelegate, NSMenuDelega
     } catch {
       print("FAILED: \(error.localizedDescription)")
       return 1
+    }
+  }
+
+  private func checkPlacementFocus(_ source: ClassifiedSourceItem,
+    native: NativeMenuBarController) async throws {
+    let settings = NSWindow(contentRect: NSRect(x: 100, y: 100, width: 400, height: 240),
+      styleMask: [.titled], backing: .buffered, defer: false)
+    settings.title = "TrayNook placement focus check"
+    settings.makeKeyAndOrderFront(nil)
+    NSApp.activate(ignoringOtherApps: true)
+    defer { settings.orderOut(nil) }
+    try await Task.sleep(for: .milliseconds(300))
+    guard NSApp.isActive, NSApp.keyWindow === settings else {
+      throw CheckFailure("The check could not activate its Settings window.")
+    }
+    lostPlacementFocus = false
+    NotificationCenter.default.addObserver(self, selector: #selector(placementResignedActive(_:)),
+      name: NSApplication.didResignActiveNotification, object: NSApp)
+    defer { NotificationCenter.default.removeObserver(self,
+      name: NSApplication.didResignActiveNotification, object: NSApp) }
+    for hidden in [true, false] {
+      try await native.move(source, toHidden: hidden)
+      guard !lostPlacementFocus, NSApp.isActive, NSApp.keyWindow === settings else {
+        throw CheckFailure("Changing placement deactivated Settings or changed its key window.")
+      }
+      print("PASS: move fixture \(hidden ? "behind the boundary" : "to the visible section") while Settings stays active")
     }
   }
 
