@@ -139,7 +139,7 @@ One-time certificate setup:
 Every build:
 
 ```sh
-TRAYNOOK_DEV_SIGNING_IDENTITY='TrayNook Dev' TRAYNOOK_BUILD=19 Scripts/build-app.sh
+TRAYNOOK_DEV_SIGNING_IDENTITY='TrayNook Dev' TRAYNOOK_BUILD=23 Scripts/build-app.sh
 ```
 
 First grant after switching signatures (also the recovery when the app says
@@ -193,8 +193,9 @@ Accessibility approval is managed separately in System Settings.
   [decisions](docs/DECISIONS.md) — full target vision, broader than this preview
 - [Domain language](CONTEXT.md) · [Translation guide](TRANSLATING.md)
 
-The app makes no network requests and includes no analytics, screen capture,
-private API calls, or updater. Automatic placement of TrayNook’s own controls
+The app makes no network requests and includes no analytics, private API calls,
+or updater. Optional Screen Recording permission enables in-memory captures of
+menu-bar icons; those images are never written to disk. Automatic placement of TrayNook’s own controls
 uses AppKit’s undocumented saved-position preference keys; source-app preference
 keys are never changed. Copyright © 2026 Suren Khorenyan.
 [MIT License](LICENSE).

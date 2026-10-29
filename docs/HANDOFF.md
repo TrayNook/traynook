@@ -1,4 +1,4 @@
-# TrayNook: build 22, automatic inventory recovery
+# TrayNook: build 23, interaction and layout safety
 
 Updated 2026-10-29. Build 18's measurements are in
 [MVP_REPORT.md](MVP_REPORT.md); build 19's decisions are in
@@ -7,9 +7,24 @@ Updated 2026-10-29. Build 18's measurements are in
 
 ## Current state
 
-- Development app: `dist/TrayNook Dev.app`, **1.0.0 (22)**, signed with the
+- Development app: `dist/TrayNook Dev.app`, **1.0.0 (23)**, signed with the
   user's `TrayNook Dev` certificate (README "Development signing and
-  permissions"). Unit suite (74 tests) and packaged smoke test pass.
+  permissions"). Unit suite (82 tests), packaged smoke test, and native
+  cancellation harness compilation pass. The optional GUI preview test stays
+  opt-in; live movement and multi-display checks were not run for this build.
+- **Review fixes (2026-10-29):** proxy promotion and return now bind to the
+  same display's control windows used for geometry checks. Ranked sibling
+  window replacement triggers review even when position and metadata do not
+  change, and a stale proxy cannot activate the sibling that inherited its
+  rank between polling and clicking. Pure regression tests cover both paths;
+  live multi-display interaction still needs device verification.
+- A panel watcher is canceled when another activation starts or items are
+  revealed, including when the new activation has no observable new windows.
+  Closing an older panel can no longer return the newer source. The smoke
+  regression failed before this fix and passes in the packaged build.
+- Layout loading distinguishes a missing file from an inaccessible or invalid
+  parent directory. Read errors enter recovery and preserve the original;
+  regression fixtures verify both errors and the normal first-launch case.
 - **Idle recurrence (2026-10-29):** scan recovery succeeded three times in
   build 21, then an inventory change at 20:31 revealed the section and
   canceled recovery. The log truncated the triggering source's name; its
@@ -119,7 +134,7 @@ action. `.optionAll` is required to find offscreen windows.
 
 ```sh
 Scripts/test.sh
-TRAYNOOK_DEV_SIGNING_IDENTITY='TrayNook Dev' TRAYNOOK_BUILD=22 Scripts/build-app.sh
+TRAYNOOK_DEV_SIGNING_IDENTITY='TrayNook Dev' TRAYNOOK_BUILD=23 Scripts/build-app.sh
 Scripts/smoke-test.sh
 Scripts/test-native-cancellation.sh --compile-only
 "dist/TrayNook Dev.app/Contents/MacOS/TrayNook" --diagnose
