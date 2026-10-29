@@ -121,7 +121,7 @@ struct LayoutPreviewTests {
     try snapshot(preview.frame(width: 650), to: output)
     let settingsOutput = URL(fileURLWithPath: output.deletingPathExtension().path + "-settings.png")
     try snapshot(SettingsView(model: model), size: NSSize(width: 760, height: 590),
-      to: settingsOutput, checkScrolling: true)
+      to: settingsOutput, checkScrolling: true, minimumScrollDistance: 100, expectedPreview: true)
     for capacity in [1, 30] {
       model.layout.rowCapacity = capacity
       #expect(DropdownView.columnCount(rowCapacity: capacity, controlCount: 5, maximumWidth: 700)
@@ -129,12 +129,33 @@ struct LayoutPreviewTests {
       let edgeOutput = URL(fileURLWithPath:
         output.deletingPathExtension().path + "-settings-capacity-\(capacity).png")
       try snapshot(SettingsView(model: model), size: NSSize(width: 760, height: 590),
-        to: edgeOutput, checkScrolling: true)
+        to: edgeOutput, checkScrolling: true, minimumScrollDistance: 100, expectedPreview: true)
     }
+    model.screenRecordingGranted = true
+    for (tab, name) in [(1, "permissions"), (2, "general")] {
+      model.selectedTab = tab
+      let tabOutput = URL(fileURLWithPath:
+        output.deletingPathExtension().path + "-settings-\(name).png")
+      try snapshot(SettingsView(model: model), size: NSSize(width: 760, height: 590),
+        to: tabOutput, checkScrolling: true, expectedPreview: false)
+    }
+    model.selectedTab = 1
+    model.permissionGranted = false
+    model.screenRecordingGranted = false
+    let permissionsOutput = URL(fileURLWithPath:
+      output.deletingPathExtension().path + "-settings-permissions-ungranted.png")
+    try snapshot(SettingsView(model: model), size: NSSize(width: 760, height: 590),
+      to: permissionsOutput, checkScrolling: true, expectedPreview: false)
+    model.selectedTab = 2
+    let generalOutput = URL(fileURLWithPath:
+      output.deletingPathExtension().path + "-settings-general-ungranted.png")
+    try snapshot(SettingsView(model: model), size: NSSize(width: 760, height: 590),
+      to: generalOutput, checkScrolling: true, expectedPreview: false)
   }
 
   private func snapshot<Content: View>(_ content: Content, size requestedSize: NSSize? = nil,
-    to output: URL, checkScrolling: Bool = false) throws {
+    to output: URL, checkScrolling: Bool = false, minimumScrollDistance: CGFloat = 0,
+    expectedPreview: Bool? = nil) throws {
     let host = NSHostingView(rootView: content)
     let size = requestedSize ?? host.fittingSize
     try #require(size.width.isFinite && size.height.isFinite && size.width >= 650 && size.height > 100)
@@ -148,23 +169,30 @@ struct LayoutPreviewTests {
     host.layoutSubtreeIfNeeded()
     try #require(host.fittingSize.height.isFinite && host.bounds.height.isFinite)
     try #require(host.bounds.width <= size.width + 1 && host.bounds.height <= size.height + 1)
+    if let expectedPreview {
+      #expect(previewSurfaces(in: host).count == (expectedPreview ? 1 : 0),
+        "The interactive layout preview belongs only to the Layout tab.")
+    }
     if checkScrolling {
       let scroll = try #require(scrollViews(in: host).max {
-        ($0.documentView?.bounds.height ?? 0) - $0.contentView.bounds.height
-          < ($1.documentView?.bounds.height ?? 0) - $1.contentView.bounds.height
+        $0.bounds.width < $1.bounds.width
       })
       let document = try #require(scroll.documentView)
       try #require(document.bounds.width <= scroll.contentView.bounds.width + 1,
-        "Settings placement content must fit horizontally at the minimum window width.")
-      try #require(document.bounds.height > scroll.contentView.bounds.height + 100)
-      let initial = scroll.contentView.bounds.origin
-      scroll.contentView.scroll(to: NSPoint(x: initial.x,
-        y: document.bounds.maxY - scroll.contentView.bounds.height))
-      scroll.reflectScrolledClipView(scroll.contentView)
-      try #require(scroll.contentView.bounds.origin.y > initial.y + 100)
-      scroll.contentView.scroll(to: initial)
-      scroll.reflectScrolledClipView(scroll.contentView)
-      host.layoutSubtreeIfNeeded()
+        "Settings content must fit horizontally at the minimum window width.")
+      let overflow = max(0, document.bounds.height - scroll.contentView.bounds.height)
+      try #require(overflow >= minimumScrollDistance)
+      if overflow > 1 {
+        let initial = scroll.contentView.bounds.origin
+        scroll.contentView.scroll(to: NSPoint(x: initial.x,
+          y: document.bounds.maxY - scroll.contentView.bounds.height))
+        scroll.reflectScrolledClipView(scroll.contentView)
+        try #require(scroll.contentView.bounds.origin.y > initial.y + max(0, overflow - 1),
+          "All vertically overflowing Settings content must remain reachable.")
+        scroll.contentView.scroll(to: initial)
+        scroll.reflectScrolledClipView(scroll.contentView)
+        host.layoutSubtreeIfNeeded()
+      }
     }
     let bitmap = try #require(host.bitmapImageRepForCachingDisplay(in: host.bounds))
     host.cacheDisplay(in: host.bounds, to: bitmap)
@@ -178,6 +206,11 @@ struct LayoutPreviewTests {
   private func scrollViews(in view: NSView) -> [NSScrollView] {
     let current = (view as? NSScrollView).map { [$0] } ?? []
     return current + view.subviews.flatMap { scrollViews(in: $0) }
+  }
+
+  private func previewSurfaces(in view: NSView) -> [PreviewDragSurface.Surface] {
+    let current = (view as? PreviewDragSurface.Surface).map { [$0] } ?? []
+    return current + view.subviews.flatMap { previewSurfaces(in: $0) }
   }
 
   private func item(_ bundle: String, name: String, index: Int = 0) -> RawSourceItemObservation {

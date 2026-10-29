@@ -7,6 +7,7 @@ struct SettingsView: View {
   @State private var confirmReset = false
   @AppStorage("dropdownGlyphs") private var showGlyphs = false
   @State private var showLocked = false
+  @State private var showItemDetails = true
   @State private var reorder = Reorder()
   @State private var rowHeights: [String: CGFloat] = [:]
   private let rowSpacing: CGFloat = 8
@@ -146,54 +147,67 @@ struct SettingsView: View {
       ScrollView {
         VStack(alignment: .leading, spacing: 16) {
           LayoutPreviewView(model: model)
-          ForEach(Placement.allCases) { zone in
-            let savedItems = model.layout.items.filter { $0.placement == zone }
-            let shown = laneItems(zone)
-            let locked = savedItems.filter { saved in !shown.contains { $0.id == saved.id } }
-            VStack(alignment: .leading, spacing: rowSpacing) {
-              HStack {
-                Text(zone.title).font(.headline)
-                Text("\(savedItems.count)").foregroundStyle(.secondary)
-                Spacer()
-                if zone == .menuBar { Label(L("TrayNook stays here"), systemImage: "tray.full").font(.caption).foregroundStyle(.secondary) }
-              }
-              if savedItems.isEmpty {
-                Text(L("No items here yet")).foregroundStyle(.secondary).padding(.vertical, 8)
-              }
-              // Rows slide apart live while one is dragged by its handle.
-              ForEach(shown) { item in
-                itemRow(item, handle: AnyView(reorderHandle(for: item.id, in: zone)))
-                  .offset(y: reorder.draggedKey == item.id ? reorder.offset : 0)
-                  .zIndex(reorder.draggedKey == item.id ? 1 : 0)
-                  .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { rowHeights[item.id] = $0 }
-              }
-              // Locked items carry no decision; one row stands for all of them.
-              if !locked.isEmpty {
-                DisclosureGroup(isExpanded: $showLocked) {
-                  ForEach(locked) { item in itemRow(item) }
-                } label: {
-                  HStack(spacing: 10) {
-                    Image(systemName: "lock").frame(width: 26)
-                    Text(L("System items")).lineLimit(1)
-                    Text("\(locked.count)").foregroundStyle(.secondary)
-                    Spacer()
-                    Text(L("Protected — kept visible")).font(.caption).foregroundStyle(.secondary)
-                  }
-                }
-              }
-            }
-            .padding(12)
-            .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 10))
+          DisclosureGroup(L("Item details"), isExpanded: $showItemDetails) {
+            placementDetails.padding(.top, 8)
           }
           if model.layout.items.isEmpty {
             Text(L("Grant Accessibility, then refresh to discover your menu-bar items."))
               .foregroundStyle(.secondary).padding(.vertical, 12)
+          }
+          HStack {
+            Button(L("Reset Layout…")) { confirmReset = true }.disabled(model.busy)
+            Text(L("Removes saved placements and order.")).font(.caption).foregroundStyle(.secondary)
           }
         }
       }
       Text(L("Opening an item brings only that item into view. It returns when its menu closes. Other hidden items stay hidden."))
         .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
     }.padding(12)
+  }
+
+  private var placementDetails: some View {
+    VStack(alignment: .leading, spacing: 16) {
+      ForEach(Placement.allCases) { zone in
+        let savedItems = model.layout.items.filter { $0.placement == zone }
+        let shown = laneItems(zone)
+        let locked = savedItems.filter { saved in !shown.contains { $0.id == saved.id } }
+        VStack(alignment: .leading, spacing: rowSpacing) {
+          HStack {
+            Text(zone.title).font(.headline)
+            Text("\(savedItems.count)").foregroundStyle(.secondary)
+            Spacer()
+            if zone == .menuBar { Label(L("TrayNook stays here"), systemImage: "tray.full").font(.caption).foregroundStyle(.secondary) }
+          }
+          if savedItems.isEmpty {
+            Text(L("No items here yet")).foregroundStyle(.secondary).padding(.vertical, 8)
+          }
+          // Rows slide apart live while one is dragged by its handle.
+          ForEach(shown) { item in
+            itemRow(item, handle: AnyView(reorderHandle(for: item.id, in: zone)))
+              .offset(y: reorder.draggedKey == item.id ? reorder.offset : 0)
+              .zIndex(reorder.draggedKey == item.id ? 1 : 0)
+              .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { rowHeights[item.id] = $0 }
+          }
+          // Locked items carry no decision; one row stands for all of them.
+          if !locked.isEmpty {
+            DisclosureGroup(isExpanded: $showLocked) {
+              ForEach(locked) { item in itemRow(item) }
+            } label: {
+              HStack(spacing: 10) {
+                Image(systemName: "lock").frame(width: 26)
+                Text(L("System items")).lineLimit(1)
+                Text("\(locked.count)").foregroundStyle(.secondary)
+                Spacer()
+                Text(L("Protected — kept visible")).font(.caption).foregroundStyle(.secondary)
+              }
+            }
+          }
+        }
+        .padding(12)
+        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 10))
+      }
+    }
+    .onDisappear { dragEnded() }
   }
 
   private func itemRow(_ saved: SavedItem, handle: AnyView = AnyView(EmptyView())) -> some View {
@@ -223,59 +237,96 @@ struct SettingsView: View {
   }
 
   private var permissions: some View {
-    VStack(alignment: .leading, spacing: 18) {
-      Label(L("Accessibility"), systemImage: model.permissionGranted ? "checkmark.shield" : "hand.raised")
-        .font(.title3.bold())
-      Text(L("TrayNook needs Accessibility to identify menu-bar items, apply your chosen placements, and open items from the dropdown. Until permission is granted, it leaves your menu bar visible."))
-        .fixedSize(horizontal: false, vertical: true)
-      Text(model.permissionGranted ? L("Granted") : L("Not granted")).font(.headline)
-      HStack {
-        if !model.permissionGranted { Button(L("Grant Accessibility…")) { model.requestAccessibility() } }
-        Button(L("Open System Settings…")) { model.openAccessibilitySettings() }
-      }
-      if !model.permissionGranted {
-        Text(L("Add this whole app in Privacy & Security → Accessibility. After rebuilding an ad-hoc development app, you may need to remove the old entry and grant the new build. Then click Refresh."))
-          .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-      }
-      Divider()
-      Label(L("Screen Recording"), systemImage: model.screenRecordingGranted ? "checkmark.shield" : "rectangle.dashed.badge.record")
-        .font(.title3.bold())
-      Text(L("Optional. With Screen Recording, the dropdown shows each item's real menu-bar icon as last seen while it was visible. Without it, TrayNook shows application icons. Captured pixels stay in memory for this session only and are never saved."))
-        .fixedSize(horizontal: false, vertical: true)
-      Text(model.screenRecordingGranted ? L("Granted") : L("Not granted")).font(.headline)
-      HStack {
-        if !model.screenRecordingGranted { Button(L("Grant Screen Recording…")) { model.requestScreenRecording() } }
-        Button(L("Open System Settings…")) { model.openScreenRecordingSettings() }
-      }
-      if !model.screenRecordingGranted {
-        Text(L("macOS applies Screen Recording after TrayNook is quit and reopened."))
-          .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-      }
-      Toggle(L("Show menu-bar glyphs instead of app icons in the dropdown"), isOn: $showGlyphs)
-        .disabled(!model.screenRecordingGranted)
+    ScrollView {
+      VStack(alignment: .leading, spacing: 20) {
+        GroupBox {
+          VStack(alignment: .leading, spacing: 12) {
+            Text(L("TrayNook needs Accessibility to identify menu-bar items, apply your chosen placements, and open items from the dropdown. Until permission is granted, it leaves your menu bar visible."))
+              .fixedSize(horizontal: false, vertical: true)
+            HStack {
+              if !model.permissionGranted { Button(L("Grant Accessibility…")) { model.requestAccessibility() } }
+              Button(L("Open System Settings…")) { model.openAccessibilitySettings() }
+            }
+            if !model.permissionGranted {
+              Text(L("Add this whole app in Privacy & Security → Accessibility. After rebuilding an ad-hoc development app, you may need to remove the old entry and grant the new build. Then click Refresh."))
+                .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+          }.frame(maxWidth: .infinity, alignment: .leading).padding(8)
+        } label: {
+          permissionHeading(L("Accessibility"), granted: model.permissionGranted)
+        }
+        GroupBox {
+          VStack(alignment: .leading, spacing: 12) {
+            Text(L("Optional. Screen Recording enables menu-bar glyphs in the dropdown. Choose your preferred icons in General. Captured pixels stay in memory for this session only and are never saved."))
+              .fixedSize(horizontal: false, vertical: true)
+            HStack {
+              if !model.screenRecordingGranted { Button(L("Grant Screen Recording…")) { model.requestScreenRecording() } }
+              Button(L("Open System Settings…")) { model.openScreenRecordingSettings() }
+            }
+            if !model.screenRecordingGranted {
+              Text(L("macOS applies Screen Recording after TrayNook is quit and reopened."))
+                .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+          }.frame(maxWidth: .infinity, alignment: .leading).padding(8)
+        } label: {
+          permissionHeading(L("Screen Recording"), granted: model.screenRecordingGranted)
+        }
+      }.padding(12)
+    }
+  }
+
+  private func permissionHeading(_ title: String, granted: Bool) -> some View {
+    HStack {
+      Label(title, systemImage: granted ? "checkmark.shield" : "hand.raised").font(.headline)
       Spacer()
-    }.padding(20)
+      Text(granted ? L("Granted") : L("Not granted")).foregroundStyle(.secondary)
+    }
   }
 
   private var general: some View {
     ScrollView {
-      VStack(alignment: .leading, spacing: 18) {
-        Toggle(L("Launch at Login"), isOn: Binding(get: { model.loginEnabled }, set: { model.setLoginEnabled($0) }))
-        LayoutPreviewView(model: model)
-        Divider()
-        HStack {
-          Button(L("Copy Diagnostics")) { model.copyDiagnostics() }
-          Button(L("Reset Layout…")) { confirmReset = true }.disabled(model.busy)
+      VStack(alignment: .leading, spacing: 20) {
+        GroupBox(L("Startup")) {
+          Toggle(L("Launch at Login"), isOn: Binding(get: { model.loginEnabled }, set: { model.setLoginEnabled($0) }))
+            .frame(maxWidth: .infinity, alignment: .leading).padding(8)
         }
-        Text(L("TrayNook stores bundle identities, sibling discriminators, placements, order, and row capacity locally. It makes no network requests and includes no analytics or updater."))
-          .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-        Divider()
-        Text(L("To uninstall, turn off Launch at Login, quit TrayNook, and move the app to Trash. Quit removes TrayNook’s separator and reveals items. You can remove its Accessibility entry in System Settings."))
-          .font(.callout).fixedSize(horizontal: false, vertical: true)
-        Spacer()
-        Text("TrayNook 1.0.0 · Local MVP preview\n© 2026 Suren Khorenyan · MIT License")
-          .font(.caption).foregroundStyle(.secondary)
-      }.padding(20)
+        GroupBox(L("Dropdown appearance")) {
+          VStack(alignment: .leading, spacing: 10) {
+            Toggle(L("Show menu-bar glyphs instead of app icons in the dropdown"), isOn: $showGlyphs)
+              .disabled(!model.screenRecordingGranted)
+            Text(L("App icons are used by default. Menu-bar glyphs show each item's appearance as last seen while it was visible."))
+              .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            if !model.screenRecordingGranted {
+              HStack {
+                Text(L("Menu-bar glyphs require Screen Recording.")).font(.callout).foregroundStyle(.secondary)
+                Spacer()
+                Button(L("Review Permissions")) { model.selectedTab = 1 }
+              }
+            }
+          }.frame(maxWidth: .infinity, alignment: .leading).padding(8)
+        }
+        GroupBox(L("Diagnostics")) {
+          VStack(alignment: .leading, spacing: 10) {
+            Text(L("Copy a compatibility summary without app names or your item inventory."))
+              .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            Button(L("Copy Diagnostics")) { model.copyDiagnostics() }
+          }.frame(maxWidth: .infinity, alignment: .leading).padding(8)
+        }
+        GroupBox(L("About TrayNook")) {
+          VStack(alignment: .leading, spacing: 12) {
+            let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0.0"
+            let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "dev"
+            Text("TrayNook \(version) (\(build))")
+              .font(.headline)
+            Text("© 2026 Suren Khorenyan · MIT License").font(.caption).foregroundStyle(.secondary)
+            Text(L("TrayNook stores bundle identities, sibling discriminators, placements, order, and row capacity locally. It makes no network requests and includes no analytics or updater."))
+              .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            Divider()
+            Text(L("To uninstall, turn off Launch at Login, quit TrayNook, and move the app to Trash. Quit removes TrayNook’s separator and reveals items. You can remove its Accessibility entry in System Settings."))
+              .font(.callout).fixedSize(horizontal: false, vertical: true)
+          }.frame(maxWidth: .infinity, alignment: .leading).padding(8)
+        }
+      }.padding(12)
     }
   }
 }

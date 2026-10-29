@@ -65,7 +65,7 @@ arrows reorder proxies; full native order management uses Command-drag.
 
 ## Settings preview and native flow
 
-Layout and General include an interactive **Saved layout preview**: a Menu Bar
+Layout contains the interactive **Saved layout preview**: a Menu Bar
 strip with the launcher, the same icon grid used by the dropdown, and a separate
 Always Hidden area. Drag an application icon to reorder it or move it between
 zones. A floating icon follows the pointer while neighboring icons animate
@@ -79,8 +79,14 @@ are marked as kept visible, ambiguous siblings are not listed, and unavailable
 inventory is identified. Application
 icons illustrate saved placements; native order and spacing can differ.
 
-Settings uses native segmented navigation. Ordering arrows appear only for
-Dropdown and disable at each end; Retry appears only for a placement mismatch.
+Layout also contains collapsible **Item details** with names, placement controls,
+drag handles, status, Retry, and Forget, plus the layout reset action. General
+contains Launch at Login, dropdown icon appearance, diagnostics, and version and
+privacy information. Permissions shows only access status and grant actions;
+all three tabs scroll at the minimum window size. The glyph preference in General
+links to Permissions when Screen Recording is missing.
+
+Settings uses native segmented navigation. Retry appears only for a placement mismatch.
 Unavailable launcher-menu commands are disabled. Opening Settings cancels an
 active operation without changing saved placements.
 

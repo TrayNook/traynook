@@ -1,4 +1,4 @@
-# TrayNook: build 25, live layout preview dragging
+# TrayNook: build 26, focused Settings tabs
 
 Updated 2026-10-29. Build 18's measurements are in
 [MVP_REPORT.md](MVP_REPORT.md); build 19's decisions are in
@@ -7,10 +7,21 @@ Updated 2026-10-29. Build 18's measurements are in
 
 ## Current state
 
-- Development app: `dist/TrayNook Dev.app`, **1.0.0 (25)**, signed with the
+- Development app: `dist/TrayNook Dev.app`, **1.0.0 (26)**, signed with the
   user's `TrayNook Dev` certificate (README "Development signing and
   permissions"). The unit suite, packaged smoke test, and opt-in GUI preview
   snapshots pass, including minimum Settings width and row capacities 1/30.
+- **Settings responsibilities (2026-10-29):** Layout is the sole home of the
+  interactive preview and row capacity. Item details can collapse while retaining
+  names, statuses, placement pickers, Retry, Forget, and row handles. Reset Layout
+  lives here too. General groups startup, dropdown icon appearance, diagnostics,
+  and About/privacy information; it reads the actual bundle version/build.
+  Missing Screen Recording disables the glyph preference and offers a link to
+  Permissions. Permissions groups access status and grant actions in a scroll
+  view. Minimum-size GUI checks cover all tabs with permissions granted and
+  absent and assert exactly one preview surface in Layout and none elsewhere.
+  The preview's drag state and cancellation lifecycle are unchanged; hiding the
+  detailed rows finalizes any active row-handle reorder.
 - **Preview dragging (2026-10-29):** grab a manageable icon directly in Saved
   layout preview to reorder it or move it among Menu Bar, Dropdown, and Always
   Hidden. A floating icon tracks the pointer with a closed-hand cursor; the
@@ -148,7 +159,7 @@ action. `.optionAll` is required to find offscreen windows.
 
 ```sh
 Scripts/test.sh
-TRAYNOOK_DEV_SIGNING_IDENTITY='TrayNook Dev' TRAYNOOK_BUILD=25 Scripts/build-app.sh
+TRAYNOOK_DEV_SIGNING_IDENTITY='TrayNook Dev' TRAYNOOK_BUILD=26 Scripts/build-app.sh
 Scripts/smoke-test.sh
 Scripts/test-native-cancellation.sh --compile-only
 "dist/TrayNook Dev.app/Contents/MacOS/TrayNook" --diagnose

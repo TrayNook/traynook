@@ -149,3 +149,14 @@
 "macOS applies Screen Recording after TrayNook is quit and reopened." = "macOS applies Screen Recording after TrayNook is quit and reopened.";
 "macOS could not route this item's move. Other hidden items remain hidden." = "macOS could not route this item's move. Other hidden items remain hidden.";
 "macOS could not show this item safely. Its return position is retained; other hidden items remain hidden." = "macOS could not show this item safely. Its return position is retained; other hidden items remain hidden.";
+"Item details" = "Item details";
+"Removes saved placements and order." = "Removes saved placements and order.";
+"Startup" = "Startup";
+"Dropdown appearance" = "Dropdown appearance";
+"App icons are used by default. Menu-bar glyphs show each item's appearance as last seen while it was visible." = "App icons are used by default. Menu-bar glyphs show each item's appearance as last seen while it was visible.";
+"Menu-bar glyphs require Screen Recording." = "Menu-bar glyphs require Screen Recording.";
+"Review Permissions" = "Review Permissions";
+"Diagnostics" = "Diagnostics";
+"Copy a compatibility summary without app names or your item inventory." = "Copy a compatibility summary without app names or your item inventory.";
+"About TrayNook" = "About TrayNook";
+"Optional. Screen Recording enables menu-bar glyphs in the dropdown. Choose your preferred icons in General. Captured pixels stay in memory for this session only and are never saved." = "Optional. Screen Recording enables menu-bar glyphs in the dropdown. Choose your preferred icons in General. Captured pixels stay in memory for this session only and are never saved.";
