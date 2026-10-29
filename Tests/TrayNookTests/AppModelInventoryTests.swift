@@ -164,6 +164,28 @@ struct AppModelInventoryTests {
     #expect(!AppModel.inventoryRequiresReveal(AppModel.keyedChanges(from: duo, to: trio), known: [], hidden: [], verifiedVisible: []))
   }
 
+  @Test("Replacing a ranked window without changing its rank still requires review")
+  func rankedWindowReplacementWithoutMetadataChangesReveals() {
+    let assessor = IdentityAssessor()
+    let before = assessor.classify([
+      item(bundle: "example.pair", pid: 40, index: 0, window: 10),
+      item(bundle: "example.pair", pid: 40, index: 1, window: 11),
+    ])
+    let after = assessor.classify([
+      item(bundle: "example.pair", pid: 40, index: 0, window: 10),
+      item(bundle: "example.pair", pid: 40, index: 1, window: 12),
+    ])
+    let keys: Set<String> = ["example.pair#w0", "example.pair#w1"]
+    let changes = AppModel.keyedChanges(from: before, to: after)
+
+    #expect(changes.count == 1)
+    #expect(changes.first?.key == "example.pair#w1")
+    #expect(changes.first?.windowReplaced == true)
+    #expect(AppModel.inventoryRequiresReview(changes))
+    #expect(AppModel.inventoryRequiresReveal(changes, known: keys, hidden: keys, verifiedVisible: []))
+    #expect(!changes.contains { AppModel.rebindsProcess($0, hidden: keys) })
+  }
+
   @Test("Runtime-only status windows never trigger a reveal by themselves")
   func unverifiedWindowsAreIgnored() {
     let assessor = IdentityAssessor()

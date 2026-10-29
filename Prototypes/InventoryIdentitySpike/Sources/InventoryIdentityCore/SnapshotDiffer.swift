@@ -175,6 +175,7 @@ public struct SnapshotDiffer: Sendable {
     if previousObservation.frame != currentObservation.frame
       || previousObservation.metadata != currentObservation.metadata
       || previousObservation.actions != currentObservation.actions
+      || previousObservation.statusWindowIdentifier != currentObservation.statusWindowIdentifier
     {
       changes.append(
         change(.runtimeMetadataChanged, key, previousObservation, currentObservation)
