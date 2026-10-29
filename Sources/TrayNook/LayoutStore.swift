@@ -38,6 +38,28 @@ struct SavedLayout: Codable, Equatable {
     items.append(SavedItem(id: id, placement: placement))
   }
 
+  /// A preview draft changes only the dragged item; unrelated saved items,
+  /// including ones that are not running, keep their relative order.
+  func moving(_ key: String, to placement: Placement, before anchor: String? = nil) -> Self? {
+    guard (try? validated()) != nil, let source = items.first(where: { $0.id == key }) else { return nil }
+    if anchor == key { return source.placement == placement ? self : nil }
+    if let anchor, !items.contains(where: { $0.id == anchor && $0.placement == placement }) { return nil }
+
+    let originalLane = items.filter { $0.placement == placement }.map(\.id)
+    var destinationLane = originalLane.filter { $0 != key }
+    let position = anchor.flatMap { destinationLane.firstIndex(of: $0) } ?? destinationLane.endIndex
+    destinationLane.insert(key, at: position)
+    if source.placement == placement && destinationLane == originalLane { return self }
+
+    var next = self
+    next.items.removeAll { $0.id == key }
+    let index = anchor.flatMap { target in next.items.firstIndex { $0.id == target } }
+      ?? next.items.lastIndex(where: { $0.placement == placement }).map { $0 + 1 }
+      ?? next.items.endIndex
+    next.items.insert(SavedItem(id: key, placement: placement), at: index)
+    return next
+  }
+
   mutating func restoreAll() {
     items = Placement.allCases.flatMap { zone in
       items.filter { $0.placement == zone }.map { SavedItem(id: $0.id) }

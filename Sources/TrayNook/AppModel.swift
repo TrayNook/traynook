@@ -704,6 +704,24 @@ final class AppModel: ObservableObject {
     replaceLayout(now, undoable: true)
   }
 
+  /// Mouse movement edits a local preview; persist one final drop and one Undo.
+  @discardableResult func commitPreviewMove(_ key: String, to placement: Placement, before anchor: String? = nil) -> Bool {
+    guard canEdit, let source = liveItem(key), isManageable(source),
+      let previousPlacement = layout.items.first(where: { $0.id == key })?.placement else { return false }
+    if let anchor {
+      guard let destination = liveItem(anchor),
+        layout.items.contains(where: { $0.id == anchor && $0.placement == placement }),
+        placement == .menuBar || isManageable(destination) else { return false }
+    }
+    guard let next = layout.moving(key, to: placement, before: anchor) else { return false }
+    guard next != layout else { return true }
+    guard replaceLayout(next, undoable: true) else { return false }
+    if previousPlacement != placement {
+      applySavedLayout(restoringToMenuBar: placement == .menuBar ? key : nil)
+    }
+    return true
+  }
+
   func forget(_ key: String) {
     guard !busy, !recoveryRequired, liveItem(key) == nil else { return }
     var next = layout; next.items.removeAll { $0.id == key }
@@ -923,7 +941,51 @@ final class AppModel: ObservableObject {
       fputs("TRAYNOOK_STALE_PANEL_WATCHER\n", stderr)
       return false
     }
+    guard verifyPreviewEditingBehavior(native: native) else {
+      fputs("TRAYNOOK_PREVIEW_EDIT_FAILED\n", stderr)
+      return false
+    }
     return true
+  }
+
+  private static func verifyPreviewEditingBehavior(native: NativeMenuBarController) -> Bool {
+    let editing = AppModel(native: native, store: nil)
+    editing.permissionGranted = true
+    editing.scanComplete = true
+    let keys = ["example.first", "example.second", "example.third", "com.apple.fixture"]
+    editing.items = IdentityAssessor().classify(keys.enumerated().map { index, key in
+      RawSourceItemObservation(runtimeID: "\(index):0", processIdentifier: Int32(index + 10),
+        bundleIdentifier: key, applicationName: key, role: "AXMenuBarItem",
+        frame: ItemFrame(x: 1100 + Double(index) * 24, y: 0, width: 24, height: 24),
+        actions: ["AXPress"], metadata: LiveAccessibilityMetadata(), observedOrder: index)
+    })
+    let original = SavedLayout(items: [
+      SavedItem(id: keys[0], placement: .dropdown), SavedItem(id: "example.missing", placement: .dropdown),
+      SavedItem(id: keys[1], placement: .dropdown), SavedItem(id: keys[2], placement: .dropdown),
+      SavedItem(id: keys[3]),
+    ])
+    editing.layout = original
+    guard !editing.commitPreviewMove(keys[3], to: .dropdown),
+      !editing.commitPreviewMove("example.unknown", to: .dropdown),
+      !editing.commitPreviewMove(keys[0], to: .dropdown, before: "example.missing"),
+      editing.layout == original, !editing.undoManager.canUndo,
+      editing.commitPreviewMove(keys[2], to: .dropdown),
+      !editing.undoManager.canUndo, !editing.busy else { return false }
+
+    editing.undoManager.groupsByEvent = false
+    editing.undoManager.beginUndoGrouping()
+    let moved = editing.commitPreviewMove(keys[2], to: .dropdown, before: keys[0])
+    editing.undoManager.endUndoGrouping()
+    guard moved, editing.layout == original.moving(keys[2], to: .dropdown, before: keys[0]),
+      editing.undoManager.canUndo, !editing.busy else { return false }
+    editing.undoManager.undo()
+    guard editing.layout == original, !editing.undoManager.canUndo, editing.undoManager.canRedo else { return false }
+    editing.undoManager.redo()
+    guard editing.layout == original.moving(keys[2], to: .dropdown, before: keys[0]),
+      editing.undoManager.canUndo, !editing.undoManager.canRedo else { return false }
+    editing.busy = true
+    let before = editing.layout
+    return !editing.commitPreviewMove(keys[0], to: .dropdown, before: keys[2]) && editing.layout == before
   }
 }
 

@@ -67,6 +67,8 @@
 "Permissions" = "Permissions";
 "Physical input interrupted the action. The section remains revealed." = "Physical input interrupted the action. The section remains revealed.";
 "Drag to reorder" = "Drag to reorder";
+"Drag to reorder or move" = "Drag to reorder or move";
+"Drag icons to reorder or move between zones. Escape cancels." = "Drag icons to reorder or move between zones. Escape cancels.";
 "Placement" = "Placement";
 "Protected — kept visible" = "Protected — kept visible";
 "Quit TrayNook" = "Quit TrayNook";

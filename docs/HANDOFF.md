@@ -1,4 +1,4 @@
-# TrayNook: build 23, interaction and layout safety
+# TrayNook: build 25, live layout preview dragging
 
 Updated 2026-10-29. Build 18's measurements are in
 [MVP_REPORT.md](MVP_REPORT.md); build 19's decisions are in
@@ -7,11 +7,25 @@ Updated 2026-10-29. Build 18's measurements are in
 
 ## Current state
 
-- Development app: `dist/TrayNook Dev.app`, **1.0.0 (23)**, signed with the
+- Development app: `dist/TrayNook Dev.app`, **1.0.0 (25)**, signed with the
   user's `TrayNook Dev` certificate (README "Development signing and
-  permissions"). Unit suite (82 tests), packaged smoke test, and native
-  cancellation harness compilation pass. The optional GUI preview test stays
-  opt-in; live movement and multi-display checks were not run for this build.
+  permissions"). The unit suite, packaged smoke test, and opt-in GUI preview
+  snapshots pass, including minimum Settings width and row capacities 1/30.
+- **Preview dragging (2026-10-29):** grab a manageable icon directly in Saved
+  layout preview to reorder it or move it among Menu Bar, Dropdown, and Always
+  Hidden. A floating icon tracks the pointer with a closed-hand cursor; the
+  hovered zone highlights and neighbors animate around an empty insertion slot.
+  A stable app-local event monitor keeps tracking across cell reparenting;
+  pointer updates redraw only the floating icon. Mouse movement
+  does not save or run native placement. A valid drop saves once with one Undo
+  step, and only a changed Placement applies native movement. Escape, outside
+  drops, stale source identity, loss of edit permission, and closing the preview
+  discard the draft. Window/focus loss also cancels and removes the monitor.
+  Protected icons, Settings, and Launcher stay fixed.
+  Preview Menu Bar order remains editor order; physical order uses Command-drag.
+  Isolated window checks confirmed draft movement before release, the closed-hand
+  cursor, one commit on drop, and zero commits on Escape/outside/window-close;
+  each case also verified cursor restoration and event-monitor removal.
 - **Review fixes (2026-10-29):** proxy promotion and return now bind to the
   same display's control windows used for geometry checks. Ranked sibling
   window replacement triggers review even when position and metadata do not
@@ -134,7 +148,7 @@ action. `.optionAll` is required to find offscreen windows.
 
 ```sh
 Scripts/test.sh
-TRAYNOOK_DEV_SIGNING_IDENTITY='TrayNook Dev' TRAYNOOK_BUILD=23 Scripts/build-app.sh
+TRAYNOOK_DEV_SIGNING_IDENTITY='TrayNook Dev' TRAYNOOK_BUILD=25 Scripts/build-app.sh
 Scripts/smoke-test.sh
 Scripts/test-native-cancellation.sh --compile-only
 "dist/TrayNook Dev.app/Contents/MacOS/TrayNook" --diagnose

@@ -65,9 +65,15 @@ arrows reorder proxies; full native order management uses Command-drag.
 
 ## Settings preview and native flow
 
-Layout and General now include a read-only **Saved layout preview**: a Menu Bar
+Layout and General include an interactive **Saved layout preview**: a Menu Bar
 strip with the launcher, the same icon grid used by the dropdown, and a separate
-Always Hidden area. Changing row capacity updates it immediately; the gear
+Always Hidden area. Drag an application icon to reorder it or move it between
+zones. A floating icon follows the pointer while neighboring icons animate
+out of the way, leaving an empty insertion slot, and the destination lights up. Dropping saves once with one Undo
+step; Escape or dropping outside the preview cancels. Protected items, the
+launcher, and the gear stay fixed. Menu Bar order in the preview is editor order;
+use Command-drag for the physical menu bar.
+Changing row capacity updates the preview immediately; the gear
 occupies the first slot. Missing apps consume no dropdown slots, protected apps
 are marked as kept visible, ambiguous siblings are not listed, and unavailable
 inventory is identified. Application
@@ -139,7 +145,7 @@ One-time certificate setup:
 Every build:
 
 ```sh
-TRAYNOOK_DEV_SIGNING_IDENTITY='TrayNook Dev' TRAYNOOK_BUILD=23 Scripts/build-app.sh
+TRAYNOOK_DEV_SIGNING_IDENTITY='TrayNook Dev' TRAYNOOK_BUILD=25 Scripts/build-app.sh
 ```
 
 First grant after switching signatures (also the recovery when the app says
