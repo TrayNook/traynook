@@ -3,6 +3,15 @@ import AppKit
 guard CommandLine.arguments.count == 2 else {
     fatalError("Usage: swift Scripts/generate-icon.swift path/to/AppIcon.iconset")
 }
+let artworkURL = URL(fileURLWithPath: #filePath)
+    .deletingLastPathComponent().deletingLastPathComponent()
+    .appendingPathComponent("Support/AppIcon.png")
+guard let artwork = NSImage(contentsOf: artworkURL),
+      let representation = artwork.representations.first,
+      representation.pixelsWide > 0,
+      representation.pixelsWide == representation.pixelsHigh else {
+    fatalError("Support/AppIcon.png must be a readable square image.")
+}
 let directory = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true)
 try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
 
@@ -13,22 +22,16 @@ func drawIcon(pixels: Int, name: String) throws {
         isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
     )!
     NSGraphicsContext.saveGraphicsState()
-    NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: bitmap)
+    let context = NSGraphicsContext(bitmapImageRep: bitmap)!
+    NSGraphicsContext.current = context
+    context.imageInterpolation = .high
+    context.cgContext.clear(CGRect(x: 0, y: 0, width: pixels, height: pixels))
     let scale = NSAffineTransform()
     scale.scale(by: CGFloat(pixels) / 512)
     scale.concat()
-    NSColor(calibratedRed: 0.12, green: 0.24, blue: 0.38, alpha: 1).setFill()
-    NSBezierPath(roundedRect: NSRect(x: 32, y: 32, width: 448, height: 448), xRadius: 100, yRadius: 100).fill()
-    NSColor(calibratedWhite: 1, alpha: 0.95).setFill()
-    NSBezierPath(roundedRect: NSRect(x: 100, y: 328, width: 312, height: 58), xRadius: 18, yRadius: 18).fill()
-    NSBezierPath(roundedRect: NSRect(x: 196, y: 126, width: 216, height: 180), xRadius: 24, yRadius: 24).fill()
-    NSColor(calibratedRed: 0.12, green: 0.24, blue: 0.38, alpha: 1).setFill()
-    for x in [280, 324, 368] {
-        NSBezierPath(ovalIn: NSRect(x: x, y: 345, width: 24, height: 24)).fill()
-    }
-    for y in [166, 210, 254] {
-        NSBezierPath(roundedRect: NSRect(x: 230, y: y, width: 146, height: 16), xRadius: 8, yRadius: 8).fill()
-    }
+    // Preserve the existing 448/512 tile footprint after the master's transparent inset.
+    artwork.draw(in: NSRect(x: 14, y: 14, width: 484, height: 484),
+                 from: .zero, operation: .sourceOver, fraction: 1)
     NSGraphicsContext.restoreGraphicsState()
     try bitmap.representation(using: .png, properties: [:])!.write(to: directory.appendingPathComponent(name))
 }
