@@ -65,9 +65,11 @@ final class AppModel: ObservableObject {
     do { layout = try store?.load() ?? SavedLayout() }
     catch { recoveryRequired = true; message = L("Saved layout cannot be read safely. Reset Layout to start again; the original file is preserved until then.") }
     native.onReveal = { [weak self] in
+      self?.cancelPanelWatch()
       self?.concealed = false
     }
     native.onExternalReveal = { [weak self] in
+      self?.cancelPanelWatch()
       self?.attemptedLaunchRestore = true
       self?.reapplyNotBefore = nil
       self?.operationTask?.cancel()
@@ -214,7 +216,7 @@ final class AppModel: ObservableObject {
   }
 
   func stop() {
-    pollTask?.cancel(); scanTask?.cancel(); operationTask?.cancel(); panelWatch?.cancel()
+    pollTask?.cancel(); scanTask?.cancel(); operationTask?.cancel(); cancelPanelWatch()
     native.remove()
   }
 
@@ -463,6 +465,7 @@ final class AppModel: ObservableObject {
   }
 
   func reveal(cancelLaunchRestore: Bool = true) {
+    cancelPanelWatch()
     if cancelLaunchRestore {
       attemptedLaunchRestore = true
       reapplyNotBefore = nil
@@ -584,6 +587,8 @@ final class AppModel: ObservableObject {
 
   func activate(_ item: ClassifiedSourceItem, secondary: Bool = false) {
     guard canEdit, isManageable(item) else { return }
+    // A previous panel's lifetime must never restore this new interaction.
+    cancelPanelWatch()
     runOperation(restoreSettingsFocus: false, revealOnFailure: false) {
       self.message = nil
       if self.native.hasPendingActivation { try await self.native.restoreActivation() }
@@ -612,8 +617,8 @@ final class AppModel: ObservableObject {
   /// Once the panel the activation opened is gone, return the item on its own
   /// so the next click on the tray icon opens the dropdown directly.
   private func watchPanel(of pid: Int32, opened: Set<UInt32>) {
+    cancelPanelWatch()
     guard !opened.isEmpty else { return }
-    panelWatch?.cancel()
     panelWatch = Task { [weak self] in
       while !Task.isCancelled {
         try? await Task.sleep(for: .milliseconds(500))
@@ -629,6 +634,11 @@ final class AppModel: ObservableObject {
         return
       }
     }
+  }
+
+  private func cancelPanelWatch() {
+    panelWatch?.cancel()
+    panelWatch = nil
   }
 
   private func runOperation(restoreSettingsFocus: Bool = true, revealOnFailure: Bool = true,
@@ -893,6 +903,26 @@ final class AppModel: ObservableObject {
     recovering.retryLayoutRecovery(after: NativeMenuActionError.inventoryUnavailable, recovering: true)
     recovering.reveal()
     guard recovering.reapplyNotBefore == nil else { return false }
+
+    // Replacing an activation with no observed windows must retire the prior
+    // watcher, just like either model-initiated or native-initiated reveals.
+    // These no-op tasks never query windows or initiate a native interaction.
+    func watcherCancelled(by action: () -> Void) -> Bool {
+      let previous = Task { @MainActor in }
+      recovering.panelWatch = previous
+      action()
+      let cancelled = previous.isCancelled && recovering.panelWatch == nil
+      previous.cancel()
+      recovering.panelWatch = nil
+      return cancelled
+    }
+    guard watcherCancelled(by: { recovering.watchPanel(of: 0, opened: []) }),
+      watcherCancelled(by: { recovering.reveal() }),
+      watcherCancelled(by: { native.reveal() }),
+      watcherCancelled(by: { native.onExternalReveal?() }) else {
+      fputs("TRAYNOOK_STALE_PANEL_WATCHER\n", stderr)
+      return false
+    }
     return true
   }
 }
