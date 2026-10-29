@@ -35,7 +35,10 @@ item are runtime-only and never rank siblings or get a key.
 Rank can shift when an application creates or destroys items dynamically. The
 section is revealed whenever any sibling is removed or a ranked sibling's
 status window changes within one process while concealed, so such a shift
-cannot silently swap placements. Ranks are assumed stable across a relaunch
+cannot silently swap placements. A ranked proxy action also checks its original
+window identifier against a fresh inventory before acting; a replacement between
+polling and clicking cannot redirect the action to another sibling.
+Ranks are assumed stable across a relaunch
 (an application creates its items in code order), so a relaunched multi-item
 application rebinds its hidden siblings without revealing; an application that
 creates items in a different order on each launch would swap keys, and that

@@ -1,3 +1,4 @@
+import AppKit
 import InventoryIdentityCore
 import Testing
 
@@ -9,6 +10,78 @@ struct NativeGeometryTests {
   private let safeFrame = ItemFrame(x: 900, y: 0, width: 540, height: 24)
   private let boundary = ItemFrame(x: 1222, y: 0, width: 18, height: 24)
   private let launcher = ItemFrame(x: 1240, y: 0, width: 24, height: 24)
+
+  @Test("An external display's control retains its own window identity and button geometry")
+  func mirroredControlGeometry() throws {
+    let home = NativeMenuBarController.ControlWindow(id: 10, display: 1,
+      frame: CGRect(x: 1400, y: 860, width: 28, height: 40), isVisible: true)
+    let button = CGRect(x: 1402, y: 868, width: 24, height: 32)
+    // Display layouts can put the mirror to the left, right, or above home.
+    for origin in [CGPoint(x: -60, y: 876), CGPoint(x: 2500, y: 876), CGPoint(x: 1400, y: 1776)] {
+      let mirror = NativeMenuBarController.ControlWindow(id: 20, display: 2,
+        frame: CGRect(origin: origin, size: CGSize(width: 28, height: 24)), isVisible: true)
+      let geometry = try #require(NativeMenuBarController.controlGeometry(
+        home: home, button: button, on: 2, statusWindows: [home, mirror]))
+      #expect(geometry.windowID == 20)
+      #expect(geometry.button == CGRect(x: origin.x + 2, y: origin.y, width: 24, height: 24))
+    }
+    let geometry = try #require(NativeMenuBarController.controlGeometry(
+      home: home, button: button, on: 1, statusWindows: []))
+    #expect(geometry.windowID == home.id)
+    #expect(geometry.button == button)
+  }
+
+  @Test("Missing, invisible, wrong-display, and ambiguous control mirrors are rejected")
+  func rejectsUnreliableControlMirrors() {
+    let home = NativeMenuBarController.ControlWindow(id: 10, display: 1,
+      frame: CGRect(x: 1400, y: 860, width: 28, height: 40), isVisible: true)
+    let button = CGRect(x: 1402, y: 868, width: 24, height: 32)
+    func mirror(_ id: UInt32, display: UInt32 = 2, width: Double = 28, visible: Bool = true)
+      -> NativeMenuBarController.ControlWindow {
+      .init(id: id, display: display,
+        frame: CGRect(x: 2500, y: 876, width: width, height: 24), isVisible: visible)
+    }
+    for candidates in [[], [home], [mirror(20, display: 3)], [mirror(20, width: 18)],
+      [mirror(20, visible: false)], [mirror(20), mirror(21)]] {
+      #expect(NativeMenuBarController.controlGeometry(
+        home: home, button: button, on: 2, statusWindows: candidates) == nil)
+    }
+  }
+
+  @Test("A stale ranked proxy cannot activate the sibling that inherited its rank")
+  func rejectsReassignedSiblingIdentity() throws {
+    func siblings(_ windows: [UInt32]) -> [ClassifiedSourceItem] {
+      IdentityAssessor().classify(windows.enumerated().map { index, window in
+        observation(bundle: "example.pair", x: 1150 + Double(index) * 28, window: window)
+      })
+    }
+    let original = try #require(siblings([10, 20]).first { $0.identity.persistentKey == "example.pair#w0" })
+    let replacement = try #require(siblings([20, 30]).first { $0.identity.persistentKey == "example.pair#w0" })
+    #expect(NativeMenuBarController.preservesSourceIdentity(original: original, current: original))
+    #expect(!NativeMenuBarController.preservesSourceIdentity(original: original, current: replacement))
+    // Once a new inventory is accepted, a new user action binds that inventory.
+    #expect(NativeMenuBarController.preservesSourceIdentity(original: replacement, current: replacement))
+    let missingWindow = ClassifiedSourceItem(
+      observation: observation(bundle: "example.pair", x: 1150),
+      identity: original.identity, manageability: original.manageability)
+    #expect(!NativeMenuBarController.preservesSourceIdentity(original: original, current: missingWindow))
+  }
+
+  @Test("Stable AX sibling keys survive window replacement but never process replacement")
+  func preservesAXSiblingIdentity() throws {
+    func sibling(window: UInt32, pid: Int32) throws -> ClassifiedSourceItem {
+      let items = IdentityAssessor().classify([
+        observation(bundle: "example.pair", x: 1150, window: window, identifier: "primary", pid: pid),
+        observation(bundle: "example.pair", x: 1180, window: window + 1, identifier: "secondary", pid: pid),
+      ])
+      return try #require(items.first { $0.identity.persistentKey == "example.pair#ax:primary" })
+    }
+    let original = try sibling(window: 10, pid: 100)
+    #expect(NativeMenuBarController.preservesSourceIdentity(
+      original: original, current: try sibling(window: 20, pid: 100)))
+    #expect(!NativeMenuBarController.preservesSourceIdentity(
+      original: original, current: try sibling(window: 20, pid: 200)))
+  }
 
   @Test("Launcher stays completely visible to the right of the separator")
   func launcherVisibility() {
@@ -232,12 +305,13 @@ struct NativeGeometryTests {
 
   private func observation(bundle: String, x: Double, y: Double = 0, width: Double = 24,
     role: String = "AXMenuBarItem",
-    isOnscreen: Bool? = nil, window: UInt32? = nil) -> RawSourceItemObservation {
+    isOnscreen: Bool? = nil, window: UInt32? = nil, identifier: String? = nil,
+    pid: Int32 = 100) -> RawSourceItemObservation {
     RawSourceItemObservation(
-      runtimeID: "fixture:\(x)", processIdentifier: 100, bundleIdentifier: bundle,
+      runtimeID: "fixture:\(x)", processIdentifier: pid, bundleIdentifier: bundle,
       applicationName: "Fixture", role: role,
       frame: ItemFrame(x: x, y: y, width: width, height: 24), actions: ["AXPress"],
-      metadata: LiveAccessibilityMetadata(), observedOrder: 0, isOnscreen: isOnscreen,
+      metadata: LiveAccessibilityMetadata(identifierCandidate: identifier), observedOrder: 0, isOnscreen: isOnscreen,
       statusWindowIdentifier: window)
   }
 }

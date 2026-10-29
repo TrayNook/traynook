@@ -27,6 +27,10 @@ mirrored status windows (same width, button rect centered vertically). Every
 operation still re-reads the environment before and after acting, so a display
 switch mid-operation fails safely and reveals.
 
+The environment retains these control windows' identifiers alongside their
+rectangles. Single-item promotion and return use those same windows as anchors,
+so validated geometry on another display cannot target the home display.
+
 Status windows are matched to items only on the same menu-bar row, which drops
 the other display's duplicates and status-level panels taller than twice the
 item (DockDoor's preview). The concealing separator grows to the widest display
