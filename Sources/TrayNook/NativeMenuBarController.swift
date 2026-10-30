@@ -803,15 +803,23 @@ final class NativeMenuBarController: NSObject {
         throw MenuBarFailure(L("The menu bar changed before the action. Try again."))
       }
       let source = CGPoint(x: frame.midX, y: frame.midY)
-      let events: [(CGEventType, CGPoint, Bool)]
+      let events: [(CGEventType, CGPoint, Bool)]?
       if let toHidden = movingToHidden {
         guard let alreadyHidden = Self.hiddenSide(frame, boundary: environment.boundary) else {
           throw MenuBarFailure(L("This item's position overlaps the hidden section boundary. Command-drag it to the right of the tray icon, then retry."))
         }
         if alreadyHidden == toHidden { return }
         if toHidden {
-          let destination = CGPoint(x: environment.boundary.minX + 1, y: environment.boundary.midY)
-          events = Self.dragEvents(from: source, to: destination)
+          let sourceWindow = try statusWindow(for: target.observation, requiringOnscreen: true)
+          let ownPID = ProcessInfo.processInfo.processIdentifier
+          let boundaryWindow = StatusWindowBinding(id: environment.boundaryWindowID, pid: ownPID,
+            bundle: Bundle.main.bundleIdentifier)
+          let launcherWindow = StatusWindowBinding(id: environment.launcherWindowID, pid: ownPID,
+            bundle: Bundle.main.bundleIdentifier)
+          // Address the native window directly; the invisible boundary is too narrow for pointer hit-testing.
+          try await moveTargeted(source: sourceWindow, before: boundaryWindow,
+            fallbackBefore: launcherWindow, token: token)
+          events = nil
         } else {
           let disposition = try SafeDefaultCorrectionPlanner().plan(
             target: target.identity.provisionalKey!, in: prepared.snapshot.items,
@@ -834,8 +842,10 @@ final class NativeMenuBarController: NSObject {
           (secondary ? .rightMouseDown : .leftMouseDown, source, false),
           (secondary ? .rightMouseUp : .leftMouseUp, source, false)]
       }
-      try await post(events, secondary: secondary, token: token)
-      nativeLog.notice("posted \(events.count) events for \(original.identity.persistentKey ?? "?", privacy: .public)")
+      if let events {
+        try await post(events, secondary: secondary, token: token)
+        nativeLog.notice("posted \(events.count) events for \(original.identity.persistentKey ?? "?", privacy: .public)")
+      }
       if let toHidden = movingToHidden {
         try await pause(0.25, token: token)
         // In a crowded bar the hidden side is under the notch, so an item
@@ -1334,17 +1344,6 @@ final class NativeMenuBarController: NSObject {
 
   private static func near(_ lhs: CGPoint, _ rhs: CGPoint) -> Bool {
     abs(lhs.x - rhs.x) <= 2 && abs(lhs.y - rhs.y) <= 2
-  }
-
-  private static func dragEvents(from source: CGPoint, to destination: CGPoint) -> [(CGEventType, CGPoint, Bool)] {
-    var result: [(CGEventType, CGPoint, Bool)] = [(.mouseMoved, source, false), (.leftMouseDown, source, true)]
-    for step in 1...8 {
-      let progress = Double(step) / 8
-      result.append((.leftMouseDragged, CGPoint(x: source.x + (destination.x - source.x) * progress,
-        y: source.y + (destination.y - source.y) * progress), true))
-    }
-    result.append((.leftMouseUp, destination, true))
-    return result
   }
 
   @objc private func separatorClicked() { reveal(); onExternalReveal?() }

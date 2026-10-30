@@ -579,15 +579,23 @@ final class AppModel: ObservableObject {
   }
 
   func applySavedLayout(restoringToMenuBar key: String? = nil, recovering: Bool = false) {
+    runLayoutOperation(recovering: recovering) {
+      try await self.applyAndConceal(restoringToMenuBar: Set(key.map { [$0] } ?? []))
+    }
+  }
+
+  private func runLayoutOperation(recovering: Bool,
+    operation: @escaping @MainActor () async throws -> Void) {
     guard canEdit else { return }
+    let shouldRecover = recovering || launchRestoreRunning
     attemptedLaunchRestore = true
     message = L("Applying placements…")
     runOperation {
-      self.recoveringLayout = recovering
+      self.recoveringLayout = shouldRecover
       defer { self.recoveringLayout = false }
-      do { try await self.applyAndConceal(restoringToMenuBar: Set(key.map { [$0] } ?? [])) }
+      do { try await operation() }
       catch {
-        self.retryLayoutRecovery(after: error, recovering: recovering)
+        self.retryLayoutRecovery(after: error, recovering: shouldRecover)
         throw error
       }
     }
@@ -596,7 +604,7 @@ final class AppModel: ObservableObject {
   private func retryLayoutRecovery(after error: Error, recovering: Bool) {
     guard recovering, !Task.isCancelled, permissionGranted, !recoveryRequired,
       let error = error as? NativeMenuActionError,
-      [.inputNotIdle, .inputInterrupted, .inventoryUnavailable].contains(error) else { return }
+      [.inputNotIdle, .inputInterrupted, .placementInterrupted, .inventoryUnavailable].contains(error) else { return }
     reapplyNotBefore = Date().addingTimeInterval(3)
     modelLog.notice("temporary layout failure; retrying after input and inventory settle: \(error.localizedDescription, privacy: .public)")
   }
@@ -726,7 +734,7 @@ final class AppModel: ObservableObject {
         if revealOnFailure { native.reveal() }
         message = error.localizedDescription
         modelLog.error("operation failed: \(error.localizedDescription, privacy: .public)")
-        if launchRestoreRunning { modelLog.notice("settings: launch restore failed"); showSettings?() } // the launch restore needs the user
+        if launchRestoreRunning && reapplyNotBefore == nil { modelLog.notice("settings: launch restore failed"); showSettings?() }
       }
       launchRestoreRunning = false
       concealed = native.isConcealed
@@ -867,6 +875,101 @@ final class AppModel: ObservableObject {
     NSPasteboard.general.clearContents()
     NSPasteboard.general.setString(summary, forType: .string)
     message = L("Diagnostics copied. No app inventory or item labels included.")
+  }
+
+  /// Exercises launch failure handling without native moves or saved-state writes.
+  static func verifyLaunchRecoveryBehavior(native: NativeMenuBarController) async -> Bool {
+    let onReveal = native.onReveal
+    let onExternalReveal = native.onExternalReveal
+    defer {
+      native.onReveal = onReveal
+      native.onExternalReveal = onExternalReveal
+    }
+
+    func launchModel() -> AppModel {
+      let model = AppModel(native: native, store: nil)
+      model.permissionGranted = true
+      model.scanComplete = true
+      model.layout.items = [SavedItem(id: "example.fixture", placement: .dropdown)]
+      model.launchRestoreRunning = true
+      return model
+    }
+
+    func finish(_ model: AppModel) async -> Bool {
+      guard let task = model.operationTask else { return false }
+      await task.value
+      model.scanTask?.cancel()
+      model.scanning = false
+      return !model.busy
+    }
+
+    for error in [NativeMenuActionError.inventoryUnavailable, .inputNotIdle,
+      .inputInterrupted, .placementInterrupted] {
+      let model = launchModel()
+      var settingsOpened = false
+      model.showSettings = { [weak model] in
+        settingsOpened = true
+        if model?.busy == true { model?.reveal() }
+      }
+      model.runLayoutOperation(recovering: false) {
+        if error == .inventoryUnavailable {
+          try Task.checkCancellation()
+          model.accept(InventorySnapshot(capturedAt: Date(), permission: .granted, completeness: .incomplete,
+            items: [], warnings: [],
+            metrics: ScanMetrics(durationMilliseconds: 0, inspectedApplicationCount: 0, sourceItemCount: 0)))
+          try Task.checkCancellation()
+        }
+        throw error
+      }
+      guard await finish(model), !settingsOpened, let retry = model.reapplyNotBefore else {
+        fputs("TRAYNOOK_LAUNCH_RECOVERY_NOT_RETRIED\n", stderr)
+        return false
+      }
+      if error == .inventoryUnavailable {
+        guard !model.scanComplete, !model.takeLayoutRecovery(now: .distantFuture) else {
+          fputs("TRAYNOOK_LAUNCH_RECOVERY_USED_INCOMPLETE_SCAN\n", stderr)
+          return false
+        }
+        model.accept(InventorySnapshot(capturedAt: Date(), permission: .granted, completeness: .complete,
+          items: [], warnings: [],
+          metrics: ScanMetrics(durationMilliseconds: 0, inspectedApplicationCount: 0, sourceItemCount: 0)))
+      }
+      guard !model.takeLayoutRecovery(now: retry.addingTimeInterval(-1)),
+        model.takeLayoutRecovery(now: retry),
+        !model.takeLayoutRecovery(now: .distantFuture) else {
+        fputs("TRAYNOOK_LAUNCH_RECOVERY_NOT_RETRIED\n", stderr)
+        return false
+      }
+      var retried = false
+      model.runLayoutOperation(recovering: true) { retried = true }
+      guard await finish(model), retried, model.reapplyNotBefore == nil, !settingsOpened else {
+        fputs("TRAYNOOK_LAUNCH_RECOVERY_DID_NOT_COMPLETE\n", stderr)
+        return false
+      }
+    }
+
+    let cancelled = launchModel()
+    cancelled.runLayoutOperation(recovering: false) {
+      cancelled.reveal()
+      throw NativeMenuActionError.inventoryUnavailable
+    }
+    guard await finish(cancelled), cancelled.reapplyNotBefore == nil else {
+      fputs("TRAYNOOK_CANCELLED_LAUNCH_RECOVERY_RETRIED\n", stderr)
+      return false
+    }
+
+    let failed = launchModel()
+    var settingsOpened = false
+    failed.showSettings = { [weak failed] in
+      settingsOpened = true
+      if failed?.busy == true { failed?.reveal() }
+    }
+    failed.runLayoutOperation(recovering: false) { throw NativeMenuActionError.responseTimedOut }
+    guard await finish(failed), failed.reapplyNotBefore == nil, settingsOpened else {
+      fputs("TRAYNOOK_PERMANENT_LAUNCH_FAILURE_RETRIED\n", stderr)
+      return false
+    }
+    return true
   }
 
   /// Runs only in --smoke-test, before the actual UI model is created. No TCC

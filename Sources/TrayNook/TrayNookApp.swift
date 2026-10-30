@@ -86,6 +86,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
     if smokeTest {
       openSettings()
       Task { @MainActor in
+        guard await AppModel.verifyLaunchRecoveryBehavior(native: native) else {
+          fputs("TRAYNOOK_LAUNCH_RECOVERY_SMOKE_FAILED\n", stderr)
+          exit(1)
+        }
         try? await Task.sleep(for: .seconds(1))
         guard self.launcher.button?.window != nil, let window = self.settingsWindow,
           window.isVisible, window.contentView != nil, !self.model.native.isConcealed
