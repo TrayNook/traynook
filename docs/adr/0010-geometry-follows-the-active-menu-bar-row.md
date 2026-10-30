@@ -31,6 +31,15 @@ The environment retains these control windows' identifiers alongside their
 rectangles. Single-item promotion and return use those same windows as anchors,
 so validated geometry on another display cannot target the home display.
 
+Control rectangles come from live WindowServer frames, since AppKit can retain
+the compact frame after the separator expands. An expanded window belongs to
+the row containing its right edge. The safe area's horizontal limits still
+exclude the notch, but its vertical bounds come from the selected row's native
+launcher window. The global status-bar thickness is not a per-row measurement:
+a captured 24-point launcher exceeded the 22-point default and caused polling
+to reveal a correctly hidden section. The auxiliary notch area can likewise
+be shorter than its native status windows. Regression tests replay both cases.
+
 Status windows are matched to items only on the same menu-bar row, which drops
 the other display's duplicates and status-level panels taller than twice the
 item (DockDoor's preview). The concealing separator grows to the widest display

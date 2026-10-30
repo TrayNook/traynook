@@ -11,6 +11,87 @@ struct NativeGeometryTests {
   private let boundary = ItemFrame(x: 1222, y: 0, width: 18, height: 24)
   private let launcher = ItemFrame(x: 1240, y: 0, width: 24, height: 24)
 
+  @Test("Polling another row preserves concealment when its launcher exceeds the default bar height")
+  func liveRowSafety() throws {
+    // Captured at the false reveal: the global bar thickness was 22, but
+    // the mirrored launcher filled a 24-point WindowServer status window.
+    let horizontal = ItemFrame(x: -495, y: -1440, width: 2560, height: 22)
+    let window = CGRect(x: 1862, y: -1440, width: 38, height: 24)
+    let safe = NativeMenuBarController.menuBarSafeFrame(horizontalArea: horizontal, controlWindow: window)
+    let launcher = ItemFrame(x: 1869.75, y: -1440, width: 22.5, height: 24)
+    for boundary in [ItemFrame(x: 1475, y: -1439, width: 2, height: 22),
+      ItemFrame(x: -1085, y: -1439, width: 2562, height: 22)] {
+      #expect(NativeMenuBarController.launcherIsSafe(launcher, boundary: boundary,
+        safeFrame: safe, expanded: boundary.width > 2))
+    }
+    #expect(safe.contains(ItemFrame(x: 1525, y: -1440, width: 26, height: 24)))
+
+    // A notched display also has taller native windows than its auxiliary
+    // area. Its horizontal cutout exclusion must remain intact.
+    let notched = NativeMenuBarController.menuBarSafeFrame(
+      horizontalArea: ItemFrame(x: 956, y: 0, width: 772, height: 32),
+      controlWindow: CGRect(x: 1527, y: 0, width: 38, height: 37))
+    #expect(notched.contains(ItemFrame(x: 1535, y: 2.5, width: 22, height: 32)))
+    #expect(!notched.contains(ItemFrame(x: 940, y: 2.5, width: 22, height: 32)))
+    #expect(!notched.contains(ItemFrame(x: 1535, y: 40, width: 22, height: 24)))
+  }
+
+  @Test("Live Quartz status-window frames keep the content's right edge fixed while expanding")
+  func liveControlButtonFrames() throws {
+    let compact = try #require(NativeMenuBarController.controlButtonFrame(
+      in: CGRect(x: 1132, y: 0, width: 18, height: 37), width: 2, height: 22))
+    let expanded = try #require(NativeMenuBarController.controlButtonFrame(
+      in: CGRect(x: -1428, y: 0, width: 2578, height: 37), width: 2562, height: 22))
+    #expect(compact == CGRect(x: 1140, y: 7.5, width: 2, height: 22))
+    #expect(expanded == CGRect(x: -1420, y: 7.5, width: 2562, height: 22))
+    #expect(expanded.maxX == compact.maxX)
+
+    let launcher = try #require(NativeMenuBarController.controlButtonFrame(
+      in: CGRect(x: 1527, y: 0, width: 38, height: 37), width: 22, height: 22))
+    #expect(launcher == CGRect(x: 1535, y: 7.5, width: 22, height: 22))
+    let mirror = try #require(NativeMenuBarController.controlButtonFrame(
+      in: CGRect(x: -1093, y: -1440, width: 2578, height: 24), width: 2562, height: 32))
+    #expect(mirror == CGRect(x: -1085, y: -1440, width: 2562, height: 24))
+    #expect(mirror.maxX == 1477)
+  }
+
+  @Test("Requested content is unavailable until its native status window has expanded")
+  func rejectsUnallocatedControlContent() {
+    let compact = CGRect(x: 1132, y: 0, width: 18, height: 37)
+    #expect(NativeMenuBarController.controlButtonFrame(in: compact, width: 2562, height: 22) == nil)
+    for size in [CGSize(width: 0, height: 22), CGSize(width: 2, height: 0),
+      CGSize(width: CGFloat.infinity, height: 22), CGSize(width: 2, height: CGFloat.nan)] {
+      #expect(NativeMenuBarController.controlButtonFrame(in: compact,
+        width: size.width, height: size.height) == nil)
+    }
+  }
+
+  @Test("A wide control belongs to the menu row containing its right edge")
+  func liveControlDisplay() {
+    let rows: [(display: UInt32, frame: CGRect)] = [
+      (1, CGRect(x: 0, y: 0, width: 1728, height: 37)),
+      (2, CGRect(x: -1920, y: 0, width: 1920, height: 24)),
+      (3, CGRect(x: 0, y: -1440, width: 2560, height: 24)),
+      (4, CGRect(x: 2500, y: -900, width: 1800, height: 24)),
+    ]
+    // Most of this expanded window lies on display 2; its recovery edge remains on display 1.
+    #expect(NativeMenuBarController.controlDisplay(
+      for: CGRect(x: -1428, y: 0, width: 2578, height: 37), menuBarRows: rows) == 1)
+    #expect(NativeMenuBarController.controlDisplay(
+      for: CGRect(x: -1093, y: -1440, width: 2578, height: 24), menuBarRows: rows) == 3)
+    #expect(NativeMenuBarController.controlDisplay(
+      for: CGRect(x: 2400, y: -900, width: 250, height: 24), menuBarRows: rows) == 4)
+    for unmatched in [
+      CGRect(x: 1100, y: 100, width: 18, height: 24),
+      CGRect(x: 3000, y: 0, width: 18, height: 24),
+      CGRect(x: -100, y: 0, width: 100, height: 24), // Right edge shared by two rows.
+    ] {
+      #expect(NativeMenuBarController.controlDisplay(for: unmatched, menuBarRows: rows) == nil)
+    }
+    #expect(NativeMenuBarController.controlDisplay(
+      for: CGRect(x: 1100, y: 0, width: 18, height: 24), menuBarRows: []) == nil)
+  }
+
   @Test("An external display's control retains its own window identity and button geometry")
   func mirroredControlGeometry() throws {
     let home = NativeMenuBarController.ControlWindow(id: 10, display: 1,
@@ -46,6 +127,23 @@ struct NativeGeometryTests {
       #expect(NativeMenuBarController.controlGeometry(
         home: home, button: button, on: 2, statusWindows: candidates) == nil)
     }
+  }
+
+  @Test("A mirror is unavailable until its status window finishes expanding")
+  func waitsForExpandedMirrorGeometry() throws {
+    let home = NativeMenuBarController.ControlWindow(id: 10, display: 1,
+      frame: CGRect(x: -1428, y: 0, width: 2578, height: 37), isVisible: true)
+    let button = CGRect(x: -1420, y: 7.5, width: 2562, height: 22)
+    let compact = NativeMenuBarController.ControlWindow(id: 20, display: 2,
+      frame: CGRect(x: 1467, y: -1440, width: 18, height: 24), isVisible: true)
+    #expect(NativeMenuBarController.controlGeometry(home: home, button: button,
+      on: 2, statusWindows: [compact]) == nil)
+    let expanded = NativeMenuBarController.ControlWindow(id: 20, display: 2,
+      frame: CGRect(x: -1093, y: -1440, width: 2578, height: 24), isVisible: true)
+    let geometry = try #require(NativeMenuBarController.controlGeometry(home: home,
+      button: button, on: 2, statusWindows: [expanded]))
+    #expect(geometry.windowID == 20)
+    #expect(geometry.button.maxX == 1477)
   }
 
   @Test("A stale ranked proxy cannot activate the sibling that inherited its rank")

@@ -32,7 +32,7 @@ private final class MovementCheck: NSObject, NSApplicationDelegate, NSMenuDelega
 
   private func createFixture() {
     UserDefaults.standard.set(2, forKey: "NSStatusItem Preferred Position Fixture")
-    let item = NSStatusBar.system.statusItem(withLength: 24)
+    let item = NSStatusBar.system.statusItem(withLength: 36)
     item.autosaveName = "Fixture"
     item.button?.title = "F"
     item.button?.setAccessibilityIdentifier("TrayNookNativeMovementFixture")
@@ -116,15 +116,18 @@ private final class MovementCheck: NSObject, NSApplicationDelegate, NSMenuDelega
       try await native.prepareLayout()
       try fixture.run()
       try await Task.sleep(for: .seconds(1))
-      let source = try await readFixture(processIdentifier: fixture.processIdentifier)
-      guard source.observation.isOnscreen == true, native.isBehindBoundary(source) == false else {
-        throw CheckFailure("Disposable fixture is not visible beside the launcher; no item was moved.")
+      var source = try await readFixture(processIdentifier: fixture.processIdentifier)
+      guard let frame = source.observation.frame, abs(frame.width - 36) < 0.01,
+        source.observation.isOnscreen == true, native.isBehindBoundary(source) == false else {
+        throw CheckFailure("The 36-point disposable fixture is not visible beside the launcher; no item was moved.")
       }
+      try checkInvisibleBoundary()
       if CommandLine.arguments.contains("--pointer-motion") {
         try await checkActivationDuringPointerMotion(source, native: native)
         print("PASS: exactly one AX primary action during continuous pointer-motion events")
       } else {
         try await checkPlacementFocus(source, native: native)
+        source = try await readFixture(processIdentifier: fixture.processIdentifier)
         try await checkActivation(source, native: native, secondary: false)
         print("PASS: primary native menu and observed dismissal")
         try await checkActivation(source, native: native, secondary: true)
@@ -166,13 +169,134 @@ private final class MovementCheck: NSObject, NSApplicationDelegate, NSMenuDelega
       name: NSApplication.didResignActiveNotification, object: NSApp)
     defer { NotificationCenter.default.removeObserver(self,
       name: NSApplication.didResignActiveNotification, object: NSApp) }
-    for hidden in [true, false] {
-      try await native.move(source, toHidden: hidden)
-      guard !lostPlacementFocus, NSApp.isActive, NSApp.keyWindow === settings else {
-        throw CheckFailure("Changing placement deactivated Settings or changed its key window.")
+    var current = try await readFixture(processIdentifier: source.observation.processIdentifier)
+    for cycle in 1...3 {
+      for hidden in [true, false] {
+        try checkInvisibleBoundary()
+        if cycle == 1 && hidden {
+          try await checkCoveredPlacement(current, native: native, settings: settings)
+        } else {
+          try await native.move(current, toHidden: hidden)
+        }
+        current = try await readFixture(processIdentifier: source.observation.processIdentifier)
+        guard native.isBehindBoundary(current) == hidden else {
+          throw CheckFailure("Fresh inventory did not confirm the fixture's requested boundary side.")
+        }
+        guard !lostPlacementFocus, NSApp.isActive, NSApp.keyWindow === settings else {
+          throw CheckFailure("Changing placement deactivated Settings or changed its key window.")
+        }
+        guard try String(contentsOf: eventsURL, encoding: .utf8).isEmpty else {
+          throw CheckFailure("Changing placement activated the disposable fixture or opened its menu.")
+        }
+        print("PASS: cycle \(cycle), fixture \(hidden ? "behind the two-point boundary" : "in the visible section"), no activation, Settings stays active")
       }
-      print("PASS: move fixture \(hidden ? "behind the boundary" : "to the visible section") while Settings stays active")
     }
+  }
+
+  private func checkCoveredPlacement(_ source: ClassifiedSourceItem,
+    native: NativeMenuBarController, settings: NSWindow) async throws {
+    guard let frame = source.observation.frame, frame.isUsable else {
+      throw CheckFailure("The covered-placement fixture has no usable frame.")
+    }
+    let center = CGPoint(x: frame.midX, y: frame.midY)
+    let screens = NSScreen.screens.compactMap { screen -> (NSScreen, CGRect)? in
+      guard let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber else {
+        return nil
+      }
+      let bounds = CGDisplayBounds(number.uint32Value)
+      return bounds.contains(center) ? (screen, bounds) : nil
+    }
+    guard screens.count == 1, let (screen, display) = screens.first else {
+      throw CheckFailure("The fixture's display cannot be identified uniquely for the overlay.")
+    }
+    let cocoaFrame = CGRect(x: screen.frame.minX + frame.minX - display.minX,
+      y: screen.frame.maxY - (frame.maxY - display.minY), width: frame.width, height: frame.height)
+    let label = "TrayNook covered-placement overlay"
+    let overlay = NSPanel(contentRect: cocoaFrame, styleMask: [.borderless, .nonactivatingPanel],
+      backing: .buffered, defer: false)
+    overlay.isReleasedWhenClosed = false
+    overlay.title = label
+    overlay.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.statusWindow)) + 1)
+    overlay.hidesOnDeactivate = false
+    overlay.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+    overlay.hasShadow = false
+    let view = NSView(frame: CGRect(origin: .zero, size: cocoaFrame.size))
+    view.setAccessibilityElement(true)
+    view.setAccessibilityRole(.group)
+    view.setAccessibilityLabel(label)
+    overlay.contentView = view
+    overlay.orderFrontRegardless()
+    defer { overlay.close() }
+    try await Task.sleep(for: .milliseconds(200))
+
+    let covered = try await readFixture(processIdentifier: source.observation.processIdentifier)
+    guard covered.observation.isOnscreen == true, covered.observation.frame == frame,
+      NativeMenuBarController.preservesSourceIdentity(original: source, current: covered),
+      NSApp.keyWindow === settings, !overlay.isKeyWindow else {
+      throw CheckFailure("The overlay changed fixture identity, visibility, position, or Settings focus.")
+    }
+    let system = AXUIElementCreateSystemWide()
+    AXUIElementSetMessagingTimeout(system, 0.2)
+    var element: AXUIElement?
+    guard AXUIElementCopyElementAtPosition(system, Float(center.x), Float(center.y), &element) == .success,
+      let element else {
+      throw CheckFailure("The covered fixture's pointer hit target is unavailable.")
+    }
+    var pid: pid_t = 0
+    guard AXUIElementGetPid(element, &pid) == .success,
+      pid == ProcessInfo.processInfo.processIdentifier else {
+      throw CheckFailure("The harness overlay did not cover the fixture's pointer hit target.")
+    }
+    let description = try attribute(element, kAXDescriptionAttribute as CFString) as? String
+    let title = try attribute(element, kAXTitleAttribute as CFString) as? String
+    var windowTitle: String?
+    if let window = try attribute(element, kAXWindowAttribute as CFString),
+      CFGetTypeID(window) == AXUIElementGetTypeID() {
+      windowTitle = try attribute(unsafeDowncast(window, to: AXUIElement.self),
+        kAXTitleAttribute as CFString) as? String
+    }
+    guard [description, title, windowTitle].contains(label) else {
+      throw CheckFailure("Pointer hit-testing did not identify the exact harness overlay.")
+    }
+    try await native.move(covered, toHidden: true)
+    guard NSApp.keyWindow === settings, !overlay.isKeyWindow else {
+      throw CheckFailure("Covered placement activated the overlay or changed Settings focus.")
+    }
+    print("PASS: window-addressed hidden placement bypasses the verified nonactivating overlay")
+  }
+
+  private func checkInvisibleBoundary() throws {
+    let application = AXUIElementCreateApplication(ProcessInfo.processInfo.processIdentifier)
+    guard let extras = try attribute(application, "AXExtrasMenuBar" as CFString),
+      CFGetTypeID(extras) == AXUIElementGetTypeID(),
+      let children = try attribute(unsafeDowncast(extras, to: AXUIElement.self),
+        kAXChildrenAttribute as CFString) as? [AXUIElement] else {
+      throw CheckFailure("The harness's own menu-bar controls are unavailable.")
+    }
+    let matches = try children.filter {
+      try attribute($0, kAXDescriptionAttribute as CFString) as? String == "TrayNook hidden section separator"
+    }
+    guard matches.count == 1, let boundary = matches.first,
+      let sizeValue = try attribute(boundary, kAXSizeAttribute as CFString),
+      CFGetTypeID(sizeValue) == AXValueGetTypeID() else {
+      throw CheckFailure("The harness's exact hidden boundary cannot be measured.")
+    }
+    let value = unsafeDowncast(sizeValue, to: AXValue.self)
+    var size = CGSize.zero
+    let title = try attribute(boundary, kAXTitleAttribute as CFString)
+    guard AXValueGetType(value) == .cgSize, AXValueGetValue(value, .cgSize, &size),
+      abs(size.width - 2) < 0.01, title == nil || title as? String == "" else {
+      throw CheckFailure("Placement regression requires an invisible two-point boundary.")
+    }
+  }
+
+  private func attribute(_ element: AXUIElement, _ name: CFString) throws -> CFTypeRef? {
+    var value: CFTypeRef?
+    let result = AXUIElementCopyAttributeValue(element, name, &value)
+    guard result == .success || result == .attributeUnsupported || result == .noValue else {
+      throw CheckFailure("The harness's own Accessibility attributes could not be read.")
+    }
+    return value
   }
 
   private func readFixture(processIdentifier: Int32) async throws -> ClassifiedSourceItem {

@@ -225,7 +225,7 @@ private final class DropdownCheck: NSObject, NSApplicationDelegate, NSMenuDelega
       sourceWindowOrder = visibleStatusWindowPositions()
       try FileManager.default.createDirectory(at: supportURL, withIntermediateDirectories: true)
       var layout: [String: Any] = ["version": 1, "rowCapacity": 10,
-        "items": [["id": fixtureID, "placement": "dropdown"],
+        "items": [["id": fixtureID, "placement": "menuBar"],
                   ["id": sentinelID, "placement": "alwaysHidden"]]]
       if let index = CommandLine.arguments.firstIndex(of: "--layout") {
         guard CommandLine.arguments.indices.contains(index + 1) else { throw CheckFailure("Missing --layout path.") }
@@ -236,7 +236,7 @@ private final class DropdownCheck: NSObject, NSApplicationDelegate, NSMenuDelega
           throw CheckFailure("The supplied layout is not a TrayNook layout object.")
         }
         sourceLayout = (url, data)
-        items.append(["id": fixtureID, "placement": "dropdown"])
+        items.append(["id": fixtureID, "placement": "menuBar"])
         items.append(["id": sentinelID, "placement": "alwaysHidden"])
         copied["items"] = items
         layout = copied
@@ -271,13 +271,14 @@ private final class DropdownCheck: NSObject, NSApplicationDelegate, NSMenuDelega
       try await wait("production launch and automatic concealment", seconds: 120) {
         self.recordControlWindows(pid: production.processIdentifier)
         return self.button("Show Items", in: application) != nil
-          && self.fixtureOnscreen(pid: fixture.processIdentifier) == false
+          && self.fixtureOnscreen(pid: fixture.processIdentifier) == true
           && self.fixtureOnscreen(pid: sentinel.processIdentifier) == false
       }
-      print("PASS: packaged production AppModel applied the disposable saved layout and concealed the fixture")
+      print("PASS: packaged production AppModel kept the Menu Bar fixture visible and concealed the sentinel")
       if CommandLine.arguments.contains("--invalid-positions") {
         print("PASS: automatic layout recovered deliberately invalid own saved control positions")
       }
+      try await checkSelectivePlacement(in: application, fixture: fixture)
       guard let launcher = find("Open TrayNook", in: application) else {
         throw CheckFailure("Production launcher is not accessible.")
       }
@@ -493,6 +494,82 @@ private final class DropdownCheck: NSObject, NSApplicationDelegate, NSMenuDelega
     }
   }
 
+  private func checkSelectivePlacement(in application: AXUIElement, fixture: Process) async throws {
+    guard let sentinel else { throw CheckFailure("The hidden sentinel process is unavailable.") }
+    let pickerLabel = "Placement: " + fixtureName
+    try await wait("idle Menu Bar fixture placement picker", seconds: 5) {
+      guard let picker = self.find(pickerLabel, in: application, role: kAXPopUpButtonRole as String),
+        let apply = self.button("Apply Saved Layout", in: application) else { return false }
+      return self.isEnabled(picker) && self.isEnabled(apply)
+        && self.fixtureOnscreen(pid: fixture.processIdentifier) == true
+    }
+    // Prove this sentinel can detect a whole-section reveal on this display,
+    // rather than silently accepting a source that stays clipped behind the notch.
+    guard let show = button("Show Items", in: application) else {
+      throw CheckFailure("The explicit reveal control is unavailable for sentinel witness setup.")
+    }
+    try press(show, description: "explicit reveal for sentinel witness setup")
+    try await wait("sentinel witness precondition: Show Items makes the sentinel visible on this display", seconds: 5) {
+      self.fixtureOnscreen(pid: sentinel.processIdentifier) == true
+        && self.fixtureOnscreen(pid: fixture.processIdentifier) == true
+    }
+    guard let hide = button("Hide Items", in: application), isEnabled(hide) else {
+      throw CheckFailure("The explicit hide control is unavailable after validating the sentinel witness.")
+    }
+    try press(hide, description: "restore concealment before selective placement")
+    try await wait("concealment restored before the selective placement check", seconds: 20) {
+      guard let apply = self.button("Apply Saved Layout", in: application) else { return false }
+      return self.fixtureOnscreen(pid: sentinel.processIdentifier) == false
+        && self.fixtureOnscreen(pid: fixture.processIdentifier) == true
+        && self.button("Show Items", in: application) != nil && self.isEnabled(apply)
+    }
+    let boundaryLabel = "TrayNook hidden section separator"
+    guard let boundaryWidth = ownControlFrames(application)[boundaryLabel]?.width else {
+      throw CheckFailure("The concealed boundary could not be measured before changing placement.")
+    }
+    try "".write(to: eventsURL, atomically: true, encoding: .utf8)
+    try await armHandoffMonitor()
+    defer { try? FileManager.default.removeItem(at: signal("watch-hidden")) }
+    try await selectPlacement("Dropdown", pickerLabel: pickerLabel, in: application)
+    try await wait("only the changed source disappears into Dropdown", seconds: 20) {
+      guard let apply = self.button("Apply Saved Layout", in: application) else { return false }
+      return self.fixtureOnscreen(pid: fixture.processIdentifier) == false
+        && self.button("Show Items", in: application) != nil && self.isEnabled(apply)
+    }
+    // Keep the witness armed through two actual inventory polls; missing
+    // concealed-source bookkeeping must not trigger a delayed whole-section reveal.
+    let deadline = Date().addingTimeInterval(7)
+    while Date() < deadline {
+      try requireHiddenSentinel(during: "Layout placement")
+      guard fixtureOnscreen(pid: fixture.processIdentifier) == false,
+        button("Show Items", in: application) != nil else {
+        throw CheckFailure("The changed source did not stay hidden after its Layout placement completed.")
+      }
+      try await Task.sleep(for: .milliseconds(150))
+    }
+    try requireHiddenSentinel(during: "Layout placement")
+    guard events().isEmpty,
+      let afterWidth = ownControlFrames(application)[boundaryLabel]?.width,
+      abs(afterWidth - boundaryWidth) < 0.5 else {
+      throw CheckFailure("Layout placement activated the source or changed the expanded boundary width.")
+    }
+    print("PASS: actual Layout Menu Bar→Dropdown placement hid only the selected source, never revealed the sentinel, and sent no activation")
+  }
+
+  private func selectPlacement(_ title: String, pickerLabel: String, in application: AXUIElement) async throws {
+    guard let picker = find(pickerLabel, in: application, role: kAXPopUpButtonRole as String), isEnabled(picker) else {
+      throw CheckFailure("The disposable source's enabled placement picker is unavailable.")
+    }
+    try press(picker, description: "fixture placement picker")
+    try await wait("placement menu option", seconds: 3) {
+      self.find(title, in: application, role: kAXMenuItemRole as String) != nil
+    }
+    guard let option = find(title, in: application, role: kAXMenuItemRole as String) else {
+      throw CheckFailure("The requested fixture placement menu option disappeared.")
+    }
+    try press(option, description: "fixture placement menu option")
+  }
+
   private func launch(_ relativePath: String, arguments: [String]) throws -> Process {
     let process = Process()
     process.executableURL = directory.appendingPathComponent(relativePath)
@@ -545,12 +622,12 @@ private final class DropdownCheck: NSObject, NSApplicationDelegate, NSMenuDelega
     }
   }
 
-  private func requireHiddenSentinel() throws {
+  private func requireHiddenSentinel(during operation: String = "Proxy handoff") throws {
     guard !FileManager.default.fileExists(atPath: signal("sentinel-revealed").path) else {
-      throw CheckFailure("Proxy handoff transiently revealed the other hidden source (independent sentinel witness).")
+      throw CheckFailure("\(operation) transiently revealed the other hidden source (independent sentinel witness).")
     }
     guard !FileManager.default.fileExists(atPath: signal("sentinel-unobservable").path) else {
-      throw CheckFailure("The hidden source became unobservable during proxy handoff; concealment cannot be verified.")
+      throw CheckFailure("The hidden source became unobservable during \(operation.lowercased()); concealment cannot be verified.")
     }
     guard let sentinel, sentinel.isRunning, fixtureOnscreen(pid: sentinel.processIdentifier) == false else {
       throw CheckFailure("The hidden sentinel is no longer running and verifiably offscreen.")

@@ -551,7 +551,7 @@ final class AppModel: ObservableObject {
     placementOperationRunning = true
     attemptedLaunchRestore = true
     message = nil
-    runOperation(deactivateApp: false) {
+    runOperation(revealOnFailure: false, deactivateApp: false) {
       defer {
         self.placementOperationRunning = false
         self.pendingPlacementKeys.removeAll()
@@ -561,15 +561,39 @@ final class AppModel: ObservableObject {
         try Task.checkCancellation()
         let keys = self.pendingPlacementKeys
         let requested = self.layout
-        let restoring = Set(requested.items.filter { keys.contains($0.id) && $0.placement == .menuBar }.map(\.id))
-        do { try await self.applyAndConceal(restoringToMenuBar: restoring, layout: requested) }
-        catch where Self.shouldRetryPlacement(after: error) {
+        do {
+          if Self.canApplyPlacementsIndividually(keys: keys, layout: requested,
+            concealed: self.native.isConcealed, hasPendingActivation: self.native.hasPendingActivation) {
+            for saved in requested.items where keys.contains(saved.id) {
+              try Task.checkCancellation()
+              guard let item = self.liveItem(saved.id), self.isManageable(item),
+                self.native.isBehindBoundary(item) != true else { continue }
+              let moved = try await self.native.hideWhileConcealed(item)
+              if let index = self.items.firstIndex(where: { $0.identity.persistentKey == saved.id }) {
+                self.items[index] = moved
+              }
+            }
+            self.concealed = self.native.isConcealed
+            self.message = nil
+          } else {
+            let restoring = Set(requested.items.filter { keys.contains($0.id) && $0.placement == .menuBar }.map(\.id))
+            try await self.applyAndConceal(restoringToMenuBar: restoring, layout: requested)
+          }
+        } catch where Self.shouldRetryPlacement(after: error) {
           // Editing another picker can interrupt the drag; keep every request.
           try await Task.sleep(for: .milliseconds(300))
           continue
         }
         self.pendingPlacementKeys.subtract(keys)
       }
+    }
+  }
+
+  static func canApplyPlacementsIndividually(keys: Set<String>, layout: SavedLayout,
+    concealed: Bool, hasPendingActivation: Bool) -> Bool {
+    guard concealed, !hasPendingActivation, !keys.isEmpty else { return false }
+    return keys.allSatisfy { key in
+      layout.items.contains { $0.id == key && $0.placement != .menuBar }
     }
   }
 

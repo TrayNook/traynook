@@ -361,18 +361,33 @@ final class NativeMenuBarController: NSObject {
         return (key, item.observation.processIdentifier)
       }, uniquingKeysWith: { first, _ in first })
       // Hidden items must leave every menu bar, so grow to the widest display.
-      let widestDisplay = NSScreen.screens.map { Double($0.frame.width) }.max() ?? before.displayWidth
+      let displayWidths = NSScreen.screens.compactMap { Self.displayID(of: $0) }
+        .map { Double(CGDisplayBounds($0).width) }.filter { $0.isFinite && $0 > 0 }
+      let widestDisplay = displayWidths.max() ?? before.displayWidth
       separator?.length = max(before.displayWidth, widestDisplay) + compactWidth
-      nativeLog.notice("conceal allowed=\(allowedKeys.count) sources=\(self.concealedSourcePIDs.count) displayWidth=\(before.displayWidth, privacy: .public) widest=\(widestDisplay, privacy: .public) screens=\(NSScreen.screens.map { Double($0.frame.width) }.description, privacy: .public) length=\(self.separator?.length ?? 0, privacy: .public)")
+      nativeLog.notice("conceal allowed=\(allowedKeys.count) sources=\(self.concealedSourcePIDs.count) displayWidth=\(before.displayWidth, privacy: .public) widest=\(widestDisplay, privacy: .public) screens=\(displayWidths.description, privacy: .public) length=\(self.separator?.length ?? 0, privacy: .public)")
       isConcealed = true
       try await pause(0.25, token: token)
-      guard let after = environment(), before.display == after.display,
-        before.safeFrame == after.safeFrame,
-        Self.launcherIsSafe(after.launcher, boundary: after.boundary,
-          safeFrame: after.safeFrame, expanded: true),
-        abs(after.launcher.x - before.launcher.x) <= 1,
-        abs(after.boundary.maxX - before.boundary.maxX) <= 1
-      else {
+      // Mirrored status windows can apply a length change on different run-loop turns.
+      let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+      var afterConcealment: MenuBarEnvironment?
+      var settled = false
+      repeat {
+        try checkOperation(token)
+        afterConcealment = environment()
+        if let after = afterConcealment, before.display == after.display,
+          before.safeFrame == after.safeFrame,
+          Self.launcherIsSafe(after.launcher, boundary: after.boundary,
+            safeFrame: after.safeFrame, expanded: true),
+          abs(after.launcher.x - before.launcher.x) <= 1,
+          abs(after.boundary.maxX - before.boundary.maxX) <= 1 {
+          settled = true
+          break
+        }
+        try await pause(0.02, token: token)
+      } while ContinuousClock.now < deadline
+      guard settled else {
+        nativeLog.error("conceal geometry did not settle: boundary=\(String(describing: afterConcealment?.boundary), privacy: .public) launcher=\(String(describing: afterConcealment?.launcher), privacy: .public)")
         throw MenuBarFailure(L("macOS could not hide this section while keeping TrayNook accessible. The section has been revealed."))
       }
       try requirePermission()
@@ -399,6 +414,71 @@ final class NativeMenuBarController: NSObject {
   private var pendingReleasePID: Int32?
   private var activeEventRelay: TargetedMenuBarEventRelay?
   var hasPendingActivation: Bool { pendingActivation != nil }
+
+  /// Hide only this source without collapsing the expanded boundary.
+  func hideWhileConcealed(_ original: ClassifiedSourceItem) async throws -> ClassifiedSourceItem {
+    guard !isBusy, pendingActivation == nil else {
+      throw MenuBarFailure(L("Finish the current item interaction before opening another item."))
+    }
+    guard isConcealed else { throw NativeMenuActionError.placementInterrupted }
+    isBusy = true
+    defer { isBusy = false }
+    let token = generation
+    do {
+      try await waitForIdleInput(token: token)
+      let prepared = try await stableTarget(original, token: token,
+        allowingClipped: true, allowingConcealed: true)
+      if isBehindBoundary(prepared.item) == true { return prepared.item }
+      let before = prepared.environment
+      let source = prepared.item.observation
+      guard isConcealed, let key = prepared.item.identity.persistentKey,
+        Self.isVerifiedVisible(source, boundary: before.boundary, safeFrame: before.safeFrame,
+          displayFrame: before.displayFrame, occlusionFrame: before.occlusionFrame) else {
+        throw MenuBarFailure(L("The selected item is not safely visible. Other hidden items remain hidden."))
+      }
+      guard try checkedEnvironment(allowingExpanded: true) == before else {
+        throw MenuBarFailure(L("The menu bar changed before the action. Try again."))
+      }
+      let sourceWindow = try statusWindow(for: source, requiringOnscreen: true)
+      let ownPID = ProcessInfo.processInfo.processIdentifier
+      let boundaryWindow = StatusWindowBinding(id: before.boundaryWindowID, pid: ownPID,
+        bundle: Bundle.main.bundleIdentifier)
+      let launcherWindow = StatusWindowBinding(id: before.launcherWindowID, pid: ownPID,
+        bundle: Bundle.main.bundleIdentifier)
+      try checkOperation(token)
+      // Authorize the requested identity before delivery so a partial move remains recognized as hidden.
+      concealedSourcePIDs[key] = source.processIdentifier
+      try await moveTargeted(source: sourceWindow, before: boundaryWindow,
+        fallbackBefore: launcherWindow, token: token)
+      let deadline = ContinuousClock.now.advanced(by: .milliseconds(500))
+      while ContinuousClock.now < deadline {
+        let verified = try await stableTarget(prepared.item, token: token,
+          allowingClipped: true, allowingConcealed: true)
+        let after = verified.environment
+        guard isConcealed, after.display == before.display, after.displayFrame == before.displayFrame,
+          after.safeFrame == before.safeFrame, after.occlusionFrame == before.occlusionFrame,
+          after.boundaryWindowID == before.boundaryWindowID,
+          after.launcherWindowID == before.launcherWindowID, after.boundary.width == before.boundary.width else {
+          throw MenuBarFailure(L("The item's native window changed. Other hidden items remain hidden."))
+        }
+        let boundaryFrame = try statusWindowFrame(boundaryWindow)
+        guard let moved = statusWindows().first(where: { $0.binding == sourceWindow }) else {
+          throw MenuBarFailure(L("The item's native window changed. Other hidden items remain hidden."))
+        }
+        if !moved.isOnscreen, moved.frame.maxX <= boundaryFrame.minX + 2,
+          moved.frame.y < boundaryFrame.maxY, moved.frame.maxY > boundaryFrame.y,
+          (try? statusWindow(for: verified.item.observation)) == sourceWindow,
+          isBehindBoundary(verified.item) == true {
+          return verified.item
+        }
+        try await pause(0.02, token: token)
+      }
+      throw MenuBarFailure(L("macOS did not move this item to its saved section. Command-drag it to the right of the tray icon, then retry."))
+    } catch {
+      releasePointer()
+      throw error
+    }
+  }
 
   /// Promote just this source while the separator remains expanded. A return
   /// record is retained until its original neighbour is verified again.
@@ -798,7 +878,8 @@ final class NativeMenuBarController: NSObject {
         try performAccessibilityAction(target.observation, secondary: secondary, token: token)
         return
       }
-      try verifyHitTarget(target.observation)
+      // Window-addressed placement verifies its exact PID/window instead of the pointer hit target.
+      if movingToHidden != true { try verifyHitTarget(target.observation) }
       guard try checkedEnvironment() == environment else {
         throw MenuBarFailure(L("The menu bar changed before the action. Try again."))
       }
@@ -1202,6 +1283,27 @@ final class NativeMenuBarController: NSObject {
     let isVisible: Bool
   }
 
+  /// An expanded status window stretches left of its display; its right edge stays in the menu bar.
+  static func controlDisplay(for frame: CGRect, menuBarRows: [(display: UInt32, frame: CGRect)]) -> UInt32? {
+    guard frame.minX.isFinite, frame.minY.isFinite, frame.width.isFinite, frame.height.isFinite,
+      frame.width > 0, frame.height > 0 else { return nil }
+    let matches = menuBarRows.filter { row in
+      frame.maxX >= row.frame.minX && frame.maxX <= row.frame.maxX
+        && frame.midY >= row.frame.minY && frame.midY <= row.frame.maxY
+    }
+    return matches.count == 1 ? matches.first?.display : nil
+  }
+
+  /// AppKit can retain compact frames while WindowServer has already expanded the status item.
+  static func controlButtonFrame(in window: CGRect, width: CGFloat, height: CGFloat) -> CGRect? {
+    guard window.minX.isFinite, window.minY.isFinite, window.width.isFinite, window.height.isFinite,
+      width.isFinite, height.isFinite, width > 0, height > 0,
+      window.width >= width, window.height > 0 else { return nil }
+    let height = min(height, window.height)
+    return CGRect(x: window.midX - width / 2, y: window.midY - height / 2,
+      width: width, height: height)
+  }
+
   /// Keep the window identity and button rect together: targeted moves must
   /// use the same display's control that was used for safe-area validation.
   static func controlGeometry(home: ControlWindow, button: CGRect, on display: UInt32,
@@ -1219,28 +1321,51 @@ final class NativeMenuBarController: NSObject {
   }
 
   private func environment() -> MenuBarEnvironment? {
-    guard let boundaryButton = separator?.button, let boundaryWindow = boundaryButton.window,
+    guard let separator, let boundaryButton = separator.button, let boundaryWindow = boundaryButton.window,
       let launcherButton = launcher.button, let launcherWindow = launcherButton.window,
-      let homeScreen = boundaryWindow.screen,
-      launcherWindow.screen === homeScreen
+      let boundaryID = UInt32(exactly: boundaryWindow.windowNumber),
+      let launcherID = UInt32(exactly: launcherWindow.windowNumber)
     else { return nil }
-    let screen = NSScreen.screens.first { Self.displayID(of: $0) == activeDisplay } ?? homeScreen
-    guard let display = Self.displayID(of: screen), let homeDisplay = Self.displayID(of: homeScreen)
-    else { return nil }
-    let windows = NSApp.windows.compactMap { window -> ControlWindow? in
+    let screens = NSScreen.screens.compactMap { screen -> (screen: NSScreen, display: UInt32, row: CGRect)? in
+      guard let display = Self.displayID(of: screen) else { return nil }
+      let bounds = CGDisplayBounds(display)
+      let height = screen.auxiliaryTopRightArea?.height ?? NSStatusBar.system.thickness
+      guard bounds.width > 0, height > 0 else { return nil }
+      return (screen, display, CGRect(x: bounds.minX, y: bounds.minY, width: bounds.width, height: height))
+    }
+    let rows = screens.map { (display: $0.display, frame: $0.row) }
+    let statusWindowIDs = Set(NSApp.windows.compactMap { window -> UInt32? in
       guard String(describing: type(of: window)) == "NSStatusBarWindow",
-        let screen = window.screen, let display = Self.displayID(of: screen) else { return nil }
-      return ControlWindow(id: UInt32(window.windowNumber), display: display,
-        frame: window.frame, isVisible: window.isVisible)
+        let id = UInt32(exactly: window.windowNumber) else { return nil }
+      return id
+    })
+    let ownPID = ProcessInfo.processInfo.processIdentifier
+    let rawWindows = CGWindowListCopyWindowInfo(.optionAll, kCGNullWindowID) as? [[String: Any]] ?? []
+    let windows = rawWindows.compactMap { window -> ControlWindow? in
+      guard (window[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value == ownPID,
+        let id = window[kCGWindowNumber as String] as? UInt32, statusWindowIDs.contains(id),
+        let bounds = window[kCGWindowBounds as String] as? [String: Any],
+        let frame = CGRect(dictionaryRepresentation: bounds as CFDictionary),
+        let display = Self.controlDisplay(for: frame, menuBarRows: rows) else { return nil }
+      return ControlWindow(id: id, display: display, frame: frame,
+        isVisible: window[kCGWindowIsOnscreen as String] as? Bool == true)
     }
-    func geometry(_ window: NSWindow, _ button: NSStatusBarButton) -> (windowID: UInt32, button: CGRect)? {
-      Self.controlGeometry(home: ControlWindow(id: UInt32(window.windowNumber), display: homeDisplay,
-        frame: window.frame, isVisible: window.isVisible),
-        button: window.convertToScreen(button.convert(button.bounds, to: nil)),
-        on: display, statusWindows: windows)
-    }
-    guard let launcherGeometry = geometry(launcherWindow, launcherButton),
-      let boundaryGeometry = geometry(boundaryWindow, boundaryButton) else {
+    guard let boundaryHome = windows.first(where: { $0.id == boundaryID }),
+      let launcherHome = windows.first(where: { $0.id == launcherID }),
+      let target = screens.first(where: { $0.display == activeDisplay })
+        ?? screens.first(where: { $0.display == launcherHome.display }),
+      let boundaryFrame = Self.controlButtonFrame(in: boundaryHome.frame,
+        width: separator.length, height: boundaryButton.bounds.height),
+      let launcherFrame = Self.controlButtonFrame(in: launcherHome.frame,
+        width: launcherButton.bounds.width, height: launcherButton.bounds.height)
+    else { return nil }
+    let screen = target.screen
+    let display = target.display
+    guard let launcherGeometry = Self.controlGeometry(home: launcherHome, button: launcherFrame,
+      on: display, statusWindows: windows),
+      let boundaryGeometry = Self.controlGeometry(home: boundaryHome, button: boundaryFrame,
+        on: display, statusWindows: windows),
+      let rowWindow = windows.first(where: { $0.id == launcherGeometry.windowID }) else {
       nativeLog.error("no unambiguous mirrored controls on display \(display)")
       return nil
     }
@@ -1266,15 +1391,22 @@ final class NativeMenuBarController: NSObject {
     }
     return MenuBarEnvironment(display: display, displayWidth: bounds.width,
       displayFrame: ItemFrame(x: bounds.minX, y: bounds.minY, width: bounds.width, height: bounds.height),
-      safeFrame: ItemFrame(x: rawSafe.x, y: rawSafe.y - 1,
-        width: rawSafe.width, height: rawSafe.height + 2),
+      safeFrame: Self.menuBarSafeFrame(horizontalArea: rawSafe, controlWindow: rowWindow.frame),
       occlusionFrame: occlusionFrame,
-      // Status windows include padding outside the usable menu-bar row on
-      // current macOS. The actual button rect is the public clickable geometry.
-      boundary: converted(boundaryGeometry.button),
-      launcher: converted(launcherGeometry.button),
+      boundary: ItemFrame(x: boundaryGeometry.button.minX, y: boundaryGeometry.button.minY,
+        width: boundaryGeometry.button.width, height: boundaryGeometry.button.height),
+      launcher: ItemFrame(x: launcherGeometry.button.minX, y: launcherGeometry.button.minY,
+        width: launcherGeometry.button.width, height: launcherGeometry.button.height),
       boundaryWindowID: boundaryGeometry.windowID,
       launcherWindowID: launcherGeometry.windowID)
+  }
+
+  static func menuBarSafeFrame(horizontalArea: ItemFrame, controlWindow: CGRect) -> ItemFrame {
+    // The global status-bar thickness and auxiliary notch area can both be
+    // shorter than this row's actual controls. Keep the notch's horizontal
+    // limits, but measure the vertical band from the bound native window.
+    ItemFrame(x: horizontalArea.x, y: controlWindow.minY - 1,
+      width: horizontalArea.width, height: controlWindow.height + 2)
   }
 
   static func launcherIsSafe(_ launcher: ItemFrame, boundary: ItemFrame,
