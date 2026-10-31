@@ -11,13 +11,12 @@ struct LayoutPreviewView: View {
   @State private var iconFrames: [String: CGRect] = [:]
   @State private var zoneFrames: [Placement: CGRect] = [:]
 
-  private var layout: SavedLayout { drag.draft ?? model.layout }
-  private var columns: Int {
-    DropdownView.columnCount(rowCapacity: layout.rowCapacity,
-      controlCount: max(items(in: .dropdown).count, model.dropdownItems.count) + 1,
-      maximumWidth: min(700, availableWidth - 88))
+  init(model: AppModel, drag: PreviewDragSession = PreviewDragSession()) {
+    self.model = model
+    _drag = StateObject(wrappedValue: drag)
   }
 
+  private var layout: SavedLayout { drag.draft ?? model.layout }
   func items(in placement: Placement) -> [SavedItem] {
     layout.items.filter { saved in
       guard let live = model.liveItem(saved.id) else { return false }
@@ -31,7 +30,14 @@ struct LayoutPreviewView: View {
   }
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 10) {
+    let menuBarItems = items(in: .menuBar)
+    let dropdownItems = items(in: .dropdown)
+    let hiddenItems = items(in: .alwaysHidden)
+    let controlCount = max(dropdownItems.count, model.dropdownItems.count) + 1
+    let columns = DropdownView.columnCount(rowCapacity: layout.rowCapacity,
+      controlCount: controlCount, maximumWidth: min(700, availableWidth - 88))
+    let rows = (controlCount + columns - 1) / columns
+    return VStack(alignment: .leading, spacing: 10) {
       HStack {
         Text(L("Saved layout preview")).font(.headline)
         Spacer()
@@ -44,9 +50,9 @@ struct LayoutPreviewView: View {
       if !model.permissionGranted || !model.scanComplete {
         Text(L("Waiting for a fresh inventory")).font(.caption).foregroundStyle(.secondary)
       }
-      menuBar
-      dropdown
-      alwaysHidden
+      menuBar(menuBarItems)
+      dropdown(dropdownItems, columns: columns, height: min(176, CGFloat(rows * 44 + 28)))
+      alwaysHidden(hiddenItems)
       Text(L("Drag icons to reorder or move between zones. Escape cancels."))
         .font(.caption).foregroundStyle(.secondary)
       Text(L("Application icons; menu-bar order and spacing may differ."))
@@ -70,16 +76,16 @@ struct LayoutPreviewView: View {
     .onDisappear { drag.cancel() }
   }
 
-  private var menuBar: some View {
+  private func menuBar(_ items: [SavedItem]) -> some View {
     HStack(spacing: 12) {
       Text(L("Menu Bar")).font(.caption.weight(.medium)).foregroundStyle(.secondary)
       Spacer(minLength: 0)
       ScrollView(.horizontal) {
         HStack(spacing: 4) {
-          ForEach(items(in: .menuBar)) { item in previewIcon(item, in: .menuBar, size: 20, cell: 32) }
+          ForEach(items) { item in previewIcon(item, in: .menuBar, size: 20, cell: 32) }
         }.frame(maxWidth: .infinity, alignment: .trailing).padding(.vertical, 3)
       }
-      .frame(width: min(CGFloat(items(in: .menuBar).count * 36), max(0, availableWidth - 152)))
+      .frame(width: min(CGFloat(items.count * 36), max(0, availableWidth - 152)))
       .scrollIndicators(.hidden)
       Divider().frame(height: 20)
       Image(systemName: "tray.full").font(.system(size: 20))
@@ -92,7 +98,7 @@ struct LayoutPreviewView: View {
     .modifier(PreviewDropZone(placement: .menuBar, drag: drag))
   }
 
-  private var dropdown: some View {
+  private func dropdown(_ items: [SavedItem], columns: Int, height: CGFloat) -> some View {
     GeometryReader { geometry in
       HStack(alignment: .top) {
         Text(L("Dropdown")).font(.caption.weight(.medium)).foregroundStyle(.secondary)
@@ -106,7 +112,7 @@ struct LayoutPreviewView: View {
               alignment: .center, spacing: 8) {
               Image(systemName: "gearshape").font(.system(size: 21)).frame(width: 36, height: 36)
                 .accessibilityLabel(L("Settings preview"))
-              ForEach(items(in: .dropdown)) { item in
+              ForEach(items) { item in
                 previewIcon(item, in: .dropdown, size: 26, cell: 36)
               }
             }.padding(12)
@@ -120,17 +126,17 @@ struct LayoutPreviewView: View {
       .onAppear { availableWidth = geometry.size.width }
       .onChange(of: geometry.size.width) { _, width in availableWidth = width }
     }
-    .frame(height: dropdownHeight)
+    .frame(height: height)
   }
 
-  private var alwaysHidden: some View {
+  private func alwaysHidden(_ items: [SavedItem]) -> some View {
     HStack(spacing: 10) {
       Label(L("Always Hidden"), systemImage: "eye.slash").font(.caption).foregroundStyle(.secondary)
         .help(L("Kept out of the menu bar and dropdown until you choose Show Items."))
       ScrollView(.horizontal) {
         HStack(spacing: 4) {
-          ForEach(items(in: .alwaysHidden)) { item in previewIcon(item, in: .alwaysHidden, size: 18, cell: 30) }
-          if items(in: .alwaysHidden).isEmpty {
+          ForEach(items) { item in previewIcon(item, in: .alwaysHidden, size: 18, cell: 30) }
+          if items.isEmpty {
             Text(L("No items")).font(.caption).foregroundStyle(.tertiary)
           }
         }
@@ -139,11 +145,6 @@ struct LayoutPreviewView: View {
     .frame(minHeight: 36)
     .padding(.horizontal, 4)
     .modifier(PreviewDropZone(placement: .alwaysHidden, drag: drag, outlineAtRest: false))
-  }
-
-  private var dropdownHeight: CGFloat {
-    let rows = (max(items(in: .dropdown).count, model.dropdownItems.count) + 1 + columns - 1) / columns
-    return min(176, CGFloat(rows * 44 + 28))
   }
 
   private func insertionKey(at point: CGPoint, in placement: Placement) -> String? {
