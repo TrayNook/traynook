@@ -1,3 +1,4 @@
+import AppKit
 import InventoryIdentityCore
 import Testing
 
@@ -205,6 +206,64 @@ struct AppModelInventoryTests {
     #expect(AppModel.bundle(ofKey: "a.b#w1") == "a.b")
     #expect(AppModel.bundle(ofKey: "a.b#ax:x#y") == "a.b")
     #expect(AppModel.bundle(ofKey: "#x") == "")
+  }
+
+  @Test("Live lookup follows inventory mutations and excludes duplicate or ambiguous identities",
+    .enabled(if: ProcessInfo.processInfo.environment["TRAYNOOK_APPKIT_TESTS"] == "1"))
+  func liveLookupTracksInventory() throws {
+    NSApplication.shared.setActivationPolicy(.accessory)
+    let defaults = UserDefaults.standard
+    let preferenceKeys = ["TrayNookLauncher", "TrayNook.HiddenBoundary"].flatMap { name in
+      ["NSStatusItem Preferred Position \(name)", "NSStatusItem Visible \(name)",
+       "NSStatusItem VisibleCC \(name)"]
+    }
+    let previous = Dictionary(uniqueKeysWithValues: preferenceKeys.compactMap { key in
+      defaults.object(forKey: key).map { (key, $0) }
+    })
+    let launcher = NSStatusBar.system.statusItem(withLength: 0)
+    launcher.isVisible = false
+    let native = NativeMenuBarController(launcher: launcher)
+    defer {
+      native.remove()
+      NativeMenuBarController.removePreservingPosition(launcher)
+      for key in preferenceKeys {
+        if let value = previous[key] { defaults.set(value, forKey: key) }
+        else { defaults.removeObject(forKey: key) }
+      }
+      defaults.synchronize()
+    }
+    let model = AppModel(native: native, store: nil)
+    let assessor = IdentityAssessor()
+    let original = try #require(assessor.classify([item(window: 1)]).first)
+    let replacement = try #require(assessor.classify([item(pid: 20, window: 2)]).first)
+    let key = try #require(original.identity.persistentKey)
+    #expect(replacement.identity.persistentKey == key)
+
+    model.items = [original]
+    #expect(model.liveItem(key) == original)
+    #expect(model.liveItem("example.unknown") == nil)
+    model.items.append(replacement)
+    #expect(model.liveItem(key) == nil)
+    model.items.append(original)
+    #expect(model.liveItem(key) == nil)
+    model.items.removeLast()
+    #expect(model.liveItem(key) == nil)
+    model.items.removeLast()
+    #expect(model.liveItem(key) == original)
+    model.items[0] = replacement
+    #expect(model.liveItem(key) == replacement)
+    #expect(model.liveItem(key)?.observation.processIdentifier == 20)
+
+    let ambiguous = assessor.classify([
+      item(bundle: "example.ambiguous", pid: 30),
+      item(bundle: "example.ambiguous", pid: 30, index: 1),
+    ])
+    #expect(ambiguous.allSatisfy { $0.identity.persistentKey == nil })
+    model.items.append(contentsOf: ambiguous)
+    #expect(model.liveItem("example.ambiguous") == nil)
+    #expect(model.liveItem(key) == replacement)
+    model.items.removeAll()
+    #expect(model.liveItem(key) == nil)
   }
 
   private func item(bundle: String = "example.timer", pid: Int32 = 10,

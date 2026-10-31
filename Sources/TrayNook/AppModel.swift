@@ -10,7 +10,15 @@ let modelLog = Logger(subsystem: Bundle.main.bundleIdentifier ?? "io.github.mahe
 @MainActor
 final class AppModel: ObservableObject {
   @Published var layout = SavedLayout()
-  @Published var items: [ClassifiedSourceItem] = []
+  @Published var items: [ClassifiedSourceItem] = [] {
+    didSet {
+      liveItemsByKey = Dictionary(grouping: items, by: \.identity.persistentKey)
+        .reduce(into: [:]) { lookup, entry in
+          if let key = entry.key, entry.value.count == 1 { lookup[key] = entry.value[0] }
+        }
+    }
+  }
+  private var liveItemsByKey: [String: ClassifiedSourceItem] = [:]
   @Published var permissionGranted = false
   @Published var scanComplete = false
   @Published var scanning = false
@@ -106,8 +114,7 @@ final class AppModel: ObservableObject {
   }
 
   func liveItem(_ key: String) -> ClassifiedSourceItem? {
-    let matches = items.filter { $0.identity.persistentKey == key }
-    return matches.count == 1 ? matches.first : nil
+    liveItemsByKey[key]
   }
 
   func isManageable(_ item: ClassifiedSourceItem) -> Bool {
