@@ -6,49 +6,7 @@ struct SettingsView: View {
   @ObservedObject var model: AppModel
   @State private var confirmReset = false
   @AppStorage("dropdownGlyphs") private var showGlyphs = false
-  @State private var showLocked = false
   @State private var showItemDetails = true
-  @StateObject private var reorder = DetailReorderSession()
-  @State private var rowHeights: [String: CGFloat] = [:]
-  private let rowSpacing: CGFloat = 8
-
-  /// Rows the user can reorder in a section: locked items are folded away.
-  private func laneItems(_ zone: Placement) -> [SavedItem] {
-    let items = model.layout.items.filter { saved in
-      saved.placement == zone && !(model.liveItem(saved.id).map { !model.isManageable($0) } ?? false)
-    }
-    guard reorder.zone == zone, let order = reorder.order else { return items }
-    let byKey = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
-    return order.compactMap { byKey[$0] }
-  }
-
-  private func reorderHandle(for key: String, in zone: Placement) -> some View {
-    Image(systemName: "line.3.horizontal").foregroundStyle(.secondary)
-      .frame(width: 22, height: 26).contentShape(Rectangle())
-      .allowsHitTesting(model.canEdit)
-      .help(L("Drag to reorder"))
-      .gesture(DragGesture(minimumDistance: 2, coordinateSpace: .global)
-        .onChanged { value in dragChanged(key, in: zone, translation: value.translation.height) }
-        .onEnded { _ in dragEnded() })
-      .accessibilityHidden(true)
-  }
-
-  private func dragChanged(_ key: String, in zone: Placement, translation: CGFloat) {
-    guard model.canEdit else { reorder.cancel(); return }
-    if reorder.key == nil {
-      guard reorder.begin(key, layout: model.layout, lane: laneItems(zone), rowHeights: rowHeights,
-        rowSpacing: rowSpacing, commit: { model.setOrder($0, undoable: true) }) else { return }
-    }
-    guard reorder.key == key else { return }
-    withAnimation(.snappy(duration: 0.2)) { reorder.update(translation: translation) }
-  }
-
-  private func dragEnded() {
-    withAnimation(.snappy(duration: 0.2)) {
-      if model.canEdit { reorder.finish(currentLayout: model.layout) }
-      else { reorder.cancel() }
-    }
-  }
 
   var body: some View {
     VStack(spacing: 0) {
@@ -117,7 +75,7 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 16) {
           LayoutPreviewView(model: model)
           DisclosureGroup(L("Item details"), isExpanded: $showItemDetails) {
-            placementDetails.padding(.top, 8)
+            ItemDetailsView(model: model).padding(.top, 8)
           }
           if model.layout.items.isEmpty {
             Text(L("Grant Accessibility, then refresh to discover your menu-bar items."))
@@ -132,61 +90,6 @@ struct SettingsView: View {
       Text(L("Opening an item brings only that item into view. It returns when its menu closes. Other hidden items stay hidden."))
         .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
     }.padding(12)
-  }
-
-  private var placementDetails: some View {
-    VStack(alignment: .leading, spacing: 16) {
-      ForEach(Placement.allCases) { zone in
-        let savedItems = model.layout.items.filter { $0.placement == zone }
-        let shown = laneItems(zone)
-        let locked = savedItems.filter { saved in !shown.contains { $0.id == saved.id } }
-        VStack(alignment: .leading, spacing: rowSpacing) {
-          HStack {
-            Text(zone.title).font(.headline)
-            Text("\(savedItems.count)").foregroundStyle(.secondary)
-            Spacer()
-            if zone == .menuBar { Label(L("TrayNook stays here"), systemImage: "tray.full").font(.caption).foregroundStyle(.secondary) }
-          }
-          if savedItems.isEmpty {
-            Text(L("No items here yet")).foregroundStyle(.secondary).padding(.vertical, 8)
-          }
-          // Rows slide apart live while one is dragged by its handle.
-          ForEach(shown) { item in
-            itemRow(item, handle: AnyView(reorderHandle(for: item.id, in: zone)))
-              .modifier(DetailReorderRow(pointer: reorder.pointer, dragged: reorder.key == item.id))
-              .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { rowHeights[item.id] = $0 }
-          }
-          // Locked items carry no decision; one row stands for all of them.
-          if !locked.isEmpty {
-            DisclosureGroup(isExpanded: $showLocked) {
-              ForEach(locked) { item in itemRow(item) }
-            } label: {
-              HStack(spacing: 10) {
-                Image(systemName: "lock").frame(width: 26)
-                Text(L("System items")).lineLimit(1)
-                Text("\(locked.count)").foregroundStyle(.secondary)
-                Spacer()
-                Text(L("Protected — kept visible")).font(.caption).foregroundStyle(.secondary)
-              }
-            }
-          }
-        }
-        .padding(12)
-        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 10))
-      }
-    }
-    .onChange(of: model.layout) { _, _ in reorder.cancel() }
-    .onChange(of: model.canEdit) { _, editable in if !editable { reorder.cancel() } }
-    .onDisappear { reorder.cancel() }
-  }
-
-  private func itemRow(_ saved: SavedItem, handle: AnyView = AnyView(EmptyView())) -> some View {
-    HStack(spacing: 10) {
-      ItemDetailsContent(model: model, saved: saved).equatable()
-      handle
-    }
-    .disabled(!model.canEditPlacement(saved.id))
-    .padding(.vertical, 3)
   }
 
   private var permissions: some View {
@@ -281,6 +184,109 @@ struct SettingsView: View {
         }
       }.padding(12)
     }
+  }
+}
+
+/// Local drag updates leave settings-wide native geometry and the preview untouched.
+private struct ItemDetailsView: View {
+  @ObservedObject var model: AppModel
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @State private var showLocked = false
+  @StateObject private var reorder = DetailReorderSession()
+  @State private var rowHeights: [String: CGFloat] = [:]
+  private let rowSpacing: CGFloat = 8
+
+  /// Rows the user can reorder in a section: locked items are folded away.
+  private func laneItems(_ zone: Placement) -> [SavedItem] {
+    let items = model.layout.items.filter { saved in
+      saved.placement == zone && !(model.liveItem(saved.id).map { !model.isManageable($0) } ?? false)
+    }
+    guard reorder.zone == zone, let order = reorder.order else { return items }
+    let byKey = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
+    return order.compactMap { byKey[$0] }
+  }
+
+  private func reorderHandle(for key: String, in zone: Placement) -> some View {
+    Image(systemName: "line.3.horizontal").foregroundStyle(.secondary)
+      .frame(width: 22, height: 26).contentShape(Rectangle())
+      .allowsHitTesting(model.canEdit)
+      .help(L("Drag to reorder"))
+      .gesture(DragGesture(minimumDistance: 2, coordinateSpace: .global)
+        .onChanged { value in dragChanged(key, in: zone, translation: value.translation.height) }
+        .onEnded { _ in dragEnded() })
+      .accessibilityHidden(true)
+  }
+
+  private func dragChanged(_ key: String, in zone: Placement, translation: CGFloat) {
+    guard model.canEdit else { reorder.cancel(); return }
+    if reorder.key == nil {
+      guard reorder.begin(key, layout: model.layout, lane: laneItems(zone), rowHeights: rowHeights,
+        rowSpacing: rowSpacing, commit: { model.setOrder($0, undoable: true) }) else { return }
+    }
+    guard reorder.key == key else { return }
+    withAnimation(reduceMotion ? nil : .snappy(duration: 0.2)) { reorder.update(translation: translation) }
+  }
+
+  private func dragEnded() {
+    withAnimation(reduceMotion ? nil : .snappy(duration: 0.2)) {
+      if model.canEdit { reorder.finish(currentLayout: model.layout) }
+      else { reorder.cancel() }
+    }
+  }
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 16) {
+      ForEach(Placement.allCases) { zone in
+        let savedItems = model.layout.items.filter { $0.placement == zone }
+        let shown = laneItems(zone)
+        let locked = savedItems.filter { saved in !shown.contains { $0.id == saved.id } }
+        VStack(alignment: .leading, spacing: rowSpacing) {
+          HStack {
+            Text(zone.title).font(.headline)
+            Text("\(savedItems.count)").foregroundStyle(.secondary)
+            Spacer()
+            if zone == .menuBar { Label(L("TrayNook stays here"), systemImage: "tray.full").font(.caption).foregroundStyle(.secondary) }
+          }
+          if savedItems.isEmpty {
+            Text(L("No items here yet")).foregroundStyle(.secondary).padding(.vertical, 8)
+          }
+          // Rows slide apart live while one is dragged by its handle.
+          ForEach(shown) { item in
+            itemRow(item, handle: AnyView(reorderHandle(for: item.id, in: zone)))
+              .modifier(DetailReorderRow(pointer: reorder.pointer, dragged: reorder.key == item.id))
+              .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { rowHeights[item.id] = $0 }
+          }
+          // Locked items carry no decision; one row stands for all of them.
+          if !locked.isEmpty {
+            DisclosureGroup(isExpanded: $showLocked) {
+              ForEach(locked) { item in itemRow(item) }
+            } label: {
+              HStack(spacing: 10) {
+                Image(systemName: "lock").frame(width: 26)
+                Text(L("System items")).lineLimit(1)
+                Text("\(locked.count)").foregroundStyle(.secondary)
+                Spacer()
+                Text(L("Protected — kept visible")).font(.caption).foregroundStyle(.secondary)
+              }
+            }
+          }
+        }
+        .padding(12)
+        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 10))
+      }
+    }
+    .onChange(of: model.layout) { _, _ in reorder.cancel() }
+    .onChange(of: model.canEdit) { _, editable in if !editable { reorder.cancel() } }
+    .onDisappear { reorder.cancel() }
+  }
+
+  private func itemRow(_ saved: SavedItem, handle: AnyView = AnyView(EmptyView())) -> some View {
+    HStack(spacing: 10) {
+      ItemDetailsContent(model: model, saved: saved).equatable()
+      handle
+    }
+    .disabled(!model.canEditPlacement(saved.id))
+    .padding(.vertical, 3)
   }
 }
 
