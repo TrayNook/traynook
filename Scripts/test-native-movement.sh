@@ -6,6 +6,7 @@ set -euo pipefail
 # Quit TrayNook first so its inventory watcher does not save the test fixture.
 # --pointer-motion checks AXPress while mouse-motion events remain active.
 # It posts moves at the current position, without displacing the pointer.
+# --reorder reverses/restores a disposable pair with a hidden sentinel witness.
 repo_dir="$(cd "$(dirname "$0")/.." && pwd)"
 check_dir="$(mktemp -d "${TMPDIR:-/tmp}/traynook-movement-check.XXXXXX")"
 trap 'rm -rf "$check_dir"' EXIT

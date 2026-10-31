@@ -879,6 +879,149 @@ final class NativeMenuBarController: NSObject {
     try await interact(with: item, movingToHidden: toHidden, secondary: false)
   }
 
+  /// Reorder visible sources without revealing or moving anything in the hidden section.
+  func reorderMenuBarItems(_ ordered: [ClassifiedSourceItem]) async throws {
+    guard ordered.count > 1 else { return }
+    guard !isBusy, pendingActivation == nil else {
+      throw MenuBarFailure(L("Finish the current item interaction before changing item order."))
+    }
+    var failure: MenuBarFailure {
+      MenuBarFailure(L("The menu-bar items changed or are not safely visible. Refresh, then retry their order."))
+    }
+    let keys = ordered.compactMap(\.identity.persistentKey)
+    guard keys.count == ordered.count, Set(keys).count == keys.count,
+      ordered.allSatisfy({ item in
+        guard let bundle = item.observation.bundleIdentifier else { return false }
+        return !bundle.hasPrefix("com.apple.") && bundle != Bundle.main.bundleIdentifier
+          && item.observation.processIdentifier != ProcessInfo.processInfo.processIdentifier
+          && item.identity.status != .ambiguous && item.identity.provisionalKey != nil
+          && item.manageability.status != .protected
+      }) else { throw failure }
+    let wasConcealed = isConcealed
+    let boundaryWasVisible = separator?.isVisible == true
+    defer {
+      if !boundaryWasVisible && !isConcealed, let separator {
+        Self.setVisiblePreservingPosition(separator, visible: false)
+      }
+    }
+    if !wasConcealed && !boundaryWasVisible { try await prepareLayout(keepingVisible: Set(keys)) }
+    isBusy = true
+    defer { releasePointer(); isBusy = false }
+    let token = generation
+    try await waitForIdleInput(token: token)
+
+    func readOrder() async throws
+      -> (items: [ClassifiedSourceItem], visible: [ClassifiedSourceItem], environment: MenuBarEnvironment) {
+      for _ in 0..<4 {
+        let beforeWindows = statusWindows().sorted { $0.binding.id < $1.binding.id }
+        let beforeEnvironment = try checkedEnvironment(allowingExpanded: true)
+        let snapshot = try await freshInventory(token: token)
+        let environment = try checkedEnvironment(allowingExpanded: true)
+        let afterWindows = statusWindows().sorted { $0.binding.id < $1.binding.id }
+        guard environment == beforeEnvironment, beforeWindows.elementsEqual(afterWindows, by: {
+          $0.binding == $1.binding && $0.frame == $1.frame && $0.isOnscreen == $1.isOnscreen
+        }) else { try await pause(0.02, token: token); continue }
+        let current = try ordered.map { original in
+          let matches = snapshot.items.filter { $0.identity.persistentKey == original.identity.persistentKey }
+          guard matches.count == 1, let item = matches.first,
+            Self.preservesSourceIdentity(original: original, current: item),
+            item.observation.bundleIdentifier == original.observation.bundleIdentifier,
+            item.identity.status != .ambiguous, item.identity.provisionalKey != nil,
+            item.manageability.status != .protected else { throw failure }
+          _ = try statusWindow(for: item.observation)
+          return item
+        }
+        guard let visibleKeys = Self.visibleMenuBarOrderKeys(current, boundary: environment.boundary,
+          safeFrame: environment.safeFrame, displayFrame: environment.displayFrame,
+          occlusionFrame: environment.occlusionFrame) else { throw failure }
+        let visible = current.filter { visibleKeys.contains($0.identity.persistentKey!) }
+          .sorted { $0.observation.frame!.minX < $1.observation.frame!.minX }
+        for item in visible { _ = try statusWindow(for: item.observation, requiringOnscreen: true) }
+        return (current, visible, environment)
+      }
+      throw failure
+    }
+
+    var current = try await readOrder()
+    let visibleKeys = Set(current.visible.compactMap(\.identity.persistentKey))
+    let desired = keys.filter { visibleKeys.contains($0) }
+    guard desired.count > 1 else { return }
+    let before = current.environment
+    let bindings = try Dictionary(uniqueKeysWithValues: current.items.map {
+      ($0.identity.persistentKey!, try statusWindow(for: $0.observation))
+    })
+    let windowBindings = statusWindows().map(\.binding).sorted { $0.id < $1.id }
+    func requireUnchangedRow(_ environment: MenuBarEnvironment) throws {
+      guard isConcealed == wasConcealed, environment.display == before.display,
+        environment.displayFrame == before.displayFrame, environment.safeFrame == before.safeFrame,
+        environment.occlusionFrame == before.occlusionFrame, environment.boundary == before.boundary,
+        environment.boundaryWindowID == before.boundaryWindowID,
+        environment.launcherWindowID == before.launcherWindowID,
+        Set(current.visible.compactMap(\.identity.persistentKey)) == visibleKeys,
+        statusWindows().map(\.binding).sorted(by: { $0.id < $1.id }) == windowBindings else { throw failure }
+      for item in current.items {
+        guard try statusWindow(for: item.observation,
+          requiringOnscreen: visibleKeys.contains(item.identity.persistentKey!))
+          == bindings[item.identity.persistentKey!] else { throw failure }
+      }
+    }
+
+    for _ in 0..<desired.count {
+      let currentKeys = current.visible.compactMap(\.identity.persistentKey)
+      if currentKeys == desired { return }
+      guard let move = Self.nextMenuBarOrderMove(desired: desired, current: currentKeys),
+        let source = bindings[move.source], let anchor = bindings[move.anchor] else { throw failure }
+      try checkOperation(token)
+      try requireUnchangedRow(checkedEnvironment(allowingExpanded: true))
+      var expected = currentKeys.filter { $0 != move.source }
+      guard let index = expected.firstIndex(of: move.anchor) else { throw failure }
+      expected.insert(move.source, at: index)
+      try await moveTargeted(source: source, before: anchor, fallbackBefore: anchor, token: token)
+      let deadline = ContinuousClock.now.advanced(by: .milliseconds(500))
+      var verified = false
+      repeat {
+        current = try await readOrder()
+        try requireUnchangedRow(current.environment)
+        if current.visible.compactMap(\.identity.persistentKey) == expected {
+          verified = true
+          break
+        }
+        try await pause(0.02, token: token)
+      } while ContinuousClock.now < deadline
+      guard verified else {
+        throw MenuBarFailure(L("macOS did not accept the saved item order. Keep the pointer still, then retry."))
+      }
+    }
+    throw failure
+  }
+
+  /// Leave conclusively clipped sources in place; incomplete geometry is never an omission.
+  static func visibleMenuBarOrderKeys(_ items: [ClassifiedSourceItem], boundary: ItemFrame,
+    safeFrame: ItemFrame, displayFrame: ItemFrame, occlusionFrame: ItemFrame? = nil) -> Set<String>? {
+    var visible = Set<String>()
+    for item in items {
+      guard let key = item.identity.persistentKey, let frame = item.observation.frame, frame.isUsable,
+        frame.y < boundary.maxY, frame.maxY > boundary.y else { return nil }
+      if Self.isVerifiedVisible(item.observation, boundary: boundary, safeFrame: safeFrame,
+        displayFrame: displayFrame, occlusionFrame: occlusionFrame) {
+        visible.insert(key)
+      } else if !Self.isClipped(item.observation, boundary: boundary,
+        displayFrame: displayFrame, occlusionFrame: occlusionFrame)
+        && !(item.observation.isOnscreen == false && Self.outsideDisplay(frame, display: displayFrame)) {
+        return nil
+      }
+    }
+    return visible
+  }
+
+  /// Inserting at the first mismatch preserves the relative order of unrelated sources.
+  static func nextMenuBarOrderMove(desired: [String], current: [String]) -> (source: String, anchor: String)? {
+    guard desired.count == current.count, Set(desired).count == desired.count,
+      Set(current) == Set(desired), let index = desired.indices.first(where: { desired[$0] != current[$0] })
+    else { return nil }
+    return (desired[index], current[index])
+  }
+
   func activate(_ item: ClassifiedSourceItem, secondary: Bool) async throws {
     let prepared = try await prepareActivation(item)
     try await activatePrepared(prepared, secondary: secondary)

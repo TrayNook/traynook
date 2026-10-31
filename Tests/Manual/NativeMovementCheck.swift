@@ -12,6 +12,8 @@ private struct CheckFailure: LocalizedError {
 @MainActor
 private final class MovementCheck: NSObject, NSApplicationDelegate, NSMenuDelegate {
   private var fixtureItem: NSStatusItem?
+  private var reorderFixtureItems: [NSStatusItem] = []
+  private var hiddenSentinelViolation = false
   private let directory = URL(fileURLWithPath: CommandLine.arguments[1])
   private var eventsURL: URL { directory.appendingPathComponent("events.txt") }
   private var controlURL: URL { directory.appendingPathComponent("control.txt") }
@@ -40,6 +42,20 @@ private final class MovementCheck: NSObject, NSApplicationDelegate, NSMenuDelega
     item.button?.action = #selector(clicked)
     item.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
     fixtureItem = item
+    if CommandLine.arguments.contains("--reorder") {
+      for index in 1...2 {
+        let name = "FixtureOrder\(index)"
+        UserDefaults.standard.set(2 + index, forKey: "NSStatusItem Preferred Position \(name)")
+        let extra = NSStatusBar.system.statusItem(withLength: 28)
+        extra.autosaveName = name
+        extra.button?.title = "\(index)"
+        extra.button?.setAccessibilityIdentifier("TrayNookNativeOrderFixture\(index)")
+        extra.button?.target = self
+        extra.button?.action = #selector(clicked)
+        extra.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
+        reorderFixtureItems.append(extra)
+      }
+    }
     Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
       MainActor.assumeIsolated {
         guard let self,
@@ -82,6 +98,7 @@ private final class MovementCheck: NSObject, NSApplicationDelegate, NSMenuDelega
 
   func applicationWillTerminate(_ notification: Notification) {
     if let fixtureItem { NSStatusBar.system.removeStatusItem(fixtureItem) }
+    for item in reorderFixtureItems { NSStatusBar.system.removeStatusItem(item) }
     if let bundle = Bundle.main.bundleIdentifier { UserDefaults.standard.removePersistentDomain(forName: bundle) }
   }
 
@@ -103,6 +120,7 @@ private final class MovementCheck: NSObject, NSApplicationDelegate, NSMenuDelega
     let fixture = Process()
     fixture.executableURL = directory.appendingPathComponent("Fixture.app/Contents/MacOS/NativeMovementCheck")
     fixture.arguments = [directory.path, "--source"]
+    if CommandLine.arguments.contains("--reorder") { fixture.arguments?.append("--reorder") }
     fixture.standardOutput = FileHandle.nullDevice
     defer {
       native.remove()
@@ -116,6 +134,11 @@ private final class MovementCheck: NSObject, NSApplicationDelegate, NSMenuDelega
       try await native.prepareLayout()
       try fixture.run()
       try await Task.sleep(for: .seconds(1))
+      if CommandLine.arguments.contains("--reorder") {
+        try await checkReordering(processIdentifier: fixture.processIdentifier, native: native)
+        print("NATIVE_REORDER_CHECK_PASSED")
+        return 0
+      }
       var source = try await readFixture(processIdentifier: fixture.processIdentifier)
       guard let frame = source.observation.frame, abs(frame.width - 36) < 0.01,
         source.observation.isOnscreen == true, native.isBehindBoundary(source) == false else {
@@ -149,6 +172,86 @@ private final class MovementCheck: NSObject, NSApplicationDelegate, NSMenuDelega
     } catch {
       print("FAILED: \(error.localizedDescription)")
       return 1
+    }
+  }
+
+  private func checkReordering(processIdentifier: Int32, native: NativeMenuBarController) async throws {
+    func read() async throws -> (snapshot: InventorySnapshot, fixtures: [ClassifiedSourceItem]) {
+      let snapshot = await Task.detached { AccessibilityInventoryScanner().scan() }.value
+      let fixtures = snapshot.items.filter { $0.observation.bundleIdentifier == fixtureBundle }
+      guard snapshot.completeness == .complete, fixtures.count == 3,
+        fixtures.allSatisfy({ $0.observation.processIdentifier == processIdentifier
+          && $0.identity.persistentKey != nil && $0.manageability.status != .protected
+          && $0.observation.frame?.isUsable == true }) else {
+        throw CheckFailure("A complete inventory with exactly three identifiable order fixtures is required.")
+      }
+      return (snapshot, fixtures.sorted { $0.observation.frame!.minX < $1.observation.frame!.minX })
+    }
+
+    var observed = try await read()
+    // Keep every existing source visible; only the disposable sentinel may be concealed.
+    try await native.prepareLayout(keepingVisible: Set(observed.snapshot.items.compactMap(\.identity.persistentKey)))
+    observed = try await read()
+    guard observed.fixtures.allSatisfy({ native.isVerifiedVisible($0) }) else {
+      throw CheckFailure("All three order fixtures must fit safely in the visible menu bar.")
+    }
+    let sentinelKey = observed.fixtures[0].identity.persistentKey!
+    let pairKeys = observed.fixtures.dropFirst().compactMap(\.identity.persistentKey)
+
+    for concealed in [false, true] {
+      if concealed {
+        guard let sentinel = observed.fixtures.first(where: { $0.identity.persistentKey == sentinelKey }) else {
+          throw CheckFailure("The disposable sentinel disappeared.")
+        }
+        try await native.move(sentinel, toHidden: true)
+        try await native.conceal(allowedKeys: [sentinelKey])
+        observed = try await read()
+      }
+      for requested in [Array(pairKeys.reversed()), pairKeys] {
+        let byKey = Dictionary(uniqueKeysWithValues: observed.fixtures.map { ($0.identity.persistentKey!, $0) })
+        let pair = try requested.map { key in
+          guard let item = byKey[key] else { throw CheckFailure("A disposable order source disappeared.") }
+          return item
+        }
+        guard pair.allSatisfy({ native.isVerifiedVisible($0) }) else {
+          throw CheckFailure("The disposable order pair is not safely visible.")
+        }
+        var monitor: Timer?
+        hiddenSentinelViolation = false
+        if concealed {
+          guard let sentinel = byKey[sentinelKey],
+            sentinel.observation.isOnscreen == false, native.isBehindBoundary(sentinel) == true,
+            let hiddenFrame = native.statusWindowGeometry(for: sentinel.observation)?.frame else {
+            throw CheckFailure("The sentinel is not verifiably hidden before reordering.")
+          }
+          let witness = Timer(timeInterval: 0.02, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+              guard let self else { return }
+              if !native.isConcealed || native.statusWindowGeometry(for: sentinel.observation)?.frame != hiddenFrame {
+                self.hiddenSentinelViolation = true
+              }
+            }
+          }
+          monitor = witness
+          RunLoop.main.add(witness, forMode: .common)
+        }
+        defer { monitor?.invalidate() }
+        try await native.reorderMenuBarItems(pair)
+        monitor?.invalidate()
+        observed = try await read()
+        let actual = observed.fixtures.compactMap(\.identity.persistentKey).filter { pairKeys.contains($0) }
+        guard actual == requested, native.isConcealed == concealed, !hiddenSentinelViolation,
+          try String(contentsOf: eventsURL, encoding: .utf8).isEmpty else {
+          throw CheckFailure("Native order, concealment, or no-activation verification failed.")
+        }
+        if concealed {
+          guard let sentinel = observed.fixtures.first(where: { $0.identity.persistentKey == sentinelKey }),
+            sentinel.observation.isOnscreen == false, native.isBehindBoundary(sentinel) == true else {
+            throw CheckFailure("Reordering revealed the disposable sentinel.")
+          }
+        }
+        print("PASS: fixture order reversed/restored while \(concealed ? "concealed (sentinel stays hidden)" : "revealed"), no activation")
+      }
     }
   }
 
