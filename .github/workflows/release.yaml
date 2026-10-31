@@ -1,0 +1,170 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Validate release tag
+    runs-on: macos-15
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.metadata.outputs.version }}
+      release_version: ${{ steps.metadata.outputs.release_version }}
+      prerelease: ${{ steps.metadata.outputs.prerelease }}
+      commit: ${{ steps.tag.outputs.commit }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Read release version
+        id: metadata
+        run: Scripts/release-metadata.sh "$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+      - name: Require a verified signed tag on the default branch
+        id: tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          tag_object=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$GITHUB_REF_NAME" \
+            --jq '.object | select(.type == "tag") | .sha')
+          if [[ -z "$tag_object" ]]; then
+            echo '::error::Release tags must be signed annotated tags.'
+            exit 1
+          fi
+          tag_commit=$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$tag_object" \
+            --jq 'select(.verification.verified == true and .object.type == "commit") | .object.sha')
+          if [[ "$tag_commit" != "$(git rev-parse HEAD)" ]]; then
+            echo '::error::GitHub must verify the tag signature and its target commit.'
+            exit 1
+          fi
+          git merge-base --is-ancestor "$tag_commit" "origin/$DEFAULT_BRANCH"
+          printf 'commit=%s\n' "$tag_commit" >> "$GITHUB_OUTPUT"
+
+  release:
+    name: Sign, notarize, and create draft
+    needs: prepare
+    runs-on: macos-15
+    timeout-minutes: 45
+    environment: release
+    permissions:
+      contents: write
+    env:
+      TRAYNOOK_VERSION: ${{ needs.prepare.outputs.version }}
+      TRAYNOOK_RELEASE_VERSION: ${{ needs.prepare.outputs.release_version }}
+      TRAYNOOK_BUILD: ${{ github.run_number }}
+      TRAYNOOK_NOTARY_PROFILE: TrayNook
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.commit }}
+          persist-credentials: false
+      - name: Refuse to replace a published release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if is_draft=$(gh release view "$GITHUB_REF_NAME" --json isDraft --jq .isDraft); then
+            if [[ "$is_draft" != true ]]; then
+              echo '::error::This tag already has a published release. Use a new version tag.'
+              exit 1
+            fi
+          fi
+      - name: Install signing and notarization credentials
+        env:
+          TRAYNOOK_NOTARY_KEYCHAIN: ${{ runner.temp }}/traynook-release.keychain-db
+          DEVELOPER_ID_CERTIFICATE_BASE64: ${{ secrets.DEVELOPER_ID_CERTIFICATE_BASE64 }}
+          DEVELOPER_ID_CERTIFICATE_PASSWORD: ${{ secrets.DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+          APP_STORE_CONNECT_API_KEY_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_BASE64 }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+        run: |
+          for name in DEVELOPER_ID_CERTIFICATE_BASE64 DEVELOPER_ID_CERTIFICATE_PASSWORD \
+            APP_STORE_CONNECT_API_KEY_BASE64 APP_STORE_CONNECT_KEY_ID APP_STORE_CONNECT_ISSUER_ID; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Missing release environment secret: $name"
+              exit 1
+            fi
+          done
+          umask 077
+          certificate="$RUNNER_TEMP/traynook-developer-id.p12"
+          api_key="$RUNNER_TEMP/traynook-notary-key.p8"
+          printf '%s' "$DEVELOPER_ID_CERTIFICATE_BASE64" | base64 --decode > "$certificate"
+          printf '%s' "$APP_STORE_CONNECT_API_KEY_BASE64" | base64 --decode > "$api_key"
+          keychain_password=$(openssl rand -base64 32)
+          echo "::add-mask::$keychain_password"
+          security create-keychain -p "$keychain_password" "$TRAYNOOK_NOTARY_KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$TRAYNOOK_NOTARY_KEYCHAIN"
+          security unlock-keychain -p "$keychain_password" "$TRAYNOOK_NOTARY_KEYCHAIN"
+          security import "$certificate" -P "$DEVELOPER_ID_CERTIFICATE_PASSWORD" \
+            -t cert -f pkcs12 -k "$TRAYNOOK_NOTARY_KEYCHAIN" -T /usr/bin/codesign -T /usr/bin/security > /dev/null
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s \
+            -k "$keychain_password" "$TRAYNOOK_NOTARY_KEYCHAIN" > /dev/null
+          security list-keychains -d user -s "$TRAYNOOK_NOTARY_KEYCHAIN"
+          identity=$(security find-identity -v -p codesigning "$TRAYNOOK_NOTARY_KEYCHAIN" \
+            | awk '/"Developer ID Application:/ { print $2 }')
+          if [[ ! "$identity" =~ ^[A-F0-9]{40}$ ]]; then
+            echo '::error::The certificate must contain exactly one valid Developer ID Application identity.'
+            exit 1
+          fi
+          echo "::add-mask::$identity"
+          printf 'TRAYNOOK_SIGNING_IDENTITY=%s\n' "$identity" >> "$GITHUB_ENV"
+          printf 'TRAYNOOK_NOTARY_KEYCHAIN=%s\n' "$TRAYNOOK_NOTARY_KEYCHAIN" >> "$GITHUB_ENV"
+          xcrun notarytool store-credentials "$TRAYNOOK_NOTARY_PROFILE" \
+            --key "$api_key" --key-id "$APP_STORE_CONNECT_KEY_ID" --issuer "$APP_STORE_CONNECT_ISSUER_ID" \
+            --keychain "$TRAYNOOK_NOTARY_KEYCHAIN"
+      - name: Test, build Universal 2, sign, notarize, and verify
+        run: Scripts/release.sh
+      - name: Create or update GitHub draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
+        run: |
+          archive="dist/TrayNook-$TRAYNOOK_RELEASE_VERSION.zip"
+          (cd dist && shasum -a 256 -c "TrayNook-$TRAYNOOK_RELEASE_VERSION.zip.sha256")
+          if is_draft=$(gh release view "$GITHUB_REF_NAME" --json isDraft --jq .isDraft); then
+            if [[ "$is_draft" != true ]]; then
+              echo '::error::This release was published during the build. Assets will not be replaced.'
+              exit 1
+            fi
+            gh release edit "$GITHUB_REF_NAME" --prerelease="$PRERELEASE"
+            gh release upload "$GITHUB_REF_NAME" "$archive" "$archive.sha256" --clobber
+          else
+            cat > "$RUNNER_TEMP/traynook-release-notes.md" <<EOF
+          Universal 2 app, signed with Developer ID, notarized, and stapled.
+          Marketing version: $TRAYNOOK_VERSION. Build: $TRAYNOOK_BUILD.
+
+          Before publishing, record the exact macOS versions and hardware tested,
+          known limitations, and acceptance results required by docs/RELEASING.md.
+          EOF
+            options=(--draft --verify-tag --title "TrayNook $TRAYNOOK_RELEASE_VERSION" \
+              --generate-notes --notes-file "$RUNNER_TEMP/traynook-release-notes.md")
+            if [[ "$PRERELEASE" == true ]]; then
+              options+=(--prerelease)
+            fi
+            gh release create "$GITHUB_REF_NAME" "$archive" "$archive.sha256" "${options[@]}"
+          fi
+          release_url=$(gh release view "$GITHUB_REF_NAME" --json url --jq .url)
+          printf '### Release draft ready\n\n[Review %s](%s) — build %s.\n' \
+            "$GITHUB_REF_NAME" "$release_url" "$TRAYNOOK_BUILD" >> "$GITHUB_STEP_SUMMARY"
+      - name: Remove temporary credentials
+        if: always()
+        env:
+          TRAYNOOK_NOTARY_KEYCHAIN: ${{ runner.temp }}/traynook-release.keychain-db
+        run: |
+          rm -f "$RUNNER_TEMP/traynook-developer-id.p12" "$RUNNER_TEMP/traynook-notary-key.p8"
+          if [[ -f "$TRAYNOOK_NOTARY_KEYCHAIN" ]]; then
+            security delete-keychain "$TRAYNOOK_NOTARY_KEYCHAIN"
+          fi

@@ -4,7 +4,7 @@ set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
 if [[ $# -gt 2 || "${1:-}" == --help ]]; then
     echo "Usage: Scripts/release.sh [Developer-ID-Application-identity] [notarytool-keychain-profile]"
-    echo "Or set TRAYNOOK_SIGNING_IDENTITY and TRAYNOOK_NOTARY_PROFILE. Optional: TRAYNOOK_VERSION, TRAYNOOK_BUILD."
+    echo "Or set TRAYNOOK_SIGNING_IDENTITY and TRAYNOOK_NOTARY_PROFILE. Optional: TRAYNOOK_VERSION, TRAYNOOK_BUILD, TRAYNOOK_RELEASE_VERSION, TRAYNOOK_NOTARY_KEYCHAIN."
     exit 2
 fi
 export TRAYNOOK_SIGNING_IDENTITY=${1:-${TRAYNOOK_SIGNING_IDENTITY:-}}
@@ -13,16 +13,26 @@ if [[ -z "$TRAYNOOK_SIGNING_IDENTITY" || -z "$profile" ]]; then
     echo "A Developer ID Application identity and a stored notarytool keychain profile are required." >&2
     exit 2
 fi
+notary_options=(--keychain-profile "$profile")
+if [[ -n "${TRAYNOOK_NOTARY_KEYCHAIN:-}" ]]; then
+    notary_options+=(--keychain "$TRAYNOOK_NOTARY_KEYCHAIN")
+fi
+release_version=${TRAYNOOK_RELEASE_VERSION:-${TRAYNOOK_VERSION:-1.0.0}}
+"$root/Scripts/release-metadata.sh" "v$release_version" > /dev/null
 
 "$root/Scripts/test.sh"
 "$root/Scripts/build-app.sh" release
 app="$root/dist/TrayNook.app"
 "$root/Scripts/smoke-test.sh" "$app"
 version=$(/usr/bin/plutil -extract CFBundleShortVersionString raw "$app/Contents/Info.plist")
+if [[ "${release_version%%-*}" != "$version" ]]; then
+    echo "TRAYNOOK_RELEASE_VERSION must match the app's marketing version (with an optional prerelease suffix)." >&2
+    exit 2
+fi
 work=$(mktemp -d "$root/.build/notary.XXXXXX")
 trap 'rm -rf "$work"' EXIT
 /usr/bin/ditto -c -k --sequesterRsrc --keepParent "$app" "$work/TrayNook.zip"
-xcrun notarytool submit "$work/TrayNook.zip" --keychain-profile "$profile" --wait --output-format json > "$work/result.json"
+xcrun notarytool submit "$work/TrayNook.zip" "${notary_options[@]}" --wait --output-format json > "$work/result.json"
 if [[ "$(/usr/bin/plutil -extract status raw "$work/result.json")" != Accepted ]]; then
     echo "Apple did not accept the notarization. Inspect the submission with notarytool history/log." >&2
     exit 1
@@ -31,7 +41,7 @@ xcrun stapler staple "$app"
 xcrun stapler validate "$app"
 /usr/bin/codesign --verify --deep --strict "$app"
 /usr/sbin/spctl --assess --type execute "$app"
-archive="TrayNook-$version.zip"
+archive="TrayNook-$release_version.zip"
 /usr/bin/ditto -c -k --sequesterRsrc --keepParent "$app" "$work/$archive"
 mv "$work/$archive" "$root/dist/$archive"
 (cd "$root/dist" && /usr/bin/shasum -a 256 "$archive" > "$archive.sha256")

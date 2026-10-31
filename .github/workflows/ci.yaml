@@ -1,0 +1,27 @@
+name: Build and test
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+defaults:
+  run:
+    shell: bash
+concurrency:
+  group: ci-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+jobs:
+  macos:
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: Scripts/test-development-signing.sh
+      - run: Scripts/test-release-metadata.sh
+      - run: Scripts/test.sh
+      - run: Scripts/build-app.sh
+      - run: Scripts/smoke-test.sh

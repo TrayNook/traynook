@@ -157,10 +157,15 @@ One-time certificate setup:
    Signing: **Always Trust**. `security find-identity -v -p codesigning` must
    list it as valid.
 
+The build script automatically uses a valid `TrayNook Dev` certificate when it
+is available. An explicit `TRAYNOOK_DEV_SIGNING_IDENTITY` overrides that choice.
+If the existing app has a certificate signature and no identity is available,
+the script refuses to replace it with an ad-hoc build.
+
 Every build:
 
 ```sh
-TRAYNOOK_DEV_SIGNING_IDENTITY='TrayNook Dev' TRAYNOOK_BUILD=25 Scripts/build-app.sh
+TRAYNOOK_BUILD=25 Scripts/build-app.sh
 ```
 
 First grant after switching signatures (also the recovery when the app says
@@ -182,6 +187,11 @@ First grant after switching signatures (also the recovery when the app says
 Unreadable or newer state is preserved and disables management until Reset Layout.
 
 ## Public release preparation
+
+For GitHub Actions setup, required Apple secrets, signed version tags, and draft
+publication, follow [Releasing TrayNook](docs/RELEASING.md). The workflows use
+`.yaml` filenames. Pull-request CI tests development builds; the release workflow
+prepares signed and notarized assets only from verified signed tags.
 
 Public builds use `io.github.mahenzon.TrayNook`, Universal 2, Developer ID signing,
 Hardened Runtime, and notarization. After the live acceptance blockers in the
