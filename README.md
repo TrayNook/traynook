@@ -52,6 +52,10 @@ Unrecognized windows, changed
 inventory, or display changes can still trigger conservative recovery.
 Repeated Accessibility scan failures temporarily reveal items; the saved layout
 resumes after a complete scan unless identities changed or you chose Show Items.
+Inventory traversal stops at each status icon; the contents of an app's popup
+menu do not block discovery. The internal concealment boundary reserves no
+menu-bar slot while items are revealed. It returns only for placement and
+concealment operations.
 
 Screen Recording is optional: with it, each proxy shows the item's real menu-bar
 icon as last seen while visible (public capture cannot read offscreen windows);
@@ -106,6 +110,8 @@ Native acceptance checks (GUI session and Accessibility required):
 
 ```sh
 Scripts/test-native-menu.sh
+# Quit TrayNook first; this toggles only disposable TrayNook status items.
+Scripts/test-native-boundary.sh
 # Quit TrayNook first; this moves only a disposable fixture.
 Scripts/test-native-movement.sh --clipped
 Scripts/test-native-movement.sh --pointer-motion

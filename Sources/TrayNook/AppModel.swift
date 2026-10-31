@@ -680,6 +680,8 @@ final class AppModel: ObservableObject {
     let hidden = Set(layout.items.filter { $0.placement != .menuBar }.map(\.id))
     if !hidden.isEmpty {
       try await native.conceal(allowedKeys: hidden)
+    } else {
+      native.reveal()
     }
     concealed = native.isConcealed
     message = nil

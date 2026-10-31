@@ -98,10 +98,12 @@ final class NativeMenuBarController: NSObject {
       Self.restorePosition(of: launcher, name: "TrayNookLauncher", fallback: 0)
     }
     let separator = NSStatusBar.system.statusItem(withLength: compactWidth)
+    separator.isVisible = false
     if !smokeTest {
-      Self.restorePosition(of: separator, name: "TrayNook.HiddenBoundary", fallback: initialBoundaryPosition)
+      Self.restorePosition(of: separator, name: "TrayNook.HiddenBoundary", fallback: initialBoundaryPosition,
+        visible: false)
     }
-    // Keep the concealment boundary's geometry without drawing a menu-bar divider.
+    // Allocate the boundary's native slot only while arranging or concealing items.
     separator.button?.setAccessibilityLabel(L("TrayNook hidden section separator"))
     separator.button?.target = self
     separator.button?.action = #selector(separatorClicked)
@@ -118,6 +120,7 @@ final class NativeMenuBarController: NSObject {
   }
 
   var setupMessage: String? {
+    guard separator?.isVisible == true else { return nil }
     if let environment = environment() {
       let edge = ItemFrame(x: environment.boundary.maxX - 2, y: environment.boundary.y,
         width: 2, height: environment.boundary.height)
@@ -134,12 +137,13 @@ final class NativeMenuBarController: NSObject {
     return nil
   }
 
-  func reveal() {
+  func reveal(keepBoundaryVisible: Bool = false) {
     nativeLog.notice("reveal (was concealed: \(self.isConcealed))")
     generation += 1
     releasePointer()
     showCursor()
     separator?.length = compactWidth
+    if let separator { Self.setVisiblePreservingPosition(separator, visible: keepBoundaryVisible) }
     isConcealed = false
     concealedSourcePIDs.removeAll()
     pendingActivation = nil
@@ -163,7 +167,8 @@ final class NativeMenuBarController: NSObject {
 
   /// AppKit restores this position when autosave visibility is attached. Keep
   /// the undocumented defaults key isolated to our own two status items.
-  private static func restorePosition(of item: NSStatusItem, name: String, fallback: Double, force: Bool = false) {
+  private static func restorePosition(of item: NSStatusItem, name: String, fallback: Double, force: Bool = false,
+    visible: Bool = true) {
     let key = "NSStatusItem Preferred Position \(name)"
     let saved = UserDefaults.standard.object(forKey: key) as? NSNumber
     let position = !force && saved?.doubleValue.isFinite == true && saved!.doubleValue >= 0
@@ -171,7 +176,17 @@ final class NativeMenuBarController: NSObject {
     item.isVisible = false
     UserDefaults.standard.set(position, forKey: key)
     item.autosaveName = name
-    item.isVisible = true
+    item.isVisible = visible
+    UserDefaults.standard.set(position, forKey: key)
+  }
+
+  private static func setVisiblePreservingPosition(_ item: NSStatusItem, visible: Bool) {
+    guard item.isVisible != visible else { return }
+    guard let name = item.autosaveName else { item.isVisible = visible; return }
+    let key = "NSStatusItem Preferred Position \(name)"
+    let position = UserDefaults.standard.object(forKey: key)
+    item.isVisible = visible
+    if let position { UserDefaults.standard.set(position, forKey: key) }
   }
 
   static func removePreservingPosition(_ item: NSStatusItem) {
@@ -201,7 +216,7 @@ final class NativeMenuBarController: NSObject {
     defer { isBusy = false }
     do {
       try await waitForIdleInput(token: token, checkingKeys: false)
-      reveal()
+      reveal(keepBoundaryVisible: true)
       didReveal = true
       token = generation
       try await pause(0.25, token: token)
@@ -260,13 +275,14 @@ final class NativeMenuBarController: NSObject {
         }
       }
     } catch {
-      if didReveal || (error as? NativeMenuActionError) != .inputNotIdle { reveal() }
+      if didReveal || !isConcealed || (error as? NativeMenuActionError) != .inputNotIdle { reveal() }
       throw error
     }
   }
 
   /// nil means the item cannot safely be attributed to this menu-bar row.
   func isBehindBoundary(_ classified: ClassifiedSourceItem) -> Bool? {
+    if separator?.isVisible != true, !isConcealed { return false }
     let item = classified.observation
     let key = classified.identity.persistentKey
     guard let environment = environment(), let frame = item.frame,
@@ -316,15 +332,26 @@ final class NativeMenuBarController: NSObject {
   /// Reports sources whose pointer target is clipped by WindowServer or the
   /// camera cutout. Partial cutout overlap still needs assignment validation.
   func isClipped(_ item: RawSourceItemObservation) -> Bool {
-    guard let environment = environment() else { return false }
-    return Self.isClipped(item, boundary: environment.boundary, displayFrame: environment.displayFrame,
-      occlusionFrame: environment.occlusionFrame)
+    if let environment = environment() {
+      return Self.isClipped(item, boundary: environment.boundary, displayFrame: environment.displayFrame,
+        occlusionFrame: environment.occlusionFrame)
+    }
+    guard !isConcealed, separator?.isVisible == false, let frame = item.frame, frame.isUsable,
+      let screen = NSScreen.screens.first(where: { Self.displayID(of: $0) == activeDisplay })
+        ?? launcher.button?.window?.screen,
+      let display = Self.displayID(of: screen) else { return false }
+    let bounds = CGDisplayBounds(display)
+    let displayFrame = ItemFrame(x: bounds.minX, y: bounds.minY, width: bounds.width, height: bounds.height)
+    let cutout = Self.cameraOcclusion(left: screen.auxiliaryTopLeftArea, right: screen.auxiliaryTopRightArea,
+      screenFrame: screen.frame, displayBounds: bounds)
+    // No window target is needed to read physical clipping while the boundary is absent.
+    return Self.isClipped(item, boundary: frame, displayFrame: displayFrame, occlusionFrame: cutout)
   }
 
   func conceal(allowedKeys: Set<String>) async throws {
     guard !isBusy else { throw MenuBarFailure(L("Another menu-bar action is in progress.")) }
     isBusy = true
-    reveal()
+    reveal(keepBoundaryVisible: true)
     let token = generation
     defer { isBusy = false }
     do {
@@ -487,12 +514,23 @@ final class NativeMenuBarController: NSObject {
       throw MenuBarFailure(L("Finish the current item interaction before opening another item."))
     }
     isBusy = true
-    defer { isBusy = false }
+    var preparedForActivation = false
+    defer {
+      isBusy = false
+      if !preparedForActivation && !isConcealed && pendingActivation == nil, let separator {
+        Self.setVisiblePreservingPosition(separator, visible: false)
+      }
+    }
     let token = generation
+    if let separator, !separator.isVisible {
+      Self.setVisiblePreservingPosition(separator, visible: true)
+      try await pause(0.25, token: token)
+    }
     var prepared = try await stableTarget(original, token: token,
       allowingClipped: true, allowingConcealed: true)
     if prepared.environment.safeFrame.contains(prepared.item.observation.frame!),
       prepared.item.observation.isOnscreen != false {
+      preparedForActivation = true
       return prepared.item
     }
     if !Self.physicalInputIsIdle(recentMovement: true) {
@@ -579,6 +617,7 @@ final class NativeMenuBarController: NSObject {
           statusWindowIdentifier: source.statusWindowIdentifier)
         if current.safeFrame.contains(frame),
           let window = try? statusWindow(for: moved, requiringOnscreen: true), window.id == sourceWindow.id {
+          preparedForActivation = true
           return ClassifiedSourceItem(observation: moved, identity: identity,
             manageability: prepared.item.manageability)
         }
@@ -603,7 +642,12 @@ final class NativeMenuBarController: NSObject {
       }
     }
     isBusy = true
-    defer { isBusy = false }
+    defer {
+      isBusy = false
+      if !isConcealed && pendingActivation == nil, let separator {
+        Self.setVisiblePreservingPosition(separator, visible: false)
+      }
+    }
     let token = generation
     let useAX = Self.offersAccessibilityAction(original, secondary: secondary)
     try await waitForIdleInput(token: token, checkingPointer: !useAX)
@@ -643,7 +687,12 @@ final class NativeMenuBarController: NSObject {
     guard let pending = pendingActivation else { return }
     guard !isBusy else { throw MenuBarFailure(L("Another menu-bar action is in progress.")) }
     isBusy = true
-    defer { isBusy = false }
+    defer {
+      isBusy = false
+      if !isConcealed && pendingActivation == nil, let separator {
+        Self.setVisiblePreservingPosition(separator, visible: false)
+      }
+    }
     let token = generation
     func restored() throws -> Bool {
       let source = try statusWindowFrame(pending.sourceWindow)
@@ -861,7 +910,7 @@ final class NativeMenuBarController: NSObject {
     defer { isBusy = false }
     do {
       try await waitForIdleInput(token: token, checkingPointer: !accessibilityAction)
-      reveal()
+      reveal(keepBoundaryVisible: true)
       didReveal = true
       token = generation
       if movingToHidden == nil { NSApp.deactivate() }
@@ -937,7 +986,7 @@ final class NativeMenuBarController: NSObject {
         }
       }
     } catch {
-      if didReveal || (error as? NativeMenuActionError) != .inputNotIdle { reveal() }
+      if didReveal || !isConcealed || (error as? NativeMenuActionError) != .inputNotIdle { reveal() }
       throw error
     }
   }
@@ -1321,7 +1370,8 @@ final class NativeMenuBarController: NSObject {
   }
 
   private func environment() -> MenuBarEnvironment? {
-    guard let separator, let boundaryButton = separator.button, let boundaryWindow = boundaryButton.window,
+    guard let separator, separator.isVisible,
+      let boundaryButton = separator.button, let boundaryWindow = boundaryButton.window,
       let launcherButton = launcher.button, let launcherWindow = launcherButton.window,
       let boundaryID = UInt32(exactly: boundaryWindow.windowNumber),
       let launcherID = UInt32(exactly: launcherWindow.windowNumber)
@@ -1379,16 +1429,8 @@ final class NativeMenuBarController: NSObject {
       x: screen.frame.minX, y: screen.frame.maxY - NSStatusBar.system.thickness,
       width: screen.frame.width, height: NSStatusBar.system.thickness)
     let rawSafe = converted(safe)
-    var occlusionFrame: ItemFrame?
-    if let left = screen.auxiliaryTopLeftArea, let right = screen.auxiliaryTopRightArea,
-      left.maxX < right.minX {
-      let bottom = max(left.minY, right.minY)
-      let top = min(left.maxY, right.maxY)
-      if bottom < top {
-        occlusionFrame = converted(CGRect(x: left.maxX, y: bottom,
-          width: right.minX - left.maxX, height: top - bottom))
-      }
-    }
+    let occlusionFrame = Self.cameraOcclusion(left: screen.auxiliaryTopLeftArea,
+      right: screen.auxiliaryTopRightArea, screenFrame: screen.frame, displayBounds: bounds)
     return MenuBarEnvironment(display: display, displayWidth: bounds.width,
       displayFrame: ItemFrame(x: bounds.minX, y: bounds.minY, width: bounds.width, height: bounds.height),
       safeFrame: Self.menuBarSafeFrame(horizontalArea: rawSafe, controlWindow: rowWindow.frame),
@@ -1399,6 +1441,17 @@ final class NativeMenuBarController: NSObject {
         width: launcherGeometry.button.width, height: launcherGeometry.button.height),
       boundaryWindowID: boundaryGeometry.windowID,
       launcherWindowID: launcherGeometry.windowID)
+  }
+
+  static func cameraOcclusion(left: CGRect?, right: CGRect?, screenFrame: CGRect,
+    displayBounds: CGRect) -> ItemFrame? {
+    guard let left, let right, left.maxX < right.minX else { return nil }
+    let bottom = max(left.minY, right.minY)
+    let top = min(left.maxY, right.maxY)
+    guard bottom < top else { return nil }
+    return ItemFrame(x: displayBounds.minX + left.maxX - screenFrame.minX,
+      y: displayBounds.minY + screenFrame.maxY - top,
+      width: right.minX - left.maxX, height: top - bottom)
   }
 
   static func menuBarSafeFrame(horizontalArea: ItemFrame, controlWindow: CGRect) -> ItemFrame {

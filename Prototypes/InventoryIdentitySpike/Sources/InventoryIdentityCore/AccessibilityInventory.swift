@@ -47,6 +47,10 @@ func accessibilityTraversalCanAppend(
     <= AccessibilityInventoryTuning.maximumDescendantCount - currentCount
 }
 
+func accessibilityTraversalVisitsChildren(role: String?) -> Bool {
+  role != (kAXMenuBarItemRole as String)
+}
+
 struct StatusWindowObservation: Equatable {
   let processIdentifier: Int32
   let windowIdentifier: UInt32
@@ -604,6 +608,11 @@ public struct AccessibilityInventoryScanner: InventoryScanning, Sendable {
       guard next.depth < maximumDepth else {
         continue
       }
+
+      let role = string(attribute: kAXRoleAttribute as CFString,
+        from: next.element, issueTracker: issueTracker)
+      guard issueTracker.currentApplicationIsComplete else { return [] }
+      guard accessibilityTraversalVisitsChildren(role: role) else { continue }
 
       for child in axElements(
         attribute: kAXChildrenAttribute as CFString,

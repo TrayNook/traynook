@@ -100,6 +100,14 @@ struct AccessibilityErrorClassificationTests {
     )
   }
 
+  @Test("Inventory stops at status icons without inspecting their popup menus")
+  func statusIconsAreTraversalLeaves() {
+    #expect(!accessibilityTraversalVisitsChildren(role: kAXMenuBarItemRole as String))
+    #expect(accessibilityTraversalVisitsChildren(role: kAXMenuBarRole as String))
+    #expect(accessibilityTraversalVisitsChildren(role: "AXGroup"))
+    #expect(accessibilityTraversalVisitsChildren(role: nil))
+  }
+
   @Test("The whole-scan deadline stops further messages and invalidates partial inventory")
   func scanDeadlineStopsWork() {
     var now: UInt64 = 0

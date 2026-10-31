@@ -11,6 +11,25 @@ struct NativeGeometryTests {
   private let boundary = ItemFrame(x: 1222, y: 0, width: 18, height: 24)
   private let launcher = ItemFrame(x: 1240, y: 0, width: 24, height: 24)
 
+  @Test("Physical camera clipping uses display coordinates without a boundary window")
+  func cameraCutoutCoordinates() {
+    let screen = CGRect(x: 0, y: 0, width: 1728, height: 1117)
+    let left = CGRect(x: 0, y: 1085, width: 772, height: 32)
+    let right = CGRect(x: 956, y: 1085, width: 772, height: 32)
+    #expect(NativeMenuBarController.cameraOcclusion(left: left, right: right,
+      screenFrame: screen, displayBounds: screen) == ItemFrame(x: 772, y: 0, width: 184, height: 32))
+    #expect(NativeMenuBarController.cameraOcclusion(left: nil, right: nil,
+      screenFrame: screen, displayBounds: screen) == nil)
+    #expect(NativeMenuBarController.cameraOcclusion(left: left, right: left,
+      screenFrame: screen, displayBounds: screen) == nil)
+    #expect(NativeMenuBarController.cameraOcclusion(
+      left: CGRect(x: -1920, y: 1956, width: 800, height: 24),
+      right: CGRect(x: -960, y: 1956, width: 960, height: 24),
+      screenFrame: CGRect(x: -1920, y: 900, width: 1920, height: 1080),
+      displayBounds: CGRect(x: -1920, y: -1080, width: 1920, height: 1080))
+      == ItemFrame(x: -1120, y: -1080, width: 160, height: 24))
+  }
+
   @Test("Polling another row preserves concealment when its launcher exceeds the default bar height")
   func liveRowSafety() throws {
     // Captured at the false reveal: the global bar thickness was 22, but
