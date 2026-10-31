@@ -1,0 +1,64 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:macOS StatusBar DropDown}/Prototypes/InventoryIdentitySpike",
+            "name": "Debug traynook-inventory-spike (Prototypes/InventoryIdentitySpike)",
+            "target": "traynook-inventory-spike",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug traynook-inventory-spike (Prototypes/InventoryIdentitySpike)"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:macOS StatusBar DropDown}/Prototypes/InventoryIdentitySpike",
+            "name": "Release traynook-inventory-spike (Prototypes/InventoryIdentitySpike)",
+            "target": "traynook-inventory-spike",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release traynook-inventory-spike (Prototypes/InventoryIdentitySpike)"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:macOS StatusBar DropDown}/Prototypes/InventoryIdentitySpike",
+            "name": "Debug traynook-boundary-spike (Prototypes/InventoryIdentitySpike)",
+            "target": "traynook-boundary-spike",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug traynook-boundary-spike (Prototypes/InventoryIdentitySpike)"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:macOS StatusBar DropDown}/Prototypes/InventoryIdentitySpike",
+            "name": "Release traynook-boundary-spike (Prototypes/InventoryIdentitySpike)",
+            "target": "traynook-boundary-spike",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release traynook-boundary-spike (Prototypes/InventoryIdentitySpike)"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:macOS StatusBar DropDown}",
+            "name": "Debug TrayNook",
+            "target": "TrayNook",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug TrayNook"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:macOS StatusBar DropDown}",
+            "name": "Release TrayNook",
+            "target": "TrayNook",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release TrayNook"
+        }
+    ]
+}
