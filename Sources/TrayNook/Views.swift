@@ -8,26 +8,18 @@ struct SettingsView: View {
   @AppStorage("dropdownGlyphs") private var showGlyphs = false
   @State private var showLocked = false
   @State private var showItemDetails = true
-  @State private var reorder = Reorder()
+  @StateObject private var reorder = DetailReorderSession()
   @State private var rowHeights: [String: CGFloat] = [:]
   private let rowSpacing: CGFloat = 8
 
-  /// A handle drag in progress: the dragged row floats by `offset` while the
-  /// model's order is updated live, so the other rows animate out of the way.
-  private struct Reorder {
-    var draggedKey: String?
-    var startLane: [SavedItem] = []
-    var startIndex = 0
-    var currentIndex = 0
-    var offset: CGFloat = 0
-    var startLayout: SavedLayout?
-  }
-
   /// Rows the user can reorder in a section: locked items are folded away.
   private func laneItems(_ zone: Placement) -> [SavedItem] {
-    model.layout.items.filter { saved in
+    let items = model.layout.items.filter { saved in
       saved.placement == zone && !(model.liveItem(saved.id).map { !model.isManageable($0) } ?? false)
     }
+    guard reorder.zone == zone, let order = reorder.order else { return items }
+    let byKey = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
+    return order.compactMap { byKey[$0] }
   }
 
   private func reorderHandle(for key: String, in zone: Placement) -> some View {
@@ -42,44 +34,20 @@ struct SettingsView: View {
   }
 
   private func dragChanged(_ key: String, in zone: Placement, translation: CGFloat) {
-    if reorder.draggedKey != key {
-      let lane = laneItems(zone)
-      guard let index = lane.firstIndex(where: { $0.id == key }) else { return }
-      reorder = Reorder(draggedKey: key, startLane: lane, startIndex: index, currentIndex: index,
-        offset: 0, startLayout: model.layout)
+    guard model.canEdit else { reorder.cancel(); return }
+    if reorder.key == nil {
+      guard reorder.begin(key, layout: model.layout, lane: laneItems(zone), rowHeights: rowHeights,
+        rowSpacing: rowSpacing, commit: { model.setOrder($0, undoable: true) }) else { return }
     }
-    func height(_ item: SavedItem) -> CGFloat { (rowHeights[item.id] ?? 44) + rowSpacing }
-    // Walk the rows in their pre-drag order; a row is passed once the pointer
-    // moved beyond its middle. The dragged row floats by what is left over.
-    let lane = reorder.startLane
-    var desired = reorder.startIndex
-    var passed: CGFloat = 0
-    if translation > 0 {
-      for index in lane.indices where index > reorder.startIndex {
-        let h = height(lane[index])
-        guard translation > passed + h / 2 else { break }
-        passed += h; desired = index
-      }
-    } else {
-      for index in lane.indices.reversed() where index < reorder.startIndex {
-        let h = height(lane[index])
-        guard -translation > passed + h / 2 else { break }
-        passed += h; desired = index
-      }
-    }
-    reorder.offset = translation - (translation > 0 ? passed : -passed)
-    guard desired != reorder.currentIndex else { return }
-    reorder.currentIndex = desired
-    var order = lane.map(\.id)
-    order.remove(at: reorder.startIndex)
-    order.insert(key, at: desired)
-    withAnimation(.snappy(duration: 0.2)) { model.setOrder(order, undoable: false) }
+    guard reorder.key == key else { return }
+    withAnimation(.snappy(duration: 0.2)) { reorder.update(translation: translation) }
   }
 
   private func dragEnded() {
-    withAnimation(.snappy(duration: 0.2)) { reorder.offset = 0 }
-    model.commitReorder(from: reorder.startLayout)
-    reorder = Reorder()
+    withAnimation(.snappy(duration: 0.2)) {
+      if model.canEdit { reorder.finish(currentLayout: model.layout) }
+      else { reorder.cancel() }
+    }
   }
 
   var body: some View {
@@ -185,8 +153,7 @@ struct SettingsView: View {
           // Rows slide apart live while one is dragged by its handle.
           ForEach(shown) { item in
             itemRow(item, handle: AnyView(reorderHandle(for: item.id, in: zone)))
-              .offset(y: reorder.draggedKey == item.id ? reorder.offset : 0)
-              .zIndex(reorder.draggedKey == item.id ? 1 : 0)
+              .modifier(DetailReorderRow(pointer: reorder.pointer, dragged: reorder.key == item.id))
               .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { rowHeights[item.id] = $0 }
           }
           // Locked items carry no decision; one row stands for all of them.
@@ -208,31 +175,14 @@ struct SettingsView: View {
         .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 10))
       }
     }
-    .onDisappear { dragEnded() }
+    .onChange(of: model.layout) { _, _ in reorder.cancel() }
+    .onChange(of: model.canEdit) { _, editable in if !editable { reorder.cancel() } }
+    .onDisappear { reorder.cancel() }
   }
 
   private func itemRow(_ saved: SavedItem, handle: AnyView = AnyView(EmptyView())) -> some View {
     HStack(spacing: 10) {
-      Image(nsImage: model.icon(for: saved.id)).resizable().frame(width: 26, height: 26).accessibilityHidden(true)
-      VStack(alignment: .leading, spacing: 2) {
-        Text(model.name(for: saved.id)).lineLimit(1)
-        Text(model.status(for: saved)).font(.caption).foregroundStyle(.secondary)
-      }
-      Spacer()
-      if let live = model.liveItem(saved.id), model.isManageable(live) {
-        Picker(L("Placement"), selection: Binding(get: { saved.placement }, set: { model.setPlacement(saved.id, $0) })) {
-          ForEach(Placement.allCases) { Text($0.title).tag($0) }
-        }.labelsHidden().frame(width: 145).accessibilityLabel(L("Placement") + ": " + model.name(for: saved.id))
-        if model.pendingPlacementKeys.contains(saved.id) {
-          ProgressView().controlSize(.small)
-        } else if !model.busy && model.native.isBehindBoundary(live) != (saved.placement != .menuBar) {
-          Button(L("Retry")) { model.retryPlacement(saved.id) }
-        }
-      } else if model.liveItem(saved.id) == nil {
-        Button(L("Forget")) { model.forget(saved.id) }.disabled(model.busy)
-      } else {
-        Image(systemName: "lock").accessibilityLabel(L("Protected — kept visible"))
-      }
+      ItemDetailsContent(model: model, saved: saved).equatable()
       handle
     }
     .disabled(!model.canEditPlacement(saved.id))
@@ -334,36 +284,76 @@ struct SettingsView: View {
   }
 }
 
+/// Local reordering reuses row content; model publications still refresh native status.
+private struct ItemDetailsContent: View, @preconcurrency Equatable {
+  @ObservedObject var model: AppModel
+  let saved: SavedItem
+
+  static func == (lhs: Self, rhs: Self) -> Bool {
+    lhs.saved == rhs.saved && lhs.model === rhs.model
+  }
+
+  var body: some View {
+    let live = model.liveItem(saved.id)
+    let canChoosePlacement = model.canChoosePlacement(saved.id)
+    return HStack(spacing: 10) {
+      Image(nsImage: model.icon(for: saved.id)).resizable().frame(width: 26, height: 26).accessibilityHidden(true)
+      VStack(alignment: .leading, spacing: 2) {
+        Text(model.name(for: saved.id)).lineLimit(1)
+        Text(model.status(for: saved)).font(.caption).foregroundStyle(.secondary)
+      }
+      Spacer()
+      if canChoosePlacement {
+        Picker(L("Placement"), selection: Binding(get: { saved.placement }, set: { model.setPlacement(saved.id, $0) })) {
+          ForEach(Placement.allCases) { Text($0.title).tag($0) }
+        }.labelsHidden().frame(width: 145).accessibilityLabel(L("Placement") + ": " + model.name(for: saved.id))
+        if live != nil, model.pendingPlacementKeys.contains(saved.id) {
+          ProgressView().controlSize(.small)
+        } else if let live, !model.busy && model.native.isBehindBoundary(live) != (saved.placement != .menuBar) {
+          Button(L("Retry")) { model.retryPlacement(saved.id) }
+        }
+      }
+      if live == nil {
+        Button(L("Forget")) { model.forget(saved.id) }.disabled(model.busy)
+      } else if !canChoosePlacement {
+        Image(systemName: "lock").accessibilityLabel(L("Protected — kept visible"))
+      }
+    }
+  }
+}
+
 struct DropdownView: View {
   @ObservedObject var model: AppModel
   let maximumWidth: CGFloat
   static func columnCount(rowCapacity: Int, controlCount: Int, maximumWidth: CGFloat) -> Int {
     max(1, min(rowCapacity, controlCount, Int((maximumWidth - 24) / 44)))
   }
+  static func contentWidth(columns: Int, hasFooter: Bool) -> CGFloat {
+    max(hasFooter ? 180 : 0, CGFloat(columns * 44 + 20))
+  }
   private var columns: Int {
     Self.columnCount(rowCapacity: model.layout.rowCapacity,
       controlCount: model.dropdownItems.count + 1, maximumWidth: maximumWidth)
+  }
+  private var gridHeight: CGFloat {
+    let rows = (model.dropdownItems.count + 1 + columns - 1) / columns
+    return CGFloat(rows * 34 + (rows - 1) * 8 + 4)
+  }
+  private var showsEmptyGuidance: Bool {
+    model.canEdit && !model.layout.items.contains { $0.placement == .dropdown }
   }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 10) {
       ScrollView {
         DropdownIcons(model: model, columns: columns)
-      }.frame(height: min(300, CGFloat((model.dropdownItems.count + 1 + columns - 1) / columns) * 44))
-      if model.dropdownItems.isEmpty {
+      }.frame(height: min(300, gridHeight))
+      if showsEmptyGuidance {
         Text(L("Add items to Dropdown in Settings.")).font(.caption).foregroundStyle(.secondary)
-      }
-      if model.busy {
-        ProgressView().controlSize(.small)
-      } else if let message = model.message {
-        Text(message).font(.caption).fixedSize(horizontal: false, vertical: true)
-      }
-      if !model.concealed && !model.busy {
-        Button(L("Hide Items")) { model.applySavedLayout() }.disabled(!model.canEdit)
       }
     }
     .padding(12)
-    .frame(width: max(180, CGFloat(columns * 44 + 20)))
+    .frame(width: Self.contentWidth(columns: columns, hasFooter: showsEmptyGuidance))
   }
 }
 
@@ -374,7 +364,7 @@ struct DropdownIcons: View {
   var interactive = true
 
   var body: some View {
-    LazyVGrid(columns: Array(repeating: GridItem(.fixed(36), spacing: 8), count: columns), alignment: .leading, spacing: 8) {
+    LazyVGrid(columns: Array(repeating: GridItem(.fixed(36), spacing: 8), count: columns), alignment: .center, spacing: 8) {
       if interactive {
         Button { model.showSettings?() } label: {
           Image(systemName: "gearshape").font(.system(size: 21)).frame(width: 34, height: 34)

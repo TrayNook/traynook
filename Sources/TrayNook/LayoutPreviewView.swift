@@ -103,7 +103,7 @@ struct LayoutPreviewView: View {
             .foregroundStyle(.quaternary).padding(.trailing, 23).accessibilityHidden(true)
           ScrollView {
             LazyVGrid(columns: Array(repeating: GridItem(.fixed(36), spacing: 8), count: columns),
-              alignment: .leading, spacing: 8) {
+              alignment: .center, spacing: 8) {
               Image(systemName: "gearshape").font(.system(size: 21)).frame(width: 36, height: 36)
                 .accessibilityLabel(L("Settings preview"))
               ForEach(items(in: .dropdown)) { item in
@@ -111,7 +111,7 @@ struct LayoutPreviewView: View {
               }
             }.padding(12)
           }
-          .frame(width: max(180, CGFloat(columns * 44 + 20)))
+          .frame(width: DropdownView.contentWidth(columns: columns, hasFooter: false))
           .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 9))
           .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(Color(nsColor: .separatorColor).opacity(0.35)))
         }
@@ -191,7 +191,7 @@ struct LayoutPreviewView: View {
           }
         }
       }
-      .help(model.name(for: item.id) + " — " + model.status(for: item)
+      .help(model.name(for: item.id) + " — " + (protected ? L("Protected — kept visible") : item.placement.title)
         + (protected ? "" : " — " + L("Drag to reorder or move")))
       .accessibilityElement(children: .ignore)
       .accessibilityLabel(model.name(for: item.id) + " — "

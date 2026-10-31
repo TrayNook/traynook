@@ -1,3 +1,4 @@
+import Combine
 import Testing
 
 @testable import TrayNook
@@ -10,6 +11,26 @@ struct PreviewDragSessionTests {
     SavedItem(id: "example.second", placement: .dropdown),
     SavedItem(id: "example.hidden", placement: .alwaysHidden),
   ])
+
+  @Test("Repeated pointer movement within a slot does not rebuild the preview")
+  func repeatedHover() {
+    let session = PreviewDragSession()
+    let manyItems = SavedLayout(items: (0..<24).map { SavedItem(id: "example.app\($0)", placement: .dropdown) })
+    #expect(session.begin("example.app0", layout: manyItems) { _, _, _ in true })
+    // A first nil anchor still moves the source to the end of its original lane.
+    session.move(to: .dropdown, before: nil)
+    #expect(session.draft?.items.last?.id == "example.app0")
+    var publications = 0
+    let observation = session.objectWillChange.sink { publications += 1 }
+    let start = ContinuousClock.now
+    for _ in 0..<10_000 { session.move(to: .dropdown, before: nil) }
+    print("PREVIEW_REPEAT_HOVER: 10000 events, \(start.duration(to: .now))")
+    #expect(publications == 0)
+    withExtendedLifetime(observation) {}
+    session.leave(.dropdown)
+    session.move(to: .dropdown, before: nil)
+    #expect(session.hoveredZone == .dropdown)
+  }
 
   @Test("Hover changes only the draft and a completed drop commits exactly once")
   func commitsOnce() throws {

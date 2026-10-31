@@ -37,6 +37,7 @@ final class PreviewDragSession: NSObject, ObservableObject {
   }
 
   func move(to placement: Placement, before anchor: String?) {
+    guard hoveredZone != placement || destination != placement || beforeKey != anchor else { return }
     guard let key, let next = draft?.moving(key, to: placement, before: anchor) else { return }
     if destination != placement { destination = placement }
     if hoveredZone != placement { hoveredZone = placement }

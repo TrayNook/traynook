@@ -84,6 +84,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
     NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(environmentChanged), name: NSWorkspace.willSleepNotification, object: nil)
     NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(environmentChanged), name: NSWorkspace.sessionDidResignActiveNotification, object: nil)
     if smokeTest {
+      model.selectedTab = 1
       openSettings()
       Task { @MainActor in
         guard await AppModel.verifyLaunchRecoveryBehavior(native: native) else {
@@ -92,8 +93,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
         }
         try? await Task.sleep(for: .seconds(1))
         guard self.launcher.button?.window != nil, let window = self.settingsWindow,
-          window.isVisible, window.contentView != nil, !self.model.native.isConcealed
+          window.isVisible, window.contentView != nil, !self.model.native.isConcealed,
+          self.model.selectedTab == 0
         else { fputs("TRAYNOOK_SMOKE_FAILED\n", stderr); exit(1) }
+        self.launcherClicked()
+        guard self.popover.isShown, !self.model.canEdit else {
+          fputs("TRAYNOOK_PERMISSION_BLOCKED_DROPDOWN\n", stderr); exit(1)
+        }
+        self.popover.performClose(nil)
         if let index = CommandLine.arguments.firstIndex(of: "--snapshot"),
           CommandLine.arguments.indices.contains(index + 1), let view = window.contentView,
           let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
@@ -153,18 +160,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
       return
     }
     if popover.isShown { popover.performClose(nil); return }
-    guard model.permissionGranted else { model.selectedTab = 1; openSettings(); return }
     model.openDropdown { [weak self] in
       guard let self, self.dropdownRequest == request, let button = self.launcher.button else { return }
       let width = min(700, (button.window?.screen?.visibleFrame.width ?? 700) - 40)
-      self.popover.contentViewController = NSHostingController(rootView: DropdownView(model: self.model, maximumWidth: width))
-      self.popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+      self.popover.showDropdown(content: DropdownView(model: self.model, maximumWidth: width), relativeTo: button)
       NSApp.activate(ignoringOtherApps: true)
       self.popover.contentViewController?.view.window?.makeKey()
     }
   }
 
   @objc func openSettings() {
+    model.selectedTab = 0
     dropdownRequest += 1
     popover.performClose(nil)
     if model?.busy == true { model.reveal() }
@@ -214,5 +220,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
     let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
     item.target = self
     menu.addItem(item)
+  }
+}
+
+extension NSPopover {
+  func showDropdown<Content: View>(content: Content, relativeTo view: NSView) {
+    let host = NSHostingController(rootView: content)
+    contentViewController = host
+    // AppKit must position the final size before SwiftUI can grow it offscreen.
+    contentSize = host.view.fittingSize
+    show(relativeTo: view.bounds, of: view, preferredEdge: .minY)
   }
 }

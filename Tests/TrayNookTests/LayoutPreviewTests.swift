@@ -16,6 +16,15 @@ struct LayoutPreviewTests {
     #expect(DropdownView.columnCount(rowCapacity: 10, controlCount: 1, maximumWidth: 700) == 1)
   }
 
+  @Test("Small icon grids keep compact margins while footers stay readable")
+  func compactGridWidths() {
+    let cases: [(Int, CGFloat)] = [(1, 64), (2, 108), (3, 152), (4, 196)]
+    for (columns, width) in cases {
+      #expect(DropdownView.contentWidth(columns: columns, hasFooter: false) == width)
+      #expect(DropdownView.contentWidth(columns: columns, hasFooter: true) == max(180, width))
+    }
+  }
+
   // Opt in only in an exclusive macOS GUI session, outside the sandbox:
   // TRAYNOOK_PREVIEW_SNAPSHOT=/tmp/traynook-preview.png Scripts/test.sh --filter LayoutPreviewTests
   @Test("Preview preserves homes and order, protects sources, and wraps the shared grid",

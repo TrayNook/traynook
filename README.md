@@ -84,8 +84,11 @@ inventory is identified. Application
 icons illustrate saved placements; native order and spacing can differ.
 
 Layout also contains collapsible **Item details** with names, placement controls,
-drag handles, status, Retry, and Forget, plus the layout reset action. General
-contains Launch at Login, dropdown icon appearance, diagnostics, and version and
+drag handles, status, Retry, and Forget, plus the layout reset action.
+Placement controls remain available for closed or missing apps; their saved
+choice applies when the source returns. Detail-row dragging saves once on release
+and registers one Undo action.
+General contains Launch at Login, dropdown icon appearance, diagnostics, and version and
 privacy information. Permissions shows only access status and grant actions;
 all three tabs scroll at the minimum window size. The glyph preference in General
 links to Permissions when Screen Recording is missing.

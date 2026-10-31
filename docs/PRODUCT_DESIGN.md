@@ -73,18 +73,19 @@ Barbee's editor validates the selected interaction: drag within a Placement Lane
 3. Until Accessibility is granted, the app does not move or conceal any Source Item. Without Screen Recording, it can continue later with app-icon-only proxies identified by tooltip and VoiceOver.
 4. After permission status refreshes and reconciliation succeeds, Settings switches to Layout with every newly discovered Source Item initially in Menu Bar Zone.
 5. Onboarding then recommends Launch at Login once. It defaults to off and is enabled only with consent; declining or dismissing the recommendation does not cause repeated prompts, and the setting remains available in General.
-6. Subsequent explicit launches normally open Layout. Missing Accessibility or an incomplete required reconciliation opens Permissions instead. Screen Recording loss after an explicit decline is degraded fidelity, not a blocking permission, so it leaves the normal Layout destination and badge/retry UI.
+6. Subsequent explicit launches open Layout regardless of permission or reconciliation state. Missing Accessibility leaves layout editing read-only with recovery guidance. Screen Recording is optional; its loss uses fallback proxies and retains the badge/retry UI.
 7. If Screen Recording is declined, onboarding still proceeds with fallback proxies and never prompts for it again automatically; Permissions retains a badge and explicit retry/System Settings actions.
-8. If Accessibility is declined, TrayNook remains safely inactive, does not prompt again automatically, and keeps Permissions selected until an explicit retry or System Settings grant is followed by successful reconciliation.
+8. If Accessibility is declined during onboarding, native management remains safely inactive and does not prompt again automatically. The onboarding flow keeps Permissions selected until an explicit retry or System Settings grant is followed by successful reconciliation; ordinary Settings opens still select Layout.
 
 ### Everyday use
 
 1. The app runs as a Dockless menu-bar utility at all times, including while Settings is open.
 2. The Launcher remains in the real menu bar, in the position chosen by the user. Its monochrome template mark is an open tray/pocket containing three dots, adapts to the current Menu Bar appearance, and contains no text.
-3. A primary click on the Launcher toggles the Dropdown on the display containing the Launcher. If Accessibility is unavailable, it opens and focuses Permissions instead; Screen Recording loss alone still opens the normal Dropdown with fallback proxies.
+3. A primary click on the Launcher toggles the Dropdown on the display containing the Launcher regardless of permission state. Without Accessibility, the gear remains usable while native Proxy Item actions and layout editing are disabled. Without Screen Recording, the Dropdown uses fallback proxies.
 4. The Dropdown opens directly below the menu bar, stays within that display's usable bounds, and starts with a fixed gear-icon Settings Button followed by Running Proxy Items. Not Running and App Missing placeholders exist only in Settings. Items flow in semantic leading-to-trailing order before wrapping downward, mirroring in right-to-left interfaces.
+   Background status and recovery actions live in Settings. A failed Proxy Item action opens Settings with its error, while ordinary scan notices leave the Dropdown compact.
 5. Pressing Escape, clicking the Launcher again, or clicking outside closes the Dropdown. An outside click continues to its intended application or control; TrayNook observes dismissal without consuming the click or replaying a synthetic duplicate. Clicking a Proxy Item begins the separately defined Interaction Handoff: TrayNook first tries to keep the Dropdown visible and uses the accepted temporary-hide fallback only when no reliable workaround exists.
-6. Clicking the Settings Button closes the transient Dropdown and opens or raises Settings. The button itself has no Accessibility or Screen Recording dependency when the Dropdown is already visible; when missing Accessibility prevents the Dropdown from opening, explicit application launch and Launcher routing provide recovery access.
+6. Clicking the Settings Button closes the transient Dropdown and opens or raises Settings on Layout. Neither the Dropdown nor its Settings Button requires Accessibility or Screen Recording; native source management remains gated by Accessibility.
 7. Opening by pointer avoids activating TrayNook or stealing focus from the current application. Keyboard or VoiceOver activation focuses the first control, the gear. Passive Escape or Launcher-toggle dismissal restores the previously active application and focus when macOS permits. An outside-click target, Settings command, or source app intentionally receiving focus wins instead. The prototype verifies this contract across every supported release.
 
 ### Explicit application launch
@@ -93,7 +94,7 @@ Barbee's editor validates the selected interaction: drag within a Placement Lane
 - The fixed gear-icon Settings Button and **Open Settings** in the Launcher's secondary-click menu use the same behavior.
 - If the app was not running, it starts and opens Settings.
 - TrayNook creates Settings if absent; otherwise it unminimizes, activates, and raises the existing singleton window, including from another Space.
-- Raising an existing Settings window preserves its selected tab. Automatic Layout or blocking-Permissions selection applies only when creating the window, continuing onboarding, or following an explicitly targeted action.
+- Every ordinary open or raise selects Layout, including when the window already exists or permissions are unavailable. First-launch onboarding and explicitly targeted Permissions actions remain separate flows.
 - A login-item launch starts silently and does not open Settings.
 - Closing Settings leaves the app running in the menu bar.
 - Ordinary Quit preserves the user's Launch at Login preference. Removal instructions first disable Launch at Login, restore all items, and then quit so no stale login registration remains.
@@ -179,7 +180,7 @@ All timing, polling, timeout, and similar policy values are named tuning constan
 
 ## Settings surface
 
-Settings is one small window with three toolbar tabs: **Layout**, **Permissions**, and **General**. Layout is the normal default when a new ordinary Settings window is created. Raising an existing window preserves its selected tab. Permissions carries an attention badge for blocking Accessibility or degraded Screen Recording state, while only blocking Accessibility/reconciliation redirects creation or an explicitly targeted action to Permissions. Attention banners are window-level or context-local to the relevant Layout/Permissions state, never hidden only inside General.
+Settings is one small window with three toolbar tabs: **Layout**, **Permissions**, and **General**. Every ordinary open or raise selects Layout, regardless of permission or reconciliation state. First-launch onboarding and explicitly targeted Permissions actions may select Permissions. Permissions carries an attention badge for blocking Accessibility or degraded Screen Recording state. Attention banners are window-level or context-local to the relevant Layout/Permissions state, never hidden only inside General.
 
 **Layout**
 
@@ -210,7 +211,7 @@ Settings is one small window with three toolbar tabs: **Layout**, **Permissions*
 - Accessibility unavailable: restore all real items to Menu Bar and disable movement/handoff while keeping Launcher and Settings usable
 - Screen Recording unavailable: retain placement/handoff through Accessibility and use app-icon-only proxies with tooltip and VoiceOver identity
 - A declined Screen Recording request does not repeat automatically; recovery remains explicit in Permissions
-- Launcher primary-click opens Permissions directly when Accessibility is unavailable; Screen Recording loss alone still opens Dropdown
+- Launcher primary-click opens the Dropdown regardless of permission state; its gear remains usable without Accessibility, while native Proxy Item actions remain disabled. Screen Recording is optional and its loss uses fallback proxies
 
 The Launcher secondary-click menu contains only **Open Settings**, **Restore All Items**, **About**, and **Quit**.
 
@@ -232,7 +233,7 @@ The Launcher secondary-click menu contains only **Open Settings**, **Restore All
 - Persistent Desired Layout across app and source-app relaunches
 - Interaction Handoff for primary and secondary click, attempting simultaneous Dropdown visibility first and using the accepted yield-and-resume fallback only after workarounds are exhausted
 - Settings that open from an explicit application launch, including while already running
-- One Settings window with Layout, Permissions, and General tabs; Layout defaults normally and Permissions badges actionable permission states
+- One Settings window with Layout, Permissions, and General tabs; every ordinary open or raise selects Layout and Permissions badges actionable permission states
 - Outside-click, Escape, and Launcher-toggle dismissal
 - Safe defaults, restoration controls, and permission-revocation handling
 - Versioned forward migration from every public 1.0 prerelease; unreadable or newer state fails visible and offers recovery rather than moving items
@@ -311,7 +312,7 @@ The 1.0.0 tag is appropriate only after:
 6. Accessibility and Screen Recording explanations match actual behavior and no captured pixels are written to disk.
 7. The name, permanent bundle identifier `io.github.mahenzon.TrayNook`, GitHub repository, owner-tap cask token, and license have been locked.
 8. The public repository contains the complete corresponding source under the MIT License, with no paid feature gate and no copied GPL implementation code.
-9. Explicit launch and Launcher recovery routing open Settings without Accessibility or Screen Recording; the in-Dropdown Settings Button has no permission dependency of its own. Silent login launch plus every supported `SMAppService` state has been verified.
+9. Explicit launch and every ordinary Settings open or raise select Layout without requiring Accessibility or Screen Recording. Launcher primary-click still opens the Dropdown without either permission; its Settings Button remains usable while native source actions require Accessibility. Silent login launch plus every supported `SMAppService` state has been verified.
 10. Every private-API-dependent path passes the supported OS matrix; missing, changed, and deliberately disabled capabilities have also been tested for crash-free visible fallback.
 11. Every currently maintained stable macOS major passes the complete Supported Baseline; any baseline failure blocks the release.
 12. Stable release signing uses the maintainer's personal Developer ID identity through protected trusted-tag secrets; no signing credential is present in the repository or untrusted contribution workflow.

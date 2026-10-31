@@ -85,6 +85,16 @@ final class AppModel: ObservableObject {
       && (!busy || (placementOperationRunning && operationTask?.isCancelled == false))
       && !pendingPlacementKeys.contains(key)
   }
+
+  func canChoosePlacement(_ key: String) -> Bool {
+    let bundle = Self.bundle(ofKey: key)
+    guard layout.items.contains(where: { $0.id == key }),
+      bundle != ownBundle, !bundle.hasPrefix("com.apple.") else { return false }
+    let matches = items.filter { $0.identity.persistentKey == key }
+    if let item = matches.first { return matches.count == 1 && isManageable(item) }
+    // An unresolved live identity must not be treated as a closed application.
+    return !items.contains { $0.observation.bundleIdentifier == bundle && $0.identity.persistentKey == nil }
+  }
   var ownBundle: String { Bundle.main.bundleIdentifier ?? "io.github.mahenzon.TrayNook.dev" }
   var dropdownItems: [ClassifiedSourceItem] {
     layout.items.filter { $0.placement == .dropdown }.compactMap { liveItem($0.id) }
@@ -371,7 +381,7 @@ final class AppModel: ObservableObject {
       modelLog.error("revealed: scan permission=\(snapshot.permission.rawValue, privacy: .public) completeness=\(snapshot.completeness.rawValue, privacy: .public) warnings=\(snapshot.warnings.joined(separator: " | "), privacy: .public)")
       guard !recoveryRequired else { return false }
       if !permissionGranted {
-        if firstSnapshot || wasGranted { selectedTab = 1; modelLog.notice("settings: accessibility not granted (first=\(firstSnapshot))"); showSettings?() }
+        if firstSnapshot || wasGranted { modelLog.notice("settings: accessibility not granted (first=\(firstSnapshot))"); showSettings?() }
         message = L("Grant Accessibility to discover and organize menu-bar items.")
       } else {
         message = reapplyNotBefore != nil
@@ -380,7 +390,7 @@ final class AppModel: ObservableObject {
       }
       return false
     }
-    if !wasGranted && !recoveryRequired { selectedTab = 0; message = nil }
+    if !wasGranted && !recoveryRequired { message = nil }
     return true
   }
 
@@ -516,13 +526,14 @@ final class AppModel: ObservableObject {
   }
 
   func setPlacement(_ key: String, _ placement: Placement) {
-    guard canEditPlacement(key), let item = liveItem(key), isManageable(item),
+    guard canEditPlacement(key), canChoosePlacement(key),
       let previous = layout.items.first(where: { $0.id == key })?.placement,
       previous != placement else { return }
+    let item = liveItem(key)
     var next = layout
     next.place(key, in: placement)
     guard replaceLayout(next, undoable: true) else { return }
-    applyPlacementChange(key, from: previous, item: item)
+    if let item { applyPlacementChange(key, from: previous, item: item) }
   }
 
   func retryPlacement(_ key: String) {
@@ -691,7 +702,7 @@ final class AppModel: ObservableObject {
     guard canEdit, isManageable(item) else { return }
     // A previous panel's lifetime must never restore this new interaction.
     cancelPanelWatch()
-    runOperation(restoreSettingsFocus: false, revealOnFailure: false) {
+    runOperation(restoreSettingsFocus: false, revealOnFailure: false, showSettingsOnFailure: true) {
       self.message = nil
       if self.native.hasPendingActivation { try await self.native.restoreActivation() }
       try await self.native.waitForActivationReadiness(item, secondary: secondary)
@@ -744,6 +755,7 @@ final class AppModel: ObservableObject {
   }
 
   private func runOperation(restoreSettingsFocus: Bool = true, revealOnFailure: Bool = true, deactivateApp: Bool = true,
+    showSettingsOnFailure: Bool = false,
     completion: (@MainActor () -> Void)? = nil,
     _ operation: @escaping @MainActor () async throws -> Void) {
     guard !busy else { return }
@@ -753,10 +765,15 @@ final class AppModel: ObservableObject {
     let wasActive = NSApp.isActive
     if deactivateApp { NSApp.deactivate() }
     operationTask = Task {
+      var failed = false
       do { try await operation() }
       catch is CancellationError { if revealOnFailure { native.reveal() } }
-      catch NativeMenuActionError.inputNotIdle { message = NativeMenuActionError.inputNotIdle.localizedDescription }
+      catch NativeMenuActionError.inputNotIdle {
+        failed = true
+        message = NativeMenuActionError.inputNotIdle.localizedDescription
+      }
       catch {
+        failed = true
         if revealOnFailure { native.reveal() }
         message = error.localizedDescription
         modelLog.error("operation failed: \(error.localizedDescription, privacy: .public)")
@@ -768,6 +785,10 @@ final class AppModel: ObservableObject {
       operationTask = nil
       if deactivateApp && restoreSettingsFocus && wasActive { NSApp.activate(ignoringOtherApps: true) }
       refresh()
+      if failed && showSettingsOnFailure && !Task.isCancelled {
+        queuedDropdown = nil
+        showSettings?()
+      }
       if !Task.isCancelled { completion?() }
       if let queued = queuedDropdown {
         queuedDropdown = nil
@@ -785,8 +806,7 @@ final class AppModel: ObservableObject {
     }
   }
 
-  /// Live order of one lane's keys during a handle drag; the rest of the
-  /// layout keeps its positions.
+  /// Reorder one lane's keys, keeping the rest of the layout in place.
   func setOrder(_ keys: [String], undoable: Bool) {
     guard canEdit else { return }
     let byKey = Dictionary(layout.items.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
@@ -796,14 +816,6 @@ final class AppModel: ObservableObject {
     next.items = next.items.compactMap { lane.contains($0.id) ? cursor.next().flatMap { byKey[$0] } : $0 }
     guard next.items.count == layout.items.count else { return }
     replaceLayout(next, undoable: undoable)
-  }
-
-  /// One undo step for a whole drag, registered against the pre-drag layout.
-  func commitReorder(from start: SavedLayout?) {
-    guard let start, start != layout else { return }
-    let now = layout
-    layout = start
-    replaceLayout(now, undoable: true)
   }
 
   /// Mouse movement edits a local preview; persist one final drop and one Undo.
@@ -995,6 +1007,36 @@ final class AppModel: ObservableObject {
       fputs("TRAYNOOK_PERMANENT_LAUNCH_FAILURE_RETRIED\n", stderr)
       return false
     }
+    let feedbackCases: [(Error?, Bool, Bool)] = [
+      (NativeMenuActionError.inputNotIdle, true, true),
+      (AppError.message("Activation feedback fixture"), true, true),
+      (CancellationError(), true, false),
+      (nil, true, false),
+      (AppError.message("Background feedback fixture"), false, false),
+    ]
+    for (error, presentsFailure, shouldPresent) in feedbackCases {
+      let model = AppModel(native: native, store: nil)
+      var presentations = 0
+      var presentedAfterCleanup = true
+      var presentedMessage: String?
+      var queuedDropdownOpened = false
+      model.showSettings = { [weak model] in
+        presentations += 1
+        presentedAfterCleanup = model?.busy == false && model?.operationTask == nil
+        presentedMessage = model?.message
+      }
+      model.runOperation(revealOnFailure: false, deactivateApp: false,
+        showSettingsOnFailure: presentsFailure) {
+        if shouldPresent { model.openDropdown { queuedDropdownOpened = true } }
+        if let error { throw error }
+      }
+      guard await finish(model), presentations == (shouldPresent ? 1 : 0),
+        presentedAfterCleanup, !queuedDropdownOpened,
+        !shouldPresent || presentedMessage == error?.localizedDescription else {
+        fputs("TRAYNOOK_ACTIVATION_FAILURE_FEEDBACK_FAILED\n", stderr)
+        return false
+      }
+    }
     return true
   }
 
@@ -1017,10 +1059,21 @@ final class AppModel: ObservableObject {
     guard failing.message == saveError else { return false }
     let navigation = AppModel(native: native, store: nil)
     navigation.accept(denied)
-    guard navigation.selectedTab == 1, !navigation.attemptedLaunchRestore else { return false }
+    guard navigation.selectedTab == 0, !navigation.attemptedLaunchRestore else {
+      fputs("TRAYNOOK_PERMISSION_CHANGED_SETTINGS_TAB\n", stderr)
+      return false
+    }
     navigation.selectedTab = 2
     navigation.accept(denied)
     guard navigation.selectedTab == 2, !navigation.attemptedLaunchRestore else { return false }
+    var dropdownOpened = false
+    navigation.openDropdown { dropdownOpened = true }
+    guard dropdownOpened, navigation.dropdownShown, !navigation.busy,
+      !navigation.canEdit else { return false }
+    navigation.dropdownClosed()
+    let granted = InventorySnapshot(capturedAt: Date(), permission: .granted, completeness: .complete,
+      items: [], warnings: [], metrics: ScanMetrics(durationMilliseconds: 0, inspectedApplicationCount: 0, sourceItemCount: 0))
+    guard navigation.acceptScanStatus(granted), navigation.selectedTab == 2 else { return false }
     navigation.reveal()
     guard navigation.attemptedLaunchRestore else { return false }
     let recovering = AppModel(native: native, store: nil)
