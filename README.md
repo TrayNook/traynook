@@ -65,7 +65,8 @@ Apple system controls stay protected. An offscreen item
 is moved through verified PID/window-targeted public events, and must reach a
 safe visible position before activation. The total hidden section may exceed the
 screen width, but there must still be room for one selected source. Dropdown
-arrows reorder proxies; full native order management uses Command-drag.
+arrows reorder proxies. Settings reorders manageable Menu Bar sources; use
+Command-drag to arrange protected items or the launcher.
 
 ## Settings preview and native flow
 
@@ -75,13 +76,16 @@ Always Hidden area. Drag an application icon to reorder it or move it between
 zones. A floating icon follows the pointer while neighboring icons animate
 out of the way, leaving an empty insertion slot, and the destination lights up. Dropping saves once with one Undo
 step; Escape or dropping outside the preview cancels. Protected items, the
-launcher, and the gear stay fixed. Menu Bar order in the preview is editor order;
-use Command-drag for the physical menu bar.
+launcher, and the gear stay fixed. Dropping a Menu Bar item applies the relative
+order of manageable sources to the physical menu bar while keeping hidden items
+hidden. Item details and Undo/Redo apply the same order. Apply Saved Layout also
+retries the saved Menu Bar order.
 Changing row capacity updates the preview immediately; the gear
 occupies the first slot. Missing apps consume no dropdown slots, protected apps
 are marked as kept visible, ambiguous siblings are not listed, and unavailable
 inventory is identified. Application
-icons illustrate saved placements; native order and spacing can differ.
+icons illustrate saved placements; protected item positions and native spacing
+can differ.
 
 Layout also contains collapsible **Item details** with names, placement controls,
 drag handles, status, Retry, and Forget, plus the layout reset action.

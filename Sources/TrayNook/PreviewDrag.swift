@@ -156,9 +156,13 @@ struct PreviewDragSurface: NSViewRepresentable {
 }
 
 struct PreviewDragSource: NSViewRepresentable {
+  let key: String
   let begin: (NSEvent, NSEvent) -> Void
   func makeNSView(context: Context) -> DragView { DragView() }
-  func updateNSView(_ view: DragView, context: Context) { view.begin = begin }
+  func updateNSView(_ view: DragView, context: Context) {
+    view.identifier = NSUserInterfaceItemIdentifier(key)
+    view.begin = begin
+  }
 
   final class DragView: NSView {
     var begin: ((NSEvent, NSEvent) -> Void)?

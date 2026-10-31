@@ -42,9 +42,11 @@ final class AppModel: ObservableObject {
   var closeDropdown: (() -> Void)?
   var showSettings: (() -> Void)?
   private let store: LayoutStore?
+  private let applyMenuBarOrder: (@MainActor ([ClassifiedSourceItem]) async throws -> Void)?
   private var scanTask: Task<Void, Never>?
   private var pollTask: Task<Void, Never>?
   private var operationTask: Task<Void, Never>?
+  private(set) var pendingMenuBarOrder: [ClassifiedSourceItem]?
   private var scanGeneration = 0
   private var attemptedLaunchRestore = false
   private var launchRestoreRunning = false
@@ -70,9 +72,11 @@ final class AppModel: ObservableObject {
   private var hasAcceptedSnapshot = false
   private var previousItems: [ClassifiedSourceItem] = []
 
-  init(native: NativeMenuBarController, store: LayoutStore?) {
+  init(native: NativeMenuBarController, store: LayoutStore?,
+    applyMenuBarOrder: (@MainActor ([ClassifiedSourceItem]) async throws -> Void)? = nil) {
     self.native = native
     self.store = store
+    self.applyMenuBarOrder = applyMenuBarOrder
     do { layout = try store?.load() ?? SavedLayout() }
     catch { recoveryRequired = true; message = L("Saved layout cannot be read safely. Reset Layout to start again; the original file is preserved until then.") }
     native.onReveal = { [weak self] in
@@ -81,6 +85,7 @@ final class AppModel: ObservableObject {
     }
     native.onExternalReveal = { [weak self] in
       self?.cancelPanelWatch()
+      self?.pendingMenuBarOrder = nil
       self?.attemptedLaunchRestore = true
       self?.reapplyNotBefore = nil
       self?.operationTask?.cancel()
@@ -243,6 +248,7 @@ final class AppModel: ObservableObject {
   }
 
   func stop() {
+    pendingMenuBarOrder = nil
     pollTask?.cancel(); scanTask?.cancel(); operationTask?.cancel(); cancelPanelWatch()
     native.remove()
   }
@@ -492,6 +498,7 @@ final class AppModel: ObservableObject {
   }
 
   func reveal(cancelLaunchRestore: Bool = true) {
+    pendingMenuBarOrder = nil
     cancelPanelWatch()
     if cancelLaunchRestore {
       attemptedLaunchRestore = true
@@ -694,6 +701,7 @@ final class AppModel: ObservableObject {
       catch { throw AppError.message("\(name(for: saved.id)): \(error.localizedDescription)") }
       try await freshOperationInventory()
     }
+    try await synchronizeMenuBarOrder(menuBarItems(in: layout))
     try Task.checkCancellation()
     let hidden = Set(layout.items.filter { $0.placement != .menuBar }.map(\.id))
     if !hidden.isEmpty {
@@ -790,6 +798,7 @@ final class AppModel: ObservableObject {
       concealed = native.isConcealed
       busy = false
       operationTask = nil
+      if !Task.isCancelled { applyPendingMenuBarOrder() }
       if deactivateApp && restoreSettingsFocus && wasActive { NSApp.activate(ignoringOtherApps: true) }
       refresh()
       if failed && showSettingsOnFailure && !Task.isCancelled {
@@ -822,7 +831,29 @@ final class AppModel: ObservableObject {
     var next = layout
     next.items = next.items.compactMap { lane.contains($0.id) ? cursor.next().flatMap { byKey[$0] } : $0 }
     guard next.items.count == layout.items.count else { return }
-    replaceLayout(next, undoable: undoable)
+    replaceLayout(next, undoable: undoable, applyingMenuBarOrder: true)
+  }
+
+  private func menuBarItems(in layout: SavedLayout) -> [ClassifiedSourceItem] {
+    layout.items.filter { $0.placement == .menuBar }
+      .compactMap { liveItem($0.id) }.filter { isManageable($0) }
+  }
+
+  private func applyPendingMenuBarOrder() {
+    guard !busy, let ordered = pendingMenuBarOrder else { return }
+    pendingMenuBarOrder = nil
+    attemptedLaunchRestore = true
+    message = nil
+    runOperation(revealOnFailure: false, deactivateApp: false) {
+      if self.native.hasPendingActivation { try await self.native.restoreActivation() }
+      try await self.synchronizeMenuBarOrder(ordered)
+    }
+  }
+
+  private func synchronizeMenuBarOrder(_ ordered: [ClassifiedSourceItem]) async throws {
+    guard ordered.count > 1 else { return }
+    if let applyMenuBarOrder { try await applyMenuBarOrder(ordered) }
+    else { try await native.reorderMenuBarItems(ordered) }
   }
 
   /// Mouse movement edits a local preview; persist one final drop and one Undo.
@@ -836,7 +867,8 @@ final class AppModel: ObservableObject {
     }
     guard let next = layout.moving(key, to: placement, before: anchor) else { return false }
     guard next != layout else { return true }
-    guard replaceLayout(next, undoable: true) else { return false }
+    guard replaceLayout(next, undoable: true,
+      applyingMenuBarOrder: previousPlacement == placement && placement == .menuBar) else { return false }
     if previousPlacement != placement {
       applyPlacementChange(key, from: previousPlacement, item: source)
     }
@@ -865,7 +897,8 @@ final class AppModel: ObservableObject {
     } catch { message = L("Could not save layout. Check available disk space and folder permissions.") }
   }
 
-  @discardableResult private func replaceLayout(_ next: SavedLayout, undoable: Bool) -> Bool {
+  @discardableResult private func replaceLayout(_ next: SavedLayout, undoable: Bool,
+    applyingMenuBarOrder: Bool = false) -> Bool {
     let previous = layout
     guard previous != next else { return true }
     layout = next
@@ -873,13 +906,22 @@ final class AppModel: ObservableObject {
     if undoable {
       undoManager.registerUndo(withTarget: self) { target in
         MainActor.assumeIsolated {
-          target.reveal()
-          if target.replaceLayout(previous, undoable: true) {
+          if !applyingMenuBarOrder { target.reveal() }
+          if target.replaceLayout(previous, undoable: true, applyingMenuBarOrder: applyingMenuBarOrder),
+            !applyingMenuBarOrder {
             target.message = L("Layout restored. Apply Saved Layout to update native positions.")
           }
         }
       }
       undoManager.setActionName(L("Change Layout"))
+    }
+    if applyingMenuBarOrder {
+      let ordered = menuBarItems(in: next)
+      if ordered.count > 1,
+        ordered.compactMap(\.identity.persistentKey) != menuBarItems(in: previous).compactMap(\.identity.persistentKey) {
+        pendingMenuBarOrder = ordered
+        applyPendingMenuBarOrder()
+      }
     }
     return true
   }

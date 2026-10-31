@@ -13,38 +13,9 @@ struct DragRenderingTests {
   @Test("Measure preview pointer and slot rendering costs",
     .enabled(if: ProcessInfo.processInfo.environment["TRAYNOOK_APPKIT_TESTS"] == "1"))
   func previewSlotCrossings() async throws {
-    NSApplication.shared.setActivationPolicy(.accessory)
-    let defaults = UserDefaults.standard
-    let keys = ["TrayNookLauncher", "TrayNook.HiddenBoundary"].flatMap { name in
-      ["NSStatusItem Preferred Position \(name)", "NSStatusItem Visible \(name)", "NSStatusItem VisibleCC \(name)"]
-    }
-    let previous = Dictionary(uniqueKeysWithValues: keys.compactMap { key in
-      defaults.object(forKey: key).map { (key, $0) }
-    })
-    let launcher = NSStatusBar.system.statusItem(withLength: 0)
-    launcher.isVisible = false
-    let native = NativeMenuBarController(launcher: launcher)
-    defer {
-      native.remove()
-      NSStatusBar.system.removeStatusItem(launcher)
-      for key in keys {
-        if let value = previous[key] { defaults.set(value, forKey: key) }
-        else { defaults.removeObject(forKey: key) }
-      }
-    }
-    let model = AppModel(native: native, store: nil)
-    model.permissionGranted = true
-    model.scanComplete = true
-    model.layout = SavedLayout(rowCapacity: 10, items: (0..<24).map {
-      SavedItem(id: "example.fixture\($0)", placement: .dropdown)
-    })
-    model.items = IdentityAssessor().classify((0..<24).map { index in
-      RawSourceItemObservation(runtimeID: "fixture\(index)", processIdentifier: 100,
-        bundleIdentifier: "example.fixture\(index)", applicationName: "Fixture \(index)",
-        role: "AXMenuBarItem", frame: ItemFrame(x: 1200, y: 0, width: 24, height: 24),
-        actions: ["AXPress"], metadata: LiveAccessibilityMetadata(identifierCandidate: "fixture"),
-        observedOrder: index)
-    })
+    let fixture = PreviewFixture()
+    defer { fixture.close() }
+    let model = fixture.model
     let session = PreviewDragSession()
     let image = try #require(NSImage(systemSymbolName: "app", accessibilityDescription: nil))
     let host = LayoutCountingHost(rootView: LayoutPreviewView(model: model, drag: session)
@@ -90,6 +61,57 @@ struct DragRenderingTests {
     session.cancel()
     #expect(session.draft == nil)
     #expect(model.layout.items.first?.id == "example.fixture0")
+  }
+
+  @Test("Menu Bar preview keeps physical order and drop direction in RTL interfaces",
+    .enabled(if: ProcessInfo.processInfo.environment["TRAYNOOK_APPKIT_TESTS"] == "1"))
+  func menuBarPhysicalDirection() async throws {
+    let fixture = PreviewFixture()
+    defer { fixture.close() }
+    let model = fixture.model
+    model.layout = SavedLayout(items: [SavedItem(id: "example.fixture0"), SavedItem(id: "example.fixture1")])
+    let original = model.layout
+    for direction in [LayoutDirection.leftToRight, .rightToLeft] {
+      let session = PreviewDragSession()
+      let host = NSHostingView(rootView: LayoutPreviewView(model: model, drag: session)
+        .environment(\.layoutDirection, direction))
+      let window = NSWindow(contentRect: CGRect(x: 50, y: 50, width: 760, height: 600),
+        styleMask: [.borderless], backing: .buffered, defer: false)
+      window.isReleasedWhenClosed = false
+      window.contentView = host
+      defer { session.cancel(); window.close() }
+      window.orderFront(nil)
+      try await Task.sleep(for: .milliseconds(100))
+      host.layoutSubtreeIfNeeded()
+      let sources = dragSources(in: host)
+      let first = try #require(sources.first { $0.identifier?.rawValue == "example.fixture0" })
+      let second = try #require(sources.first { $0.identifier?.rawValue == "example.fixture1" })
+      let firstFrame = host.convert(first.bounds, from: first)
+      let secondFrame = host.convert(second.bounds, from: second)
+      #expect(firstFrame.width > 0 && secondFrame.width > 0)
+      #expect(firstFrame.maxX <= secondFrame.minX,
+        "Saved Menu Bar order must remain physically left-to-right in \(direction).")
+
+      let down = try #require(NSEvent.mouseEvent(with: .leftMouseDown,
+        location: second.convert(CGPoint(x: second.bounds.midX, y: second.bounds.midY), to: nil),
+        modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+        windowNumber: window.windowNumber, context: nil, eventNumber: 1, clickCount: 1, pressure: 1))
+      let moved = try #require(NSEvent.mouseEvent(with: .leftMouseDragged,
+        location: first.convert(CGPoint(x: first.bounds.minX + 1, y: first.bounds.midY), to: nil),
+        modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+        windowNumber: window.windowNumber, context: nil, eventNumber: 2, clickCount: 1, pressure: 1))
+      // Deliver only to our synthetic source view; no input is posted to macOS.
+      second.mouseDown(with: down)
+      second.mouseDragged(with: moved)
+      #expect(session.draft?.items.map(\.id) == ["example.fixture1", "example.fixture0"])
+      session.cancel()
+      #expect(model.layout == original)
+    }
+  }
+
+  private func dragSources(in view: NSView) -> [PreviewDragSource.DragView] {
+    let source = (view as? PreviewDragSource.DragView).map { [$0] } ?? []
+    return source + view.subviews.flatMap { dragSources(in: $0) }
   }
 
   @Test("Pointer motion keeps resting detail rows unchanged",
@@ -142,6 +164,53 @@ struct DragRenderingTests {
     #expect(abs(finalY - initialY - 120) < 0.5)
     #expect(probe.geometryUpdates.filter { $0.key != 0 }.values.reduce(0, +) == 0)
     #expect(restingUpdates == 0)
+  }
+}
+
+@MainActor
+private final class PreviewFixture {
+  let model: AppModel
+  private let launcher: NSStatusItem
+  private let native: NativeMenuBarController
+  private let keys: [String]
+  private let previous: [String: Any]
+
+  init() {
+    NSApplication.shared.setActivationPolicy(.accessory)
+    let defaults = UserDefaults.standard
+    keys = ["TrayNookLauncher", "TrayNook.HiddenBoundary"].flatMap { name in
+      ["NSStatusItem Preferred Position \(name)", "NSStatusItem Visible \(name)", "NSStatusItem VisibleCC \(name)"]
+    }
+    previous = Dictionary(uniqueKeysWithValues: keys.compactMap { key in
+      defaults.object(forKey: key).map { (key, $0) }
+    })
+    launcher = NSStatusBar.system.statusItem(withLength: 0)
+    launcher.isVisible = false
+    native = NativeMenuBarController(launcher: launcher)
+    model = AppModel(native: native, store: nil)
+    model.permissionGranted = true
+    model.scanComplete = true
+    model.layout = SavedLayout(rowCapacity: 10, items: (0..<24).map {
+      SavedItem(id: "example.fixture\($0)", placement: .dropdown)
+    })
+    model.items = IdentityAssessor().classify((0..<24).map { index in
+      RawSourceItemObservation(runtimeID: "fixture\(index)", processIdentifier: 100,
+        bundleIdentifier: "example.fixture\(index)", applicationName: "Fixture \(index)",
+        role: "AXMenuBarItem", frame: ItemFrame(x: 1200, y: 0, width: 24, height: 24),
+        actions: ["AXPress"], metadata: LiveAccessibilityMetadata(identifierCandidate: "fixture"),
+        observedOrder: index)
+    })
+  }
+
+  func close() {
+    native.remove()
+    NativeMenuBarController.removePreservingPosition(launcher)
+    let defaults = UserDefaults.standard
+    for key in keys {
+      if let value = previous[key] { defaults.set(value, forKey: key) }
+      else { defaults.removeObject(forKey: key) }
+    }
+    defaults.synchronize()
   }
 }
 

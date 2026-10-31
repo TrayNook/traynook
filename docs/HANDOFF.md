@@ -7,6 +7,15 @@ Updated 2026-10-29. Build 18's measurements are in
 
 ## Current state
 
+- **Menu Bar ordering (2026-10-31):** preview drops and detail-row drops now
+  apply the relative order of manageable Menu Bar sources, including Undo/Redo.
+  Apply Saved Layout also enforces that order. Clipped sources are left untouched,
+  protected sources are never dragged, and RTL keeps the physical icon strip
+  left-to-right. Six caller tests, five native planning/eligibility tests, and
+  three rendered drag tests pass. After rebuilding and reopening the signed app,
+  WindowServer confirmed the real BroGlow source left of Tunnelblick, matching
+  their saved order. The separate disposable `--reorder` check compiled but
+  stopped before posting input because its harness lacks Accessibility permission.
 - Development app: `dist/TrayNook Dev.app`, **1.0.0 (26)**, signed with the
   user's `TrayNook Dev` certificate (README "Development signing and
   permissions"). The unit suite, packaged smoke test, and opt-in GUI preview
@@ -29,11 +38,14 @@ Updated 2026-10-29. Build 18's measurements are in
   A stable app-local event monitor keeps tracking across cell reparenting;
   pointer updates redraw only the floating icon. Mouse movement
   does not save or run native placement. A valid drop saves once with one Undo
-  step, and only a changed Placement applies native movement. Escape, outside
+  step. Changed Placements and Menu Bar source order apply native movement. Escape, outside
   drops, stale source identity, loss of edit permission, and closing the preview
   discard the draft. Window/focus loss also cancels and removes the monitor.
   Protected icons, Settings, and Launcher stay fixed.
-  Preview Menu Bar order remains editor order; physical order uses Command-drag.
+  Preview Menu Bar drops and detail-row reordering apply manageable sources' relative
+  native order without revealing hidden items. Undo/Redo also synchronize that order;
+  Apply Saved Layout retries it. Protected sources and the Launcher are never moved
+  by the reorder operation, so their positions can differ from the preview.
   Isolated window checks confirmed draft movement before release, the closed-hand
   cursor, one commit on drop, and zero commits on Escape/outside/window-close;
   each case also verified cursor restoration and event-monitor removal.

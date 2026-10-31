@@ -122,7 +122,10 @@
 "macOS has clipped this item. Free some menu-bar space, then retry moving it to Menu Bar." = "macOS has clipped this item. Free some menu-bar space, then retry moving it to Menu Bar.";
 /* Settings layout preview. */
 "Kept out of the menu bar and dropdown until you choose Show Items." = "Kept out of the menu bar and dropdown until you choose Show Items.";
-"Application icons; menu-bar order and spacing may differ." = "Application icons; menu-bar order and spacing may differ.";
+"Application icons; protected item positions and spacing may differ." = "Application icons; protected item positions and spacing may differ.";
+"Finish the current item interaction before changing item order." = "Finish the current item interaction before changing item order.";
+"The menu-bar items changed or are not safely visible. Refresh, then retry their order." = "The menu-bar items changed or are not safely visible. Refresh, then retry their order.";
+"macOS did not accept the saved item order. Keep the pointer still, then retry." = "macOS did not accept the saved item order. Keep the pointer still, then retry.";
 "Dropdown preview" = "Dropdown preview";
 "No items" = "No items";
 "Preview" = "Preview";

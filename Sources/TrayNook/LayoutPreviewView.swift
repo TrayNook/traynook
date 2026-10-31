@@ -55,7 +55,7 @@ struct LayoutPreviewView: View {
       alwaysHidden(hiddenItems)
       Text(L("Drag icons to reorder or move between zones. Escape cancels."))
         .font(.caption).foregroundStyle(.secondary)
-      Text(L("Application icons; menu-bar order and spacing may differ."))
+      Text(L("Application icons; protected item positions and spacing may differ."))
         .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
     }
     .padding(14)
@@ -80,18 +80,22 @@ struct LayoutPreviewView: View {
     HStack(spacing: 12) {
       Text(L("Menu Bar")).font(.caption.weight(.medium)).foregroundStyle(.secondary)
       Spacer(minLength: 0)
-      ScrollView(.horizontal) {
-        HStack(spacing: 4) {
-          ForEach(items) { item in previewIcon(item, in: .menuBar, size: 20, cell: 32) }
-        }.frame(maxWidth: .infinity, alignment: .trailing).padding(.vertical, 3)
+      HStack(spacing: 12) {
+        ScrollView(.horizontal) {
+          HStack(spacing: 4) {
+            ForEach(items) { item in previewIcon(item, in: .menuBar, size: 20, cell: 32) }
+          }.frame(maxWidth: .infinity, alignment: .trailing).padding(.vertical, 3)
+        }
+        .frame(width: min(CGFloat(items.count * 36), max(0, availableWidth - 152)))
+        .scrollIndicators(.hidden)
+        Divider().frame(height: 20)
+        Image(systemName: "tray.full").font(.system(size: 20))
+          .frame(width: 32, height: 30)
+          .background(.quaternary, in: RoundedRectangle(cornerRadius: 5))
+          .accessibilityLabel(L("TrayNook launcher preview"))
       }
-      .frame(width: min(CGFloat(items.count * 36), max(0, availableWidth - 152)))
-      .scrollIndicators(.hidden)
-      Divider().frame(height: 20)
-      Image(systemName: "tray.full").font(.system(size: 20))
-        .frame(width: 32, height: 30)
-        .background(.quaternary, in: RoundedRectangle(cornerRadius: 5))
-        .accessibilityLabel(L("TrayNook launcher preview"))
+      // The physical menu-bar order is left-to-right in every interface language.
+      .environment(\.layoutDirection, .leftToRight)
     }
     .padding(.horizontal, 12).padding(.vertical, 6)
     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
@@ -150,7 +154,8 @@ struct LayoutPreviewView: View {
   private func insertionKey(at point: CGPoint, in placement: Placement) -> String? {
     let candidates = items(in: placement).filter { $0.id != drag.key && $0.placement == placement }
       .compactMap { item in iconFrames[item.id].map { (key: item.id, frame: $0) } }
-    return PreviewDropTarget.insertionKey(at: point, items: candidates, rightToLeft: layoutDirection == .rightToLeft)
+    return PreviewDropTarget.insertionKey(at: point, items: candidates,
+      rightToLeft: placement != .menuBar && layoutDirection == .rightToLeft)
   }
 
   private func previewIcon(_ item: SavedItem, in placement: Placement, size: CGFloat, cell: CGFloat) -> some View {
@@ -177,7 +182,7 @@ struct LayoutPreviewView: View {
       })
       .overlay {
         if !protected && model.canEdit {
-          PreviewDragSource { down, event in
+          PreviewDragSource(key: item.id) { down, event in
             guard model.canEdit, let original = model.liveItem(item.id), let frame = iconFrames[item.id] else { return }
             guard drag.begin(item.id, layout: model.layout, commit: { key, zone, anchor in
               guard let current = model.liveItem(key),
