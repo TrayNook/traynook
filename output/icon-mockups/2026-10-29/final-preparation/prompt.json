@@ -1,0 +1,6 @@
+{
+  "mode": "Built-in image_gen",
+  "selectedArtwork": "../flat/B-two-tone-relief.png",
+  "finalMaster": "../../../../Support/AppIcon.png",
+  "prompt": "Use case: background-extraction.\nAsset type: final macOS app icon artwork.\nImage 1 is the user-approved final artwork. Perform ONLY a precise background extraction.\nRemove the off-white/white background OUTSIDE the orange rounded-square/squircle tile and make ONLY that exterior genuinely transparent. Preserve the entire orange squircle, its existing shape, original size/position/padding, and every part of the tanuki and green tray inside it. Preserve every interior color, curve, facial feature, shadow, original shading style, and composition. Keep the exact selected closed-eye curled tanuki hugging a green tray.\nDo not redraw, reinterpret, restyle, recolor, simplify further, add detail, crop, move or enlarge the subject or tile. Do not make the orange tile transparent. Do not add a new border, glow, backing plate, checkerboard graphic, or shadow outside the tile. Clean antialiased alpha around the existing squircle silhouette. One square PNG image with actual transparent exterior, same artwork otherwise. No text or watermark."
+}
