@@ -162,3 +162,4 @@
 "Copy a compatibility summary without app names or your item inventory." = "Copy a compatibility summary without app names or your item inventory.";
 "About TrayNook" = "About TrayNook";
 "Optional. Screen Recording enables menu-bar glyphs in the dropdown. Choose your preferred icons in General. Captured pixels stay in memory for this session only and are never saved." = "Optional. Screen Recording enables menu-bar glyphs in the dropdown. Choose your preferred icons in General. Captured pixels stay in memory for this session only and are never saved.";
+"Menu-bar geometry could not be verified. Items are revealed; the saved layout is applied again shortly." = "Menu-bar geometry could not be verified. Items are revealed; the saved layout is applied again shortly.";

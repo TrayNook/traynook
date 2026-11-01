@@ -52,7 +52,7 @@ final class AppModel: ObservableObject {
   private var launchRestoreRunning = false
   /// After sleep or a display change the section is revealed, then the saved
   /// layout is applied again once things have settled.
-  private var reapplyNotBefore: Date?
+  private(set) var reapplyNotBefore: Date?
   private var recoveringLayout = false
   private var panelWatch: Task<Void, Never>?
   /// True while the dropdown is open; a promoted item waits until it closes.
@@ -347,28 +347,36 @@ final class AppModel: ObservableObject {
       layout.items.removeAll { saved in stale.contains { $0.id == saved.id } }
       if !added.isEmpty || !stale.isEmpty { persist() }
     }
-    if concealed && !canSafelyConceal() {
-      // Diagnose before revealing: reveal() resets the geometry these depend on.
-      let unsafe = items.compactMap { item -> String? in
-        let behind = native.isBehindBoundary(item)
-        let assigned = isManageable(item) && layout.items.contains { $0.id == item.identity.persistentKey && $0.placement != .menuBar }
-        guard behind == nil || (behind == true && !assigned) else { return nil }
-        let frame = item.observation.frame.map { "\(Int($0.x)),\(Int($0.y)) \(Int($0.width))x\(Int($0.height))" } ?? "no frame"
-        return "\(item.identity.persistentKey ?? "nil")[\(frame) on=\(String(describing: item.observation.isOnscreen))] behind=\(String(describing: behind)) assigned=\(assigned)"
-      }
-      // One poll can catch the bar mid-relayout (Control Centre's Now Playing
-      // changes width), leaving a frame across the separator edge. Reveal only
-      // when the next scan still finds the section unsafe.
-      unsafeScans += 1
-      guard unsafeScans >= 2 else {
-        modelLog.notice("unsafe once, waiting for the next scan: \(unsafe.joined(separator: " ; "), privacy: .public)")
-        return
-      }
-      modelLog.error("revealed: unsafe items: \(unsafe.joined(separator: " ; "), privacy: .public)")
+    validateConcealment(using: native.isBehindBoundary)
+  }
+
+  func validateConcealment(using side: (ClassifiedSourceItem) -> Bool?) {
+    guard concealed else { unsafeScans = 0; return }
+    // Sample each source once: re-reading changing geometry can disagree with the decision.
+    var needsReview = false
+    let unsafe = items.compactMap { item -> String? in
+      let behind = side(item)
+      let assigned = isManageable(item) && layout.items.contains { $0.id == item.identity.persistentKey && $0.placement != .menuBar }
+      guard behind == nil || (behind == true && !assigned) else { return nil }
+      if behind == true { needsReview = true }
+      let frame = item.observation.frame.map { "\(Int($0.x)),\(Int($0.y)) \(Int($0.width))x\(Int($0.height))" } ?? "no frame"
+      return "\(item.identity.persistentKey ?? "nil")[\(frame) on=\(String(describing: item.observation.isOnscreen))] behind=\(String(describing: behind)) assigned=\(assigned)"
+    }
+    guard !unsafe.isEmpty else { unsafeScans = 0; return }
+    // One poll can catch the bar mid-relayout; the next scan must confirm it.
+    unsafeScans += 1
+    guard unsafeScans >= 2 else {
+      modelLog.notice("unsafe once, waiting for the next scan: \(unsafe.joined(separator: " ; "), privacy: .public)")
+      return
+    }
+    modelLog.error("revealed: unsafe items: \(unsafe.joined(separator: " ; "), privacy: .public)")
+    if needsReview {
       reveal()
       message = L("An unassigned or protected item is behind the separator. Items have been revealed.")
     } else {
-      unsafeScans = 0
+      revealForInventoryRecovery()
+      if reapplyNotBefore != nil { reapplyNotBefore = Date().addingTimeInterval(3) }
+      message = L("Menu-bar geometry could not be verified. Items are revealed; the saved layout is applied again shortly.")
     }
   }
 
@@ -505,16 +513,6 @@ final class AppModel: ObservableObject {
       reapplyNotBefore = nil
     }
     operationTask?.cancel(); native.reveal(); concealed = false
-  }
-
-  private func canSafelyConceal() -> Bool {
-    items.allSatisfy { item in
-      guard let behind = native.isBehindBoundary(item) else { return false }
-      guard behind else { return true }
-      return isManageable(item) && layout.items.contains {
-        $0.id == item.identity.persistentKey && $0.placement != .menuBar
-      }
-    }
   }
 
   func toggleConcealment() {
