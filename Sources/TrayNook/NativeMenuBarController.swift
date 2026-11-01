@@ -73,6 +73,31 @@ final class NativeMenuBarController: NSObject {
   var onReveal: (() -> Void)?
   var onExternalReveal: (() -> Void)?
 
+  struct ItemInspection: Equatable {
+    let behindBoundary: Bool?
+    let isClipped: Bool
+    let isVerifiedVisible: Bool
+  }
+
+  struct Inspection: Equatable {
+    let setupMessage: String?
+    let items: [String: ItemInspection]
+  }
+
+  var hasVisibleBoundary: Bool { separator?.isVisible == true }
+
+  /// Polling and presentation share one geometry read; native actions still query afresh.
+  func inspect(_ items: [ClassifiedSourceItem]) -> Inspection {
+    let environment = environment()
+    let inspected = items.reduce(into: [String: ItemInspection]()) { result, item in
+      result[item.observation.runtimeID] = ItemInspection(
+        behindBoundary: isBehindBoundary(item, in: environment),
+        isClipped: isClipped(item.observation, in: environment),
+        isVerifiedVisible: isVerifiedVisible(item, in: environment))
+    }
+    return Inspection(setupMessage: setupMessage(in: environment), items: inspected)
+  }
+
   /// Status-item reordering needs the real pointer path, so the pointer does
   /// jump during a move. Hiding it makes the jump invisible; the pointer is
   /// warped back and shown again as soon as the synthesized input is done.
@@ -120,15 +145,19 @@ final class NativeMenuBarController: NSObject {
   }
 
   var setupMessage: String? {
+    setupMessage(in: environment())
+  }
+
+  private func setupMessage(in environment: MenuBarEnvironment?) -> String? {
     guard separator?.isVisible == true else { return nil }
-    if let environment = environment() {
+    if let environment {
       let edge = ItemFrame(x: environment.boundary.maxX - 2, y: environment.boundary.y,
         width: 2, height: environment.boundary.height)
       if !environment.safeFrame.contains(environment.launcher) || !environment.safeFrame.contains(edge) {
         return L("There is not enough visible menu-bar space for TrayNook's controls. Temporarily quit a menu-bar app to free space, then choose Apply Saved Layout.")
       }
     }
-    guard let environment = environment(),
+    guard let environment,
       Self.launcherIsSafe(environment.launcher, boundary: environment.boundary,
         safeFrame: environment.safeFrame, expanded: isConcealed)
     else {
@@ -282,10 +311,15 @@ final class NativeMenuBarController: NSObject {
 
   /// nil means the item cannot safely be attributed to this menu-bar row.
   func isBehindBoundary(_ classified: ClassifiedSourceItem) -> Bool? {
+    isBehindBoundary(classified, in: environment())
+  }
+
+  private func isBehindBoundary(_ classified: ClassifiedSourceItem,
+    in environment: MenuBarEnvironment?) -> Bool? {
     if separator?.isVisible != true, !isConcealed { return false }
     let item = classified.observation
     let key = classified.identity.persistentKey
-    guard let environment = environment(), let frame = item.frame,
+    guard let environment, let frame = item.frame,
       Self.launcherIsSafe(environment.launcher, boundary: environment.boundary,
         safeFrame: environment.safeFrame, expanded: isConcealed)
     else { return nil }
@@ -313,7 +347,12 @@ final class NativeMenuBarController: NSObject {
   /// visible side of the boundary, onscreen, and not clipped. "Not behind the
   /// boundary" is weaker: an untrusted offscreen item is also not behind it.
   func isVerifiedVisible(_ classified: ClassifiedSourceItem) -> Bool {
-    guard let environment = environment(),
+    isVerifiedVisible(classified, in: environment())
+  }
+
+  private func isVerifiedVisible(_ classified: ClassifiedSourceItem,
+    in environment: MenuBarEnvironment?) -> Bool {
+    guard let environment,
       Self.launcherIsSafe(environment.launcher, boundary: environment.boundary,
         safeFrame: environment.safeFrame, expanded: isConcealed) else { return false }
     return Self.isVerifiedVisible(classified.observation, boundary: environment.boundary,
@@ -332,7 +371,11 @@ final class NativeMenuBarController: NSObject {
   /// Reports sources whose pointer target is clipped by WindowServer or the
   /// camera cutout. Partial cutout overlap still needs assignment validation.
   func isClipped(_ item: RawSourceItemObservation) -> Bool {
-    if let environment = environment() {
+    isClipped(item, in: environment())
+  }
+
+  private func isClipped(_ item: RawSourceItemObservation, in environment: MenuBarEnvironment?) -> Bool {
+    if let environment {
       return Self.isClipped(item, boundary: environment.boundary, displayFrame: environment.displayFrame,
         occlusionFrame: environment.occlusionFrame)
     }

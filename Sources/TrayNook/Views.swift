@@ -60,7 +60,7 @@ struct SettingsView: View {
     VStack(alignment: .leading, spacing: 12) {
       Text(L("Choose where each app appears. Changes apply automatically."))
         .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-      if let setup = model.native.setupMessage {
+      if let setup = model.nativeSetupMessage {
         Label(setup, systemImage: "arrow.left.and.right").font(.callout)
       }
       HStack {
@@ -315,7 +315,7 @@ private struct ItemDetailsContent: View, @preconcurrency Equatable {
         }.labelsHidden().frame(width: 145).accessibilityLabel(L("Placement") + ": " + model.name(for: saved.id))
         if live != nil, model.pendingPlacementKeys.contains(saved.id) {
           ProgressView().controlSize(.small)
-        } else if let live, !model.busy && model.native.isBehindBoundary(live) != (saved.placement != .menuBar) {
+        } else if let live, !model.busy && model.observedBoundarySide(of: live) != (saved.placement != .menuBar) {
           Button(L("Retry")) { model.retryPlacement(saved.id) }
         }
       }

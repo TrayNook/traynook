@@ -1,4 +1,4 @@
-# TrayNook: build 28, larger Always Hidden icons and hover names
+# TrayNook: build 29, smoother Settings scrolling
 
 Updated 2026-11-01. Build 18's measurements are in
 [MVP_REPORT.md](MVP_REPORT.md); build 19's decisions are in
@@ -7,6 +7,21 @@ Updated 2026-11-01. Build 18's measurements are in
 
 ## Current state
 
+- **Settings scrolling (2026-11-01):** live profiling found repeated WindowServer
+  geometry queries in both inventory acceptance and Settings row rendering.
+  Native inspection now reads one shared environment per complete inventory;
+  Settings shows that inspection and native actions continue checking fresh
+  geometry. Process rebinding precedes inspection, reveals clear presentation
+  state, and incomplete scans retain the last complete inspection. Identical
+  inventories no longer rebuild the live-item lookup. An isolated 30-row scroll
+  benchmark reproduced a 403.39 ms warmed poll/render pause before the fix and
+  87.93 ms afterward; median/p95 were 3.15/6.52 ms. Its 100 ms warmed-step guard
+  passes twice. These are synchronous main-thread measurements, not display FPS;
+  the first post-poll setup step still reached 110.52 ms. Standard tests and 12
+  focused AppKit recovery/placement/order/drag checks and packaged smoke pass.
+  Signed build 29 reopened with all 10 running hidden sources concealed. A second
+  live profile shows native environment reads under the batch inspection, with
+  none in Settings row rendering.
 - **Layout preview (2026-11-01):** Always Hidden now uses the same 26-point
   icons, 36-point cells, and 8-point spacing as Dropdown. The native drag surface
   registers each item's name/placement tooltip; protected icons retain SwiftUI
@@ -34,7 +49,7 @@ Updated 2026-11-01. Build 18's measurements are in
   WindowServer confirmed the real BroGlow source left of Tunnelblick, matching
   their saved order. The separate disposable `--reorder` check compiled but
   stopped before posting input because its harness lacks Accessibility permission.
-- Development app: `dist/TrayNook Dev.app`, **1.0.0 (28)**, signed with the
+- Development app: `dist/TrayNook Dev.app`, **1.0.0 (29)**, signed with the
   user's `TrayNook Dev` certificate (README "Development signing and
   permissions"). The unit suite, packaged smoke test, and opt-in GUI preview
   snapshots pass, including minimum Settings width and row capacities 1/30.
@@ -189,8 +204,10 @@ action. `.optionAll` is required to find offscreen windows.
 
 ```sh
 Scripts/test.sh
-TRAYNOOK_DEV_SIGNING_IDENTITY='TrayNook Dev' TRAYNOOK_BUILD=28 Scripts/build-app.sh
+TRAYNOOK_DEV_SIGNING_IDENTITY='TrayNook Dev' TRAYNOOK_BUILD=29 Scripts/build-app.sh
 Scripts/smoke-test.sh
 Scripts/test-native-cancellation.sh --compile-only
 "dist/TrayNook Dev.app/Contents/MacOS/TrayNook" --diagnose
+# Quit TrayNook first; isolated controls, synthetic inventory, no native input:
+TRAYNOOK_SCROLL_BENCHMARK=1 Scripts/test.sh --filter ScrollPerformanceTests
 ```

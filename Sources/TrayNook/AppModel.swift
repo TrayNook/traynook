@@ -27,6 +27,8 @@ final class AppModel: ObservableObject {
   private var placementOperationRunning = false
   private var placementStatuses: [String: String] = [:]
   @Published var concealed = false
+  @Published private(set) var nativeSetupMessage: String?
+  @Published private var nativeItemStates: [String: NativeMenuBarController.ItemInspection] = [:]
   @Published var message: String?
   @Published var recoveryRequired = false
   private var incompleteScans = 0
@@ -82,6 +84,8 @@ final class AppModel: ObservableObject {
     native.onReveal = { [weak self] in
       self?.cancelPanelWatch()
       self?.concealed = false
+      if self?.nativeSetupMessage != nil { self?.nativeSetupMessage = nil }
+      if self?.nativeItemStates.isEmpty == false { self?.nativeItemStates = [:] }
     }
     native.onExternalReveal = { [weak self] in
       self?.cancelPanelWatch()
@@ -224,16 +228,22 @@ final class AppModel: ObservableObject {
         ? L("App not found") : L("Not running")
     }
     if !isManageable(item) { return L("Protected — kept visible") }
-    if saved.placement == .menuBar && native.isClipped(item.observation) {
+    if saved.placement == .menuBar && nativeItemStates[item.observation.runtimeID]?.isClipped == true {
       return L("Offscreen — menu bar is full")
     }
-    if saved.placement != .menuBar && native.isBehindBoundary(item) != true {
+    if saved.placement != .menuBar && observedBoundarySide(of: item) != true {
       return L("Currently in Menu Bar — retry placement")
     }
     if saved.placement != .menuBar && concealed {
       return saved.placement == .dropdown ? L("Hidden — available in dropdown") : L("Hidden")
     }
     return L("Running")
+  }
+
+  /// Presentation reads the last inventory inspection; actions validate live geometry.
+  func observedBoundarySide(of item: ClassifiedSourceItem) -> Bool? {
+    if !concealed && !native.hasVisibleBoundary { return false }
+    return nativeItemStates[item.observation.runtimeID]?.behindBoundary
   }
 
   func start() {
@@ -299,21 +309,25 @@ final class AppModel: ObservableObject {
     concealed = native.isConcealed
     guard acceptScanStatus(snapshot, firstSnapshot: firstSnapshot) else { return }
     let observed = snapshot.items.filter { $0.observation.bundleIdentifier != ownBundle }
+    let watchingLayout = concealed || reapplyNotBefore != nil || recoveringLayout
+    let changes = watchingLayout ? Self.keyedChanges(from: previousItems, to: observed) : []
+    let known = Set(layout.items.map(\.id))
+    let hidden = Set(layout.items.filter { $0.placement != .menuBar }.map(\.id))
+    for change in changes where Self.rebindsProcess(change, hidden: hidden) {
+      if let key = change.key,
+        let item = observed.first(where: { $0.observation.runtimeID == change.change.currentRuntimeID }) {
+        native.adoptProcess(key: key, pid: item.observation.processIdentifier)
+      }
+    }
+    let inspection = native.inspect(observed)
+    if nativeSetupMessage != inspection.setupMessage { nativeSetupMessage = inspection.setupMessage }
+    if nativeItemStates != inspection.items { nativeItemStates = inspection.items }
     // Polling diff: hidden sources rebind, other additions reconcile, and
     // ambiguous identities stop for review, including during recovery.
-    if concealed || reapplyNotBefore != nil || recoveringLayout {
-      let changes = Self.keyedChanges(from: previousItems, to: observed)
-      let known = Set(layout.items.map(\.id))
-      let hidden = Set(layout.items.filter { $0.placement != .menuBar }.map(\.id))
+    if watchingLayout {
       let verifiedVisible = Set(observed.compactMap { item in
-        native.isVerifiedVisible(item) ? item.identity.persistentKey : nil
+        inspection.items[item.observation.runtimeID]?.isVerifiedVisible == true ? item.identity.persistentKey : nil
       })
-      for change in changes where Self.rebindsProcess(change, hidden: hidden) {
-        if let key = change.key,
-          let item = observed.first(where: { $0.observation.runtimeID == change.change.currentRuntimeID }) {
-          native.adoptProcess(key: key, pid: item.observation.processIdentifier)
-        }
-      }
       if Self.inventoryRequiresReveal(changes, known: known, hidden: hidden, verifiedVisible: verifiedVisible) {
         let needsReview = Self.inventoryRequiresReview(changes)
         if needsReview {
@@ -331,7 +345,7 @@ final class AppModel: ObservableObject {
       }
     }
     previousItems = observed
-    items = observed
+    if items != observed { items = observed }
     refreshProxyImages()
     if !recoveryRequired {
       let known = Set(layout.items.map(\.id))
@@ -347,7 +361,7 @@ final class AppModel: ObservableObject {
       layout.items.removeAll { saved in stale.contains { $0.id == saved.id } }
       if !added.isEmpty || !stale.isEmpty { persist() }
     }
-    validateConcealment(using: native.isBehindBoundary)
+    validateConcealment { inspection.items[$0.observation.runtimeID]?.behindBoundary }
   }
 
   func validateConcealment(using side: (ClassifiedSourceItem) -> Bool?) {
