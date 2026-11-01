@@ -1,12 +1,25 @@
-# TrayNook: build 26, focused Settings tabs
+# TrayNook: build 27, recovery after unverified geometry
 
-Updated 2026-10-29. Build 18's measurements are in
+Updated 2026-11-01. Build 18's measurements are in
 [MVP_REPORT.md](MVP_REPORT.md); build 19's decisions are in
 [ADR 0009](adr/0009-hidden-pointer-sibling-keys-and-session-image-cache.md) and
 [ADR 0010](adr/0010-geometry-follows-the-active-menu-bar-row.md).
 
 ## Current state
 
+- **Idle recurrence (2026-11-01):** at 10:53:59, two polls returned unknown
+  boundary sides and revealed every source without scheduling recovery. Build 27
+  reveals temporarily after two unverified polls and retries the saved layout
+  after three seconds and a complete scan. Confirmed unassigned/protected sources
+  behind the separator still stop for review, including mixed unknown/unsafe
+  snapshots. Each source's side is sampled once per poll. The regression failed
+  before the fix; four focused AppKit checks, 136 standard tests, and packaged
+  smoke pass. The signed app was reopened at 13:58; native concealment recorded
+  11 allowed identities and 10 running sources on the 1728-point built-in display.
+  Three native-window readbacks over 30 seconds confirmed all 10 source windows
+  remained entirely offscreen on the active menu-bar row.
+  The original reason geometry became unavailable remains unconfirmed; prolonged
+  idle behavior still needs observation.
 - **Menu Bar ordering (2026-10-31):** preview drops and detail-row drops now
   apply the relative order of manageable Menu Bar sources, including Undo/Redo.
   Apply Saved Layout also enforces that order. Clipped sources are left untouched,
@@ -16,7 +29,7 @@ Updated 2026-10-29. Build 18's measurements are in
   WindowServer confirmed the real BroGlow source left of Tunnelblick, matching
   their saved order. The separate disposable `--reorder` check compiled but
   stopped before posting input because its harness lacks Accessibility permission.
-- Development app: `dist/TrayNook Dev.app`, **1.0.0 (26)**, signed with the
+- Development app: `dist/TrayNook Dev.app`, **1.0.0 (27)**, signed with the
   user's `TrayNook Dev` certificate (README "Development signing and
   permissions"). The unit suite, packaged smoke test, and opt-in GUI preview
   snapshots pass, including minimum Settings width and row capacities 1/30.
@@ -171,7 +184,7 @@ action. `.optionAll` is required to find offscreen windows.
 
 ```sh
 Scripts/test.sh
-TRAYNOOK_DEV_SIGNING_IDENTITY='TrayNook Dev' TRAYNOOK_BUILD=26 Scripts/build-app.sh
+TRAYNOOK_DEV_SIGNING_IDENTITY='TrayNook Dev' TRAYNOOK_BUILD=27 Scripts/build-app.sh
 Scripts/smoke-test.sh
 Scripts/test-native-cancellation.sh --compile-only
 "dist/TrayNook Dev.app/Contents/MacOS/TrayNook" --diagnose
