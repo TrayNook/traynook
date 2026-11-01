@@ -1,4 +1,4 @@
-# TrayNook: build 29, smoother Settings scrolling
+# TrayNook: build 30, aligned item-row controls
 
 Updated 2026-11-01. Build 18's measurements are in
 [MVP_REPORT.md](MVP_REPORT.md); build 19's decisions are in
@@ -7,6 +7,11 @@ Updated 2026-11-01. Build 18's measurements are in
 
 ## Current state
 
+- **Item details (2026-11-01):** Forget, Retry, and pending-operation indicators
+  precede the placement selector, keeping selectors aligned beside drag handles
+  across running and closed apps. Existing visibility/enablement conditions are
+  preserved. The minimum-width Settings snapshots, closed-app placement check,
+  and packaged smoke pass.
 - **Settings scrolling (2026-11-01):** live profiling found repeated WindowServer
   geometry queries in both inventory acceptance and Settings row rendering.
   Native inspection now reads one shared environment per complete inventory;
@@ -49,7 +54,7 @@ Updated 2026-11-01. Build 18's measurements are in
   WindowServer confirmed the real BroGlow source left of Tunnelblick, matching
   their saved order. The separate disposable `--reorder` check compiled but
   stopped before posting input because its harness lacks Accessibility permission.
-- Development app: `dist/TrayNook Dev.app`, **1.0.0 (29)**, signed with the
+- Development app: `dist/TrayNook Dev.app`, **1.0.0 (30)**, signed with the
   user's `TrayNook Dev` certificate (README "Development signing and
   permissions"). The unit suite, packaged smoke test, and opt-in GUI preview
   snapshots pass, including minimum Settings width and row capacities 1/30.
@@ -204,7 +209,7 @@ action. `.optionAll` is required to find offscreen windows.
 
 ```sh
 Scripts/test.sh
-TRAYNOOK_DEV_SIGNING_IDENTITY='TrayNook Dev' TRAYNOOK_BUILD=29 Scripts/build-app.sh
+TRAYNOOK_DEV_SIGNING_IDENTITY='TrayNook Dev' TRAYNOOK_BUILD=30 Scripts/build-app.sh
 Scripts/smoke-test.sh
 Scripts/test-native-cancellation.sh --compile-only
 "dist/TrayNook Dev.app/Contents/MacOS/TrayNook" --diagnose

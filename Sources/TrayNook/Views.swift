@@ -309,19 +309,19 @@ private struct ItemDetailsContent: View, @preconcurrency Equatable {
         Text(model.status(for: saved)).font(.caption).foregroundStyle(.secondary)
       }
       Spacer()
+      if live == nil {
+        Button(L("Forget")) { model.forget(saved.id) }.disabled(model.busy)
+      }
       if canChoosePlacement {
-        Picker(L("Placement"), selection: Binding(get: { saved.placement }, set: { model.setPlacement(saved.id, $0) })) {
-          ForEach(Placement.allCases) { Text($0.title).tag($0) }
-        }.labelsHidden().frame(width: 145).accessibilityLabel(L("Placement") + ": " + model.name(for: saved.id))
         if live != nil, model.pendingPlacementKeys.contains(saved.id) {
           ProgressView().controlSize(.small)
         } else if let live, !model.busy && model.observedBoundarySide(of: live) != (saved.placement != .menuBar) {
           Button(L("Retry")) { model.retryPlacement(saved.id) }
         }
-      }
-      if live == nil {
-        Button(L("Forget")) { model.forget(saved.id) }.disabled(model.busy)
-      } else if !canChoosePlacement {
+        Picker(L("Placement"), selection: Binding(get: { saved.placement }, set: { model.setPlacement(saved.id, $0) })) {
+          ForEach(Placement.allCases) { Text($0.title).tag($0) }
+        }.labelsHidden().frame(width: 145).accessibilityLabel(L("Placement") + ": " + model.name(for: saved.id))
+      } else if live != nil {
         Image(systemName: "lock").accessibilityLabel(L("Protected — kept visible"))
       }
     }
