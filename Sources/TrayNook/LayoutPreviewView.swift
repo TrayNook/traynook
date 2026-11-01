@@ -138,8 +138,8 @@ struct LayoutPreviewView: View {
       Label(L("Always Hidden"), systemImage: "eye.slash").font(.caption).foregroundStyle(.secondary)
         .help(L("Kept out of the menu bar and dropdown until you choose Show Items."))
       ScrollView(.horizontal) {
-        HStack(spacing: 4) {
-          ForEach(items) { item in previewIcon(item, in: .alwaysHidden, size: 18, cell: 30) }
+        HStack(spacing: 8) {
+          ForEach(items) { item in previewIcon(item, in: .alwaysHidden, size: 26, cell: 36) }
           if items.isEmpty {
             Text(L("No items")).font(.caption).foregroundStyle(.tertiary)
           }
@@ -161,6 +161,8 @@ struct LayoutPreviewView: View {
   private func previewIcon(_ item: SavedItem, in placement: Placement, size: CGFloat, cell: CGFloat) -> some View {
     let protected = model.liveItem(item.id).map { !model.isManageable($0) } ?? true
     let image = model.icon(for: item.id)
+    let help = model.name(for: item.id) + " — " + (protected ? L("Protected — kept visible") : item.placement.title)
+      + (protected ? "" : " — " + L("Drag to reorder or move"))
     return Image(nsImage: image).resizable().frame(width: size, height: size)
       .overlay(alignment: .bottomTrailing) {
         if protected {
@@ -182,7 +184,7 @@ struct LayoutPreviewView: View {
       })
       .overlay {
         if !protected && model.canEdit {
-          PreviewDragSource(key: item.id) { down, event in
+          PreviewDragSource(key: item.id, toolTip: help) { down, event in
             guard model.canEdit, let original = model.liveItem(item.id), let frame = iconFrames[item.id] else { return }
             guard drag.begin(item.id, layout: model.layout, commit: { key, zone, anchor in
               guard let current = model.liveItem(key),
@@ -197,8 +199,7 @@ struct LayoutPreviewView: View {
           }
         }
       }
-      .help(model.name(for: item.id) + " — " + (protected ? L("Protected — kept visible") : item.placement.title)
-        + (protected ? "" : " — " + L("Drag to reorder or move")))
+      .help(help)
       .accessibilityElement(children: .ignore)
       .accessibilityLabel(model.name(for: item.id) + " — "
         + (protected ? Placement.menuBar.title : item.placement.title) + " — " + L("Preview"))

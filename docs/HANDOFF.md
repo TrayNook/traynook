@@ -1,4 +1,4 @@
-# TrayNook: build 27, recovery after unverified geometry
+# TrayNook: build 28, larger Always Hidden icons and hover names
 
 Updated 2026-11-01. Build 18's measurements are in
 [MVP_REPORT.md](MVP_REPORT.md); build 19's decisions are in
@@ -7,6 +7,11 @@ Updated 2026-11-01. Build 18's measurements are in
 
 ## Current state
 
+- **Layout preview (2026-11-01):** Always Hidden now uses the same 26-point
+  icons, 36-point cells, and 8-point spacing as Dropdown. The native drag surface
+  registers each item's name/placement tooltip; protected icons retain SwiftUI
+  help. Preview snapshots, minimum-width Settings checks, the rendered RTL drag
+  check, and packaged smoke pass.
 - **Idle recurrence (2026-11-01):** at 10:53:59, two polls returned unknown
   boundary sides and revealed every source without scheduling recovery. Build 27
   reveals temporarily after two unverified polls and retries the saved layout
@@ -29,7 +34,7 @@ Updated 2026-11-01. Build 18's measurements are in
   WindowServer confirmed the real BroGlow source left of Tunnelblick, matching
   their saved order. The separate disposable `--reorder` check compiled but
   stopped before posting input because its harness lacks Accessibility permission.
-- Development app: `dist/TrayNook Dev.app`, **1.0.0 (27)**, signed with the
+- Development app: `dist/TrayNook Dev.app`, **1.0.0 (28)**, signed with the
   user's `TrayNook Dev` certificate (README "Development signing and
   permissions"). The unit suite, packaged smoke test, and opt-in GUI preview
   snapshots pass, including minimum Settings width and row capacities 1/30.
@@ -184,7 +189,7 @@ action. `.optionAll` is required to find offscreen windows.
 
 ```sh
 Scripts/test.sh
-TRAYNOOK_DEV_SIGNING_IDENTITY='TrayNook Dev' TRAYNOOK_BUILD=27 Scripts/build-app.sh
+TRAYNOOK_DEV_SIGNING_IDENTITY='TrayNook Dev' TRAYNOOK_BUILD=28 Scripts/build-app.sh
 Scripts/smoke-test.sh
 Scripts/test-native-cancellation.sh --compile-only
 "dist/TrayNook Dev.app/Contents/MacOS/TrayNook" --diagnose
