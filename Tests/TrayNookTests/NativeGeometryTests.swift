@@ -308,6 +308,57 @@ struct NativeGeometryTests {
     #expect(!visible(observation(bundle: "example.bar", x: 1230)))
   }
 
+  @Test("A visible-side system window extending past the display edge does not block concealment")
+  func visibleSystemWindowEdgeOverflow() throws {
+    let display = ItemFrame(x: 0, y: 0, width: 1728, height: 1117)
+    let divider = ItemFrame(x: 1126, y: 7.5, width: 2, height: 22)
+    let safe = NativeMenuBarController.menuBarSafeFrame(
+      horizontalArea: ItemFrame(x: 956, y: 0, width: 772, height: 32),
+      controlWindow: CGRect(x: 1120, y: 0, width: 38, height: 37))
+    func inventory(x: Double, y: Double = 7.5) -> [ClassifiedSourceItem] {
+      IdentityAssessor().classify([RawSourceItemObservation(
+        runtimeID: "769:window:30", processIdentifier: 769, bundleIdentifier: nil,
+        applicationName: nil, role: "UnverifiedStatusWindow",
+        frame: ItemFrame(x: x, y: y, width: 135, height: 22), actions: [],
+        metadata: LiveAccessibilityMetadata(), observedOrder: 0, isOnscreen: true,
+        statusWindowIdentifier: 30)])
+    }
+    // Captured after display-change recovery failed: Control Center extended two
+    // points past the 1728-point display while remaining right of the divider.
+    let systemWindow = inventory(x: 1595)
+    let item = try #require(systemWindow.first)
+    #expect(item.identity.persistentKey == nil)
+    #expect(item.manageability.status == .protected)
+    let frame = try #require(item.observation.frame)
+    for boundary in [divider, ItemFrame(x: -1434, y: 7.5, width: 2562, height: 22)] {
+      #expect(NativeMenuBarController.hiddenSide(frame, boundary: boundary) == false)
+      #expect(NativeMenuBarController.visibleSideIsSafe(frame, safeFrame: safe))
+      #expect(!NativeMenuBarController.isVerifiedVisible(item.observation,
+        boundary: boundary, safeFrame: safe, displayFrame: display))
+    }
+    #expect(NativeMenuBarController.canConceal(systemWindow, allowedKeys: [],
+      boundary: divider, safeFrame: safe, displayFrame: display))
+    for unsafe in [inventory(x: -2), inventory(x: 1595, y: 40), inventory(x: 1100)] {
+      #expect(!NativeMenuBarController.canConceal(unsafe, allowedKeys: [],
+        boundary: divider, safeFrame: safe, displayFrame: display))
+    }
+  }
+
+  @Test("Visible-side safety retains valid leading-edge and full-row geometry")
+  func visibleSideSafetyGuards() {
+    for frame in [
+      ItemFrame(x: 1300, y: 0, width: 0, height: 24),
+      ItemFrame(x: .nan, y: 0, width: 24, height: 24),
+      ItemFrame(x: 1300, y: 0, width: .infinity, height: 24),
+      ItemFrame(x: 1300, y: -1, width: 24, height: 24),
+      ItemFrame(x: 1300, y: 1, width: 24, height: 24),
+      ItemFrame(x: 899, y: 0, width: 24, height: 24),
+      ItemFrame(x: 1440, y: 0, width: 24, height: 24),
+    ] {
+      #expect(!NativeMenuBarController.visibleSideIsSafe(frame, safeFrame: safeFrame))
+    }
+  }
+
   @Test("Each hidden sibling needs its own assignment")
   func siblingsNeedIndividualAssignments() {
     let assessor = IdentityAssessor()

@@ -335,7 +335,8 @@ final class NativeMenuBarController: NSObject {
       return concealedSourcePIDs[key] == item.processIdentifier
     }
     guard let behind = Self.hiddenSide(frame, boundary: environment.boundary) else { return nil }
-    if isConcealed && behind {
+    if !behind { return Self.visibleSideIsSafe(frame, safeFrame: environment.safeFrame) ? false : nil }
+    if isConcealed {
       guard let key, concealedSourcePIDs[key] == item.processIdentifier else { return nil }
     } else if !environment.safeFrame.contains(frame) {
       return nil
@@ -1668,6 +1669,13 @@ final class NativeMenuBarController: NSObject {
     return nil
   }
 
+  static func visibleSideIsSafe(_ frame: ItemFrame, safeFrame: ItemFrame) -> Bool {
+    // Concealment grows left; a right-side system window may extend past the screen edge.
+    frame.isUsable && safeFrame.isUsable
+      && frame.minX >= safeFrame.minX && frame.minX < safeFrame.maxX
+      && frame.y >= safeFrame.y && frame.maxY <= safeFrame.maxY
+  }
+
   static func canConceal(_ items: [ClassifiedSourceItem],
     allowedKeys: Set<String>, boundary: ItemFrame, safeFrame: ItemFrame,
     displayFrame: ItemFrame? = nil, occlusionFrame: ItemFrame? = nil) -> Bool {
@@ -1682,9 +1690,9 @@ final class NativeMenuBarController: NSObject {
       if let frame = item.observation.frame, let displayFrame,
         outsideDisplay(frame, display: displayFrame) { return true }
       guard let frame = item.observation.frame,
-        let behind = hiddenSide(frame, boundary: boundary),
-        safeFrame.contains(frame) || (clipped && behind) else { return false }
-      guard behind else { return true }
+        let behind = hiddenSide(frame, boundary: boundary) else { return false }
+      guard behind else { return visibleSideIsSafe(frame, safeFrame: safeFrame) }
+      guard safeFrame.contains(frame) || clipped else { return false }
       guard let bundle = item.observation.bundleIdentifier, let key = item.identity.persistentKey,
         !bundle.hasPrefix("com.apple."), allowedKeys.contains(key),
         item.manageability.status != .protected
