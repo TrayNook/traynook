@@ -155,6 +155,55 @@ struct AccessibilityErrorClassificationTests {
     #expect(statusWindowObservations(in: []) == [])
   }
 
+  @Test("Panel-only owners cannot poison discovery; real and concealed items on every display remain candidates")
+  func excludesConclusivePanelOwners() throws {
+    let main = CGRect(x: 0, y: 0, width: 1728, height: 1117)
+    let external = CGRect(x: -495, y: -1440, width: 2560, height: 1440)
+    let own = ProcessInfo.processInfo.processIdentifier
+    func window(_ owner: Int32, _ id: Int, _ frame: CGRect, visible: Bool = true) -> [String: Any] {
+      var result = windowMetadata(owner: Int(owner), identifier: id, onscreen: visible)
+      result[kCGWindowBounds as String] = frame.dictionaryRepresentation
+      return result
+    }
+    let metadata = [
+      window(own, 10, CGRect(x: 1500, y: 0, width: 24, height: 37)),
+      window(own, 11, CGRect(x: 1800, y: -1440, width: 24, height: 24)),
+      window(own, 12, CGRect(x: 1000, y: 0, width: 300, height: 200)),
+      window(100, 1, CGRect(x: 1300, y: 0, width: 24, height: 37)),
+      window(200, 2, CGRect(x: 0, y: 0, width: 1728, height: 1000)),
+      window(300, 3, CGRect(x: 400, y: 400, width: 400, height: 200)),
+      window(100, 4, CGRect(x: 0, y: 0, width: 1728, height: 1000)),
+      window(400, 5, CGRect(x: -2000, y: 0, width: 24, height: 37), visible: false),
+      window(500, 6, CGRect(x: 1200, y: -1440, width: 24, height: 24)),
+    ]
+    let windows = try #require(statusWindowObservations(in: metadata))
+    let candidates = statusWindowSourceCandidates(in: windows, windowMetadata: metadata,
+      displays: [main, external, external], ownProcessIdentifier: own)
+    #expect(candidates.map(\.windowIdentifier) == [1, 5, 6])
+    #expect(Set(candidates.map(\.processIdentifier)) == [100, 400, 500])
+    #expect(unrepresentedStatusWindows(candidates, comparedTo: []).map(\.windowIdentifier) == [1, 6])
+  }
+
+  @Test("Unknown display rows retain possible sources instead of guessing their height")
+  func unknownMenuRowsRemainCandidates() throws {
+    let own = ProcessInfo.processInfo.processIdentifier
+    let display = CGRect(x: 0, y: 0, width: 1728, height: 1117)
+    var panel = windowMetadata(owner: 200, identifier: 2)
+    panel[kCGWindowBounds as String] = CGRect(x: 400, y: 400, width: 400, height: 200).dictionaryRepresentation
+    var ownPopover = windowMetadata(owner: Int(own), identifier: 3)
+    ownPopover[kCGWindowBounds as String] = CGRect(x: 1000, y: 37, width: 300, height: 200).dictionaryRepresentation
+    let metadata = [windowMetadata(owner: 100, identifier: 1), panel, ownPopover]
+    let windows = try #require(statusWindowObservations(in: metadata))
+    #expect(statusWindowSourceCandidates(in: windows, windowMetadata: metadata,
+      displays: [display], ownProcessIdentifier: own) == windows)
+    #expect(statusWindowSourceCandidates(in: windows, windowMetadata: metadata,
+      displays: [], ownProcessIdentifier: own) == windows)
+    var malformedOwnWindow = ownPopover
+    malformedOwnWindow[kCGWindowBounds as String] = CGRect(x: Double.nan, y: 0, width: 24, height: 37).dictionaryRepresentation
+    #expect(statusWindowSourceCandidates(in: windows, windowMetadata: metadata + [malformedOwnWindow],
+      displays: [display], ownProcessIdentifier: own) == windows)
+  }
+
   @Test("Unexposed visible status windows are Protected; offscreen identities remain trackable")
   func unexposedStatusWindowsAreProtected() throws {
     let windows = try #require(statusWindowObservations(in: [

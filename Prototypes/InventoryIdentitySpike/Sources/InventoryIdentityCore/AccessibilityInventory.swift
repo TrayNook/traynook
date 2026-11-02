@@ -98,6 +98,53 @@ func statusWindowObservations(in windows: [[String: Any]]?) -> [StatusWindowObse
   return result
 }
 
+func statusWindowSourceCandidates(
+  in windows: [StatusWindowObservation], windowMetadata: [[String: Any]],
+  displays: [CGRect], ownProcessIdentifier: Int32 = ProcessInfo.processInfo.processIdentifier
+) -> [StatusWindowObservation] {
+  let ownFrames = windowMetadata.compactMap { window -> CGRect? in
+    guard (window[kCGWindowLayer as String] as? Int) == Int(CGWindowLevelForKey(.statusWindow)),
+      let owner = window[kCGWindowOwnerPID as String] as? Int,
+      Int32(exactly: owner) == ownProcessIdentifier,
+      let bounds = window[kCGWindowBounds as String] as? [String: Any],
+      let frame = CGRect(dictionaryRepresentation: bounds as CFDictionary),
+      ItemFrame(x: frame.origin.x, y: frame.origin.y,
+        width: frame.size.width, height: frame.size.height).isUsable else { return nil }
+    return frame
+  }
+  let geometry = displays.filter {
+    ItemFrame(x: $0.origin.x, y: $0.origin.y, width: $0.size.width, height: $0.size.height).isUsable
+  }.map { display in
+    // Our launcher and boundary expose the real row thickness without main-thread AppKit.
+    let height = ownFrames.filter {
+      $0.minY == display.minY && $0.maxX > display.minX && $0.minX < display.maxX
+        && $0.height < display.height
+    }.map(\.height).min()
+    return (display: display, rowHeight: height)
+  }
+  return windows.filter { window in
+    let frame = window.frame
+    guard frame.isUsable else { return true }
+    let bounds = CGRect(x: frame.x, y: frame.y, width: frame.width, height: frame.height)
+    let matching = geometry.filter { $0.display.intersects(bounds) }
+    // Concealed windows can lie outside all displays; unknown rows remain possible sources.
+    guard !matching.isEmpty, matching.allSatisfy({ $0.rowHeight != nil }) else { return true }
+    return matching.contains { geometry in
+      guard let height = geometry.rowHeight else { return true }
+      return frame.height <= 2 * height
+        && frame.y < geometry.display.minY + height && frame.maxY > geometry.display.minY
+    }
+  }
+}
+
+private func activeDisplayFrames() -> [CGRect] {
+  var count: UInt32 = 0
+  guard CGGetActiveDisplayList(0, nil, &count) == .success, count > 0 else { return [] }
+  var displays = [CGDirectDisplayID](repeating: 0, count: Int(count))
+  guard CGGetActiveDisplayList(count, &displays, &count) == .success else { return [] }
+  return displays.prefix(Int(count)).map { CGDisplayBounds($0) }
+}
+
 private func statusWindow(_ window: StatusWindowObservation, overlaps item: RawSourceItemObservation) -> Bool {
   guard item.processIdentifier == window.processIdentifier,
     let frame = item.frame, frame.isUsable, window.frame.isUsable,
@@ -266,9 +313,9 @@ public struct AccessibilityInventoryScanner: InventoryScanning, Sendable {
     let capturedAt = Date()
     // All windows includes concealed/offscreen status items. Only metadata is
     // read; there is no window capture and no Screen Recording requirement.
-    let statusWindows = trusted ? statusWindowObservations(
-      in: CGWindowListCopyWindowInfo(.optionAll, kCGNullWindowID) as? [[String: Any]]
-    ) : nil
+    let windowMetadata = trusted
+      ? CGWindowListCopyWindowInfo(.optionAll, kCGNullWindowID) as? [[String: Any]] : nil
+    let statusWindows = statusWindowObservations(in: windowMetadata)
 
     guard trusted, let statusWindows else {
       return InventorySnapshot(
@@ -297,8 +344,10 @@ public struct AccessibilityInventoryScanner: InventoryScanning, Sendable {
     let issueTracker = AccessibilityScanIssueTracker(
       deadline: startedAt + UInt64(scanBudgetSeconds * 1_000_000_000)
     )
+    let sourceCandidates = statusWindowSourceCandidates(in: statusWindows,
+      windowMetadata: windowMetadata ?? [], displays: activeDisplayFrames())
 
-    for processIdentifier in Set(statusWindows.map(\.processIdentifier)).sorted() {
+    for processIdentifier in Set(sourceCandidates.map(\.processIdentifier)).sorted() {
       guard !issueTracker.scanBudgetExceeded else { break }
       inspectedApplicationCount += 1
       let applicationStartedAt = DispatchTime.now().uptimeNanoseconds
@@ -323,7 +372,7 @@ public struct AccessibilityInventoryScanner: InventoryScanning, Sendable {
       }
     }
 
-    for window in unrepresentedStatusWindows(statusWindows, comparedTo: rawItems) {
+    for window in unrepresentedStatusWindows(sourceCandidates, comparedTo: rawItems) {
       let application = NSRunningApplication(processIdentifier: window.processIdentifier)
       rawItems.append(RawSourceItemObservation(
         runtimeID: "\(window.processIdentifier):window:\(window.windowIdentifier)",
