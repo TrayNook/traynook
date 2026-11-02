@@ -8,6 +8,36 @@ import Testing
   .enabled(if: ProcessInfo.processInfo.environment["TRAYNOOK_APPKIT_TESTS"] == "1"))
 @MainActor
 struct ConcealmentRecoveryTests {
+  @Test("Malformed Accessibility geometry reaches safety recovery without crashing diagnostics")
+  func malformedGeometryRecovers() throws {
+    let fixture = Fixture()
+    defer { fixture.close() }
+    let model = fixture.model
+    let saved = model.layout
+    let original = try #require(model.items.first).observation
+    for component in 0..<4 {
+      for value in [Double.nan, .infinity, -.infinity, .greatestFiniteMagnitude, -.greatestFiniteMagnitude, Double(Int.max)] {
+        model.reveal()
+        model.concealed = true
+        var geometry: [Double] = [-100, 6, 24, 24]
+        geometry[component] = value
+        model.items[0] = try #require(IdentityAssessor().classify([
+          RawSourceItemObservation(runtimeID: original.runtimeID, processIdentifier: original.processIdentifier,
+            bundleIdentifier: original.bundleIdentifier, applicationName: original.applicationName,
+            role: original.role,
+            frame: ItemFrame(x: geometry[0], y: geometry[1], width: geometry[2], height: geometry[3]),
+            actions: original.actions, metadata: original.metadata, observedOrder: original.observedOrder)
+        ]).first)
+
+        model.validateConcealment { $0.identity.persistentKey == Fixture.hidden ? nil : false }
+        model.validateConcealment { $0.identity.persistentKey == Fixture.hidden ? nil : false }
+        #expect(!model.concealed)
+        #expect(model.reapplyNotBefore != nil)
+        #expect(model.layout == saved)
+      }
+    }
+  }
+
   @Test("Two scans with unknown geometry reveal temporarily and retain saved-layout recovery")
   func unknownGeometryRecovers() throws {
     let fixture = Fixture()

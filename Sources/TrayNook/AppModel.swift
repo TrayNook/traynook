@@ -453,7 +453,7 @@ final class AppModel: ObservableObject {
       let assigned = isManageable(item) && layout.items.contains { $0.id == item.identity.persistentKey && $0.placement != .menuBar }
       guard behind == nil || (behind == true && !assigned) else { return nil }
       if behind == true { needsReview = true }
-      let frame = item.observation.frame.map { "\(Int($0.x)),\(Int($0.y)) \(Int($0.width))x\(Int($0.height))" } ?? "no frame"
+      let frame = item.observation.frame.map { "\($0.x),\($0.y) \($0.width)x\($0.height)" } ?? "no frame"
       return "\(item.identity.persistentKey ?? "nil")[\(frame) on=\(String(describing: item.observation.isOnscreen))] behind=\(String(describing: behind)) assigned=\(assigned)"
     }
     guard !unsafe.isEmpty else { unsafeScans = 0; return }
