@@ -53,10 +53,12 @@ struct LayoutPreviewView: View {
       menuBar(menuBarItems)
       dropdown(dropdownItems, columns: columns, height: min(176, CGFloat(rows * 44 + 28)))
       alwaysHidden(hiddenItems)
-      Text(L("Drag icons to reorder or move between zones. Escape cancels."))
-        .font(.caption).foregroundStyle(.secondary)
-      Text(L("Application icons; protected item positions and spacing may differ."))
-        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+      VStack(alignment: .leading, spacing: 4) {
+        Text(L("Drag icons to reorder or move between zones. Escape cancels."))
+        Text(L("Application icons; protected item positions and spacing may differ."))
+          .fixedSize(horizontal: false, vertical: true)
+      }
+      .font(.caption).foregroundStyle(.secondary)
     }
     .padding(14)
     .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 10))
@@ -138,8 +140,8 @@ struct LayoutPreviewView: View {
       Label(L("Always Hidden"), systemImage: "eye.slash").font(.caption).foregroundStyle(.secondary)
         .help(L("Kept out of the menu bar and dropdown until you choose Show Items."))
       ScrollView(.horizontal) {
-        HStack(spacing: 8) {
-          ForEach(items) { item in previewIcon(item, in: .alwaysHidden, size: 26, cell: 36) }
+        HStack(spacing: 4) {
+          ForEach(items) { item in previewIcon(item, in: .alwaysHidden, size: 26, cell: 32) }
           if items.isEmpty {
             Text(L("No items")).font(.caption).foregroundStyle(.tertiary)
           }

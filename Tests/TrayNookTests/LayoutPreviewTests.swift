@@ -81,6 +81,8 @@ struct LayoutPreviewTests {
       SavedItem(id: applications[1].id, placement: .dropdown),
       SavedItem(id: "example.multiple", placement: .dropdown),
       SavedItem(id: "example.hidden", placement: .alwaysHidden),
+      SavedItem(id: "example.hidden2", placement: .alwaysHidden),
+      SavedItem(id: "example.hidden3", placement: .alwaysHidden),
       SavedItem(id: "example.missing", placement: .dropdown),
       SavedItem(id: applications[2].id, placement: .dropdown),
       SavedItem(id: "example.weather"),
@@ -95,6 +97,8 @@ struct LayoutPreviewTests {
       item("example.multiple", name: "Multiple", index: 0),
       item("example.multiple", name: "Multiple", index: 1),
       item("example.hidden", name: "Hidden"),
+      item("example.hidden2", name: "Hidden 2"),
+      item("example.hidden3", name: "Hidden 3"),
       item(applications[2].id, name: applications[2].name),
       item("example.weather", name: "Weather"),
     ])
@@ -103,7 +107,7 @@ struct LayoutPreviewTests {
     #expect(preview.items(in: .menuBar).map(\.id) == [
       "example.timer", "com.apple.controlcenter", "example.weather",
     ])
-    #expect(preview.items(in: .alwaysHidden).map(\.id) == ["example.hidden"])
+    #expect(preview.items(in: .alwaysHidden).map(\.id) == ["example.hidden", "example.hidden2", "example.hidden3"])
     let dropdown = applications.map(\.id)
     #expect(preview.items(in: .dropdown).map(\.id) == dropdown)
     #expect(model.dropdownItems.compactMap { $0.observation.bundleIdentifier } == dropdown)
