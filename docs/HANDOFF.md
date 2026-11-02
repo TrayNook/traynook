@@ -1,4 +1,4 @@
-# TrayNook: build 32, bounded background inventory inspection
+# TrayNook: build 33, measured Settings opening and cheaper localization
 
 Updated 2026-11-02. Build 18's measurements are in
 [MVP_REPORT.md](MVP_REPORT.md); build 19's decisions are in
@@ -7,6 +7,20 @@ Updated 2026-11-02. Build 18's measurements are in
 
 ## Current state
 
+- **First Settings opening (2026-11-02):** controlled profiling did not reproduce
+  the earlier multi-second redraw burst. Build 33 resolves the immutable
+  localization resource bundle once while retaining per-call `NSLocalizedString`.
+  Three-run release content-opening medians changed from 186 to 148 ms; fresh
+  content with warm icons changed from 125 to 91 ms. These are content measurements,
+  not complete production opening or display-frame guarantees. The opt-in opening
+  benchmark separates construction, retained content, entry refresh, and scan
+  transitions, with a 500 ms main-actor hang guard. Its final release run measured
+  166 ms initial work and a 39 ms entry-refresh heartbeat gap. The standard suite
+  reports 161 tests passing; the opening/scroll guards, three preview checks, and
+  packaged smoke pass. Signed build 33 was restored on the 1728-point display;
+  native readback found nine hidden-source owners and zero visible hidden-source
+  windows on the menu-bar row. See the experiment and limits in
+  [RESPONSIVENESS_RESEARCH.md](RESPONSIVENESS_RESEARCH.md#first-settings-opening-build-33-follow-up).
 - **Responsiveness recommendations (2026-11-02):** implemented the four primary
   recommendations in [RESPONSIVENESS_RESEARCH.md](RESPONSIVENESS_RESEARCH.md).
   Login status refreshes at meaningful UI/lifecycle events; application URL/icons
@@ -91,7 +105,7 @@ Updated 2026-11-02. Build 18's measurements are in
   WindowServer confirmed the real BroGlow source left of Tunnelblick, matching
   their saved order. The separate disposable `--reorder` check compiled but
   stopped before posting input because its harness lacks Accessibility permission.
-- Development app: `dist/TrayNook Dev.app`, **1.0.0 (32)**, signed with the
+- Development app: `dist/TrayNook Dev.app`, **1.0.0 (33)**, signed with the
   user's `TrayNook Dev` certificate (README "Development signing and
   permissions"). The unit suite, packaged smoke test, and opt-in GUI preview
   snapshots pass, including minimum Settings width and row capacities 1/30.
@@ -246,11 +260,12 @@ action. `.optionAll` is required to find offscreen windows.
 
 ```sh
 Scripts/test.sh
-TRAYNOOK_DEV_SIGNING_IDENTITY='TrayNook Dev' TRAYNOOK_BUILD=32 Scripts/build-app.sh
+TRAYNOOK_DEV_SIGNING_IDENTITY='TrayNook Dev' TRAYNOOK_BUILD=33 Scripts/build-app.sh
 Scripts/smoke-test.sh
 Scripts/test-native-cancellation.sh --compile-only
 Scripts/test-native-movement.sh --compile-only
 "dist/TrayNook Dev.app/Contents/MacOS/TrayNook" --diagnose
 # Quit TrayNook first; isolated controls, synthetic inventory, no native input:
 TRAYNOOK_SCROLL_BENCHMARK=1 Scripts/test.sh --filter ScrollPerformanceTests
+TRAYNOOK_SETTINGS_OPEN_BENCHMARK=1 Scripts/test.sh -c release --filter SettingsOpeningTests
 ```

@@ -13,6 +13,29 @@ The updated [scroll benchmark](../Tests/TrayNookTests/ScrollPerformanceTests.swi
 
 The standard suite, delayed-result model tests, native seed/owner validation, cache/login tests, and existing recovery/placement/reorder checks pass. Manual native harnesses include the new reader and compile independently. Signed build 32 passed packaged smoke; live readback on two displays found nine hidden-source owners and zero visible hidden-source windows. Repeated incomplete Accessibility scans caused a temporary safe reveal, followed by automatic recovery. The later idle profile shows metadata on the worker queue without repeated login/icon lookup or sustained redraw work; an earlier busy rendering burst remains unclassified. Priority 5 below remains a separate conditional capture/pixel-analysis improvement; ScreenCaptureKit migration and broader device verification are outside this implementation.
 
+## First Settings opening: build 33 follow-up
+
+The controlled first opening of signed build 32 did **not** reproduce the earlier multi-second SwiftUI burst. In the ten-second sample, 7,651 of 8,490 main-thread samples were directly waiting in the run loop. Resource-bundle resolution beneath `L(_:)` occupied 14 sampled stacks; those are sample counts, not exact durations. Evidence: `/private/tmp/traynook-cold-open-1.sample.txt`.
+
+[SettingsOpeningTests](../Tests/TrayNookTests/SettingsOpeningTests.swift) now isolates content construction in a fresh process, retained content, entry-time icon refresh, warm-icon fresh content, and scan/message transitions. The fixture has 30 saved items using installed application icons; protected items remain folded as in the product. A two-millisecond heartbeat includes initial construction and deferred work. Its 500 ms guard detects long main-actor stalls; it does not establish smooth frames or total time to visible pixels. Frame restoration, production window-controller creation, and activation/Dock transitions remain covered only by the live trace and packaged smoke.
+
+The one-variable release comparison cached only the immutable localization resource `Bundle`, preserving per-call `NSLocalizedString` and the packaged-bundle/SwiftPM fallback:
+
+| Content operation | Original, three runs | Cached bundle, three runs |
+| --- | --- | --- |
+| First root | 149–207 ms; median 186 ms | 145–186 ms; median 148 ms |
+| Fresh root with warm icons | 113–129 ms; median 125 ms | 88–111 ms; median 91 ms |
+
+These are small-sample synchronous content measurements on this Mac; shared system caches and scheduling still vary. They support the bounded bundle-cache change, not a claim that the original rendering burst is fixed. The 2–3 ms retained `orderFront` measurement excludes the real Settings action's icon invalidation and tab reset, so it must not be presented as production reopening latency. Evidence logs: `/private/tmp/traynook-opening-{original,cached}-release-{1,2,3}.txt`.
+
+The final fixture reports 12 manageable and 18 protected saved items. Its release run measured 166 ms initial content work, 39 ms maximum heartbeat gap during entry refresh, and 31 ms during scan/message transitions. All 500 ms guards passed. The existing scrolling benchmark also passed: synchronous median/p95 2.53/3.91 ms, warmed maximum 36.99 ms, warmed heartbeat maximum 39.92 ms, and cold-inclusive heartbeat maximum 87.66 ms. Standard tests (161), preview checks (three), and signed build 33's packaged smoke passed. These separate runs are regression checks, not a controlled attribution of scrolling gains to localization caching.
+
+Run alone with TrayNook quit and an exclusive GUI session:
+
+```sh
+TRAYNOOK_SETTINGS_OPEN_BENCHMARK=1 Scripts/test.sh -c release --filter SettingsOpeningTests
+```
+
 ## Recommendation
 
 Yes: a serial background reader can produce immutable snapshots and publish small updates on `MainActor`. First remove avoidable work and narrow expensive reads. Moving the entire native controller into a background task would cross AppKit state and weaken its live-action checks.

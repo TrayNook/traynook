@@ -94,8 +94,9 @@ struct LayoutStore {
   }
 }
 
+private let localizationBundle = Bundle.main.url(forResource: "TrayNook_TrayNook", withExtension: "bundle")
+  .flatMap(Bundle.init(url:)) ?? Bundle.module
+
 func L(_ key: String) -> String {
-  let bundle = Bundle.main.url(forResource: "TrayNook_TrayNook", withExtension: "bundle")
-    .flatMap(Bundle.init(url:)) ?? Bundle.module
-  return NSLocalizedString(key, bundle: bundle, comment: "")
+  NSLocalizedString(key, bundle: localizationBundle, comment: "")
 }
