@@ -16,6 +16,13 @@ private struct HiddenWitness: Codable {
   var maximumSampleGapSeconds = 0.0
 }
 
+private struct VisibleStatusWindow {
+  let x: CGFloat
+  let width: CGFloat
+  let owner: Int32
+  let bundle: String
+}
+
 @MainActor
 private final class PlacementCheck: NSObject, NSApplicationDelegate {
   private let directory = URL(fileURLWithPath: CommandLine.arguments[1])
@@ -138,14 +145,45 @@ private final class PlacementCheck: NSObject, NSApplicationDelegate {
     return source
   }
 
-  private func visibleWindows() -> [UInt32: CGFloat] {
+  private func visibleWindows() -> [UInt32: VisibleStatusWindow] {
     let windows = CGWindowListCopyWindowInfo(.optionOnScreenOnly, kCGNullWindowID) as? [[String: Any]] ?? []
     return windows.reduce(into: [:]) { result, window in
       guard (window[kCGWindowLayer as String] as? Int) == Int(CGWindowLevelForKey(.statusWindow)),
         let id = window[kCGWindowNumber as String] as? UInt32,
         let bounds = window[kCGWindowBounds as String] as? [String: Any],
         let frame = CGRect(dictionaryRepresentation: bounds as CFDictionary) else { return }
-      result[id] = frame.minX
+      let owner = (window[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value ?? 0
+      result[id] = VisibleStatusWindow(x: frame.minX, width: frame.width, owner: owner,
+        bundle: NSRunningApplication(processIdentifier: owner)?.bundleIdentifier ?? "unknown")
+    }
+  }
+
+  private func place(_ label: String, original: ClassifiedSourceItem,
+    operation: (ClassifiedSourceItem) async throws -> ClassifiedSourceItem
+  ) async throws -> ClassifiedSourceItem {
+    let started = ContinuousClock.now
+    let deadline = started.advanced(by: .seconds(5))
+    var attempts = 0
+    var interruption: NativeMenuActionError?
+    defer { print("\(label): \(started.duration(to: .now)), retries=\(max(0, attempts - 1))") }
+    while true {
+      guard ContinuousClock.now < deadline else { throw interruption ?? .inputNotIdle }
+      let current = try source("Source", in: await snapshot())
+      guard NativeMenuBarController.preservesSourceIdentity(original: original, current: current) else {
+        throw PlacementFailure("The source identity changed while waiting to place it.")
+      }
+      guard ContinuousClock.now < deadline else { throw interruption ?? .inputNotIdle }
+      attempts += 1
+      do { return try await operation(current) }
+      catch let error as NativeMenuActionError {
+        switch error {
+        case .inputNotIdle, .inputInterrupted, .placementInterrupted:
+          interruption = error
+          guard ContinuousClock.now < deadline else { throw error }
+          try await Task.sleep(for: .milliseconds(300))
+        default: throw error
+        }
+      }
     }
   }
 
@@ -191,9 +229,9 @@ private final class PlacementCheck: NSObject, NSApplicationDelegate {
       for cycle in 1...2 {
         stage = "show \(cycle)"
         let before = try await snapshot()
-        let started = ContinuousClock.now
-        let shown = try await native.showWhileConcealed(source("Source", in: before))
-        print("Show \(cycle): \(started.duration(to: .now))")
+        let shown = try await place("Show \(cycle)", original: source("Source", in: before)) {
+          try await native.showWhileConcealed($0)
+        }
         let after = try await snapshot()
         let current = try source("Source", in: after)
         guard native.isConcealed, !native.hasPendingActivation,
@@ -215,9 +253,9 @@ private final class PlacementCheck: NSObject, NSApplicationDelegate {
           throw PlacementFailure("The hidden sentinel was revealed by showing the selected source.")
         }
         stage = "hide \(cycle)"
-        let hiding = ContinuousClock.now
-        let returned = try await native.hideWhileConcealed(current)
-        print("Hide \(cycle): \(hiding.duration(to: .now))")
+        let returned = try await place("Hide \(cycle)", original: current) {
+          try await native.hideWhileConcealed($0)
+        }
         guard native.isConcealed, !native.hasPendingActivation,
           native.isBehindBoundary(returned) == true, returned.observation.isOnscreen == false else {
           throw PlacementFailure("The selected source did not return behind the expanded separator.")
@@ -233,26 +271,48 @@ private final class PlacementCheck: NSObject, NSApplicationDelegate {
           throw PlacementFailure("Placement unexpectedly activated the \(role) source.")
         }
       }
-      print("Hidden sentinel: \(witness.samples) independent samples, no reveal or missing observation; max sample gap \(witness.maximumSampleGapSeconds) s")
+      printWitness()
       try FileManager.default.removeItem(at: signal("watch-hidden"))
       native.remove()
       NativeMenuBarController.removePreservingPosition(launcher)
       cleanup()
-      try await Task.sleep(for: .milliseconds(300))
-      let restored = visibleWindows()
-      for (id, x) in originalWindows where restored[id] != nil {
-        guard abs(restored[id]! - x) <= 2 else {
-          print("FAILED: a pre-existing status window did not return to its original position.")
-          return 1
+      let cleanupDeadline = ContinuousClock.now.advanced(by: .seconds(2))
+      var restored = visibleWindows()
+      while ContinuousClock.now < cleanupDeadline {
+        let settled = originalWindows.allSatisfy { id, window in
+          restored[id].map { abs($0.x - window.x) <= 2 } == true
         }
+        if settled { break }
+        try await Task.sleep(for: .milliseconds(20))
+        restored = visibleWindows()
+      }
+      let surviving = originalWindows.keys.filter { restored[$0] != nil }.count
+      print("Cleanup windows: original=\(originalWindows.count), surviving=\(surviving), missing=\(originalWindows.count - surviving)")
+      for (id, window) in originalWindows where restored[id] == nil {
+        print("Cleanup missing: id=\(id), owner=\(window.owner), bundle=\(window.bundle), beforeX=\(window.x), width=\(window.width)")
+      }
+      var positionsMatch = true
+      for (id, window) in originalWindows {
+        guard let after = restored[id] else { continue }
+        guard abs(after.x - window.x) <= 2 else {
+          print("Cleanup mismatch: id=\(id), beforeOwner=\(window.owner), beforeBundle=\(window.bundle), afterOwner=\(after.owner), afterBundle=\(after.bundle), beforeX=\(window.x), afterX=\(after.x), delta=\(after.x - window.x), beforeWidth=\(window.width), afterWidth=\(after.width)")
+          positionsMatch = false
+          continue
+        }
+      }
+      guard positionsMatch else {
+        print("FAILED: pre-existing status windows did not return to their original positions within two seconds.")
+        return 1
       }
       print("SELECTIVE_PLACEMENT_CHECK_PASSED")
       return 0
     } catch {
+      print("FAILED at \(stage): \(error.localizedDescription)")
+      printWitness()
+      try? FileManager.default.removeItem(at: signal("watch-hidden"))
       native.remove()
       NativeMenuBarController.removePreservingPosition(launcher)
       cleanup()
-      print("FAILED at \(stage): \(error.localizedDescription)")
       return 1
     }
   }
@@ -260,6 +320,11 @@ private final class PlacementCheck: NSObject, NSApplicationDelegate {
   private func readWitness() -> HiddenWitness? {
     guard let data = try? Data(contentsOf: signal("witness.json")) else { return nil }
     return try? JSONDecoder().decode(HiddenWitness.self, from: data)
+  }
+
+  private func printWitness() {
+    guard let witness = readWitness() else { print("Hidden sentinel: witness unavailable"); return }
+    print("Hidden sentinel: \(witness.samples) independent samples, revealed=\(witness.revealed), unavailable=\(witness.unavailable); max sample gap \(witness.maximumSampleGapSeconds) s")
   }
 }
 
