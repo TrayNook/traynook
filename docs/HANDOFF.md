@@ -1,4 +1,4 @@
-# TrayNook: build 31, tolerate visible-side system-window overflow
+# TrayNook: build 32, bounded background inventory inspection
 
 Updated 2026-11-02. Build 18's measurements are in
 [MVP_REPORT.md](MVP_REPORT.md); build 19's decisions are in
@@ -7,6 +7,30 @@ Updated 2026-11-02. Build 18's measurements are in
 
 ## Current state
 
+- **Responsiveness recommendations (2026-11-02):** implemented the four primary
+  recommendations in [RESPONSIVENESS_RESEARCH.md](RESPONSIVENESS_RESEARCH.md).
+  Login status refreshes at meaningful UI/lifecycle events; application URL/icons
+  are cached and invalidated on app/path/volume or explicit refresh changes.
+  Window metadata is queried by known IDs on a serial utility queue with at most
+  one active and one replaceable pending request. Main-thread AppKit seeds and
+  model revisions reject stale display/control/source ownership, edits, Reveal,
+  permission changes, shutdown, and superseded results. Native input actions keep
+  fresh synchronous validation, including build 31's visible-side overflow fix.
+  The standard suite reports 160 tests passing; focused delayed-result/native
+  inspection and existing recovery/placement/order/login checks pass. Native
+  boundary/cancellation/movement harnesses compile with the new reader module.
+  The revised 30-row benchmark runs actual background polling beside scrolling:
+  synchronous median/p95 2.42/6.31 ms, warmed maximum 40.83 ms, warmed heartbeat
+  gap 51.78 ms, poll latency 60.82 ms. Cold-inclusive heartbeat reached 101.82 ms;
+  this is a measured improvement, not a guarantee of every 8/17 ms frame.
+  Signed build 32 passed packaged smoke and reopened on the 1728/2560-point
+  displays. Native readback found both expanded controls, nine observed hidden
+  source owners, and zero visible hidden-source windows. Repeated incomplete AX
+  scans briefly triggered the existing safe reveal; complete scans restored the
+  layout automatically. A later idle profile shows metadata work on the worker
+  queue, no login-status/icon-loading stack paths, and no sustained SwiftUI redraw
+  loop. An earlier busy Settings-rendering burst remains unclassified; external
+  app scan failures and cold UI work can still interrupt the ideal flow.
 - **Concealment recurrence (2026-11-02):** display-change recovery at 11:29
   stopped because Control Center's unverified status window extended two points
   past the 1728-point display (`x=1595, width=135`). It was entirely right of
@@ -67,7 +91,7 @@ Updated 2026-11-02. Build 18's measurements are in
   WindowServer confirmed the real BroGlow source left of Tunnelblick, matching
   their saved order. The separate disposable `--reorder` check compiled but
   stopped before posting input because its harness lacks Accessibility permission.
-- Development app: `dist/TrayNook Dev.app`, **1.0.0 (31)**, signed with the
+- Development app: `dist/TrayNook Dev.app`, **1.0.0 (32)**, signed with the
   user's `TrayNook Dev` certificate (README "Development signing and
   permissions"). The unit suite, packaged smoke test, and opt-in GUI preview
   snapshots pass, including minimum Settings width and row capacities 1/30.
@@ -222,9 +246,10 @@ action. `.optionAll` is required to find offscreen windows.
 
 ```sh
 Scripts/test.sh
-TRAYNOOK_DEV_SIGNING_IDENTITY='TrayNook Dev' TRAYNOOK_BUILD=31 Scripts/build-app.sh
+TRAYNOOK_DEV_SIGNING_IDENTITY='TrayNook Dev' TRAYNOOK_BUILD=32 Scripts/build-app.sh
 Scripts/smoke-test.sh
 Scripts/test-native-cancellation.sh --compile-only
+Scripts/test-native-movement.sh --compile-only
 "dist/TrayNook Dev.app/Contents/MacOS/TrayNook" --diagnose
 # Quit TrayNook first; isolated controls, synthetic inventory, no native input:
 TRAYNOOK_SCROLL_BENCHMARK=1 Scripts/test.sh --filter ScrollPerformanceTests

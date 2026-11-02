@@ -1,6 +1,17 @@
 # TrayNook responsiveness: background reads and smaller updates
 
-Researched 2026-11-01 against build 29, the local macOS 26.2 SDK, and Apple/Swift primary sources. This is a research report; no production implementation is included.
+Researched 2026-11-01 against build 29, the local macOS 26.2 SDK, and Apple/Swift primary sources. The original findings are preserved below; the first four recommendations were implemented on 2026-11-02 for build 32.
+
+## Implementation status: build 32
+
+- [LoginItemStatus](../Sources/TrayNook/LoginItemStatus.swift) replaces per-inventory login-status queries with initialization, General-tab/Settings-activation refreshes, and actual-state refresh after successful or failed changes.
+- [WindowMetadataReader](../Sources/TrayNook/WindowMetadataReader.swift) queries known window IDs, decodes immutable `Sendable` metadata on a serial utility queue, and bounds work to one running and one replaceable pending request. Replaced, cancelled, and stopped requests complete without waiting for a blocked C call.
+- [NativeMenuBarController](../Sources/TrayNook/NativeMenuBarController.swift) captures AppKit controls/screens on main and rejects observations with obsolete control/display/concealment/operation state or changed source window IDs/PIDs. Native actions retain fresh synchronous checks. [AppModel](../Sources/TrayNook/AppModel.swift) additionally rejects old inventory revisions, edits, Reveal, changed permission, shutdown, and snapshots older than three seconds; it rechecks Accessibility before publication.
+- [ApplicationIconCache](../Sources/TrayNook/ApplicationIconCache.swift) shares application URL/images by bundle and system images by symbol. Application ownership, launch/termination, volume changes, Settings entry/activation, and explicit Refresh invalidate relevant entries. Missing applications retry after a two-second lookup backoff.
+
+The updated [scroll benchmark](../Tests/TrayNookTests/ScrollPerformanceTests.swift) scrolls concurrently with real asynchronous inspection. Worker wait time is measured separately from synchronous UI work; a two-millisecond main-actor heartbeat also captures stalls between scroll steps. The 30-row run accepted both background polls: median/p95 synchronous work **2.42/6.31 ms**, warmed maximum **40.83 ms**, warmed heartbeat gap **51.78 ms**, and end-to-end poll latency **60.82 ms**. Cold-inclusive heartbeat reached **101.82 ms**. Both 100 ms warmed guards pass; these figures do not establish an 8/17 ms worst-case frame guarantee.
+
+The standard suite, delayed-result model tests, native seed/owner validation, cache/login tests, and existing recovery/placement/reorder checks pass. Manual native harnesses include the new reader and compile independently. Signed build 32 passed packaged smoke; live readback on two displays found nine hidden-source owners and zero visible hidden-source windows. Repeated incomplete Accessibility scans caused a temporary safe reveal, followed by automatic recovery. The later idle profile shows metadata on the worker queue without repeated login/icon lookup or sustained redraw work; an earlier busy rendering burst remains unclassified. Priority 5 below remains a separate conditional capture/pixel-analysis improvement; ScreenCaptureKit migration and broader device verification are outside this implementation.
 
 ## Recommendation
 
