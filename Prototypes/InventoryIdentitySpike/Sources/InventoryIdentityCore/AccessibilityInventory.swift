@@ -74,9 +74,6 @@ func statusWindowObservations(in windows: [[String: Any]]?) -> [StatusWindowObse
       let bounds = window[kCGWindowBounds as String] as? [String: Any],
       let rectangle = CGRect(dictionaryRepresentation: bounds as CFDictionary)
     else { return nil }
-    let frame = ItemFrame(x: rectangle.minX, y: rectangle.minY,
-      width: rectangle.width, height: rectangle.height)
-    guard frame.isUsable else { return nil }
     // CGWindow.h explicitly defines an absent visibility key as offscreen.
     // A present value must be a real Boolean, not malformed metadata.
     var isOnscreen = false
@@ -85,6 +82,15 @@ func statusWindowObservations(in windows: [[String: Any]]?) -> [StatusWindowObse
         let visibility = value as? Bool else { return nil }
       isOnscreen = visibility
     }
+    guard rectangle.origin.x.isFinite, rectangle.origin.y.isFinite,
+      rectangle.size.width.isFinite, rectangle.size.height.isFinite,
+      rectangle.size.width >= 0, rectangle.size.height >= 0,
+      rectangle.maxX.isFinite, rectangle.maxY.isFinite else { return nil }
+    // DockDoor keeps an empty offscreen panel at status level; it is not a Source Item.
+    if !isOnscreen, rectangle.isEmpty { continue }
+    let frame = ItemFrame(x: rectangle.minX, y: rectangle.minY,
+      width: rectangle.width, height: rectangle.height)
+    guard frame.isUsable else { return nil }
     result.append(StatusWindowObservation(
       processIdentifier: owner, windowIdentifier: identifier,
       frame: frame, isOnscreen: isOnscreen))

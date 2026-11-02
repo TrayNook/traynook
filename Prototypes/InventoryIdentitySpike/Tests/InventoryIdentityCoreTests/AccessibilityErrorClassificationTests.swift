@@ -241,6 +241,45 @@ struct AccessibilityErrorClassificationTests {
     #expect(try #require(statusWindowObservations(in: [offscreen])?.first).isOnscreen == false)
   }
 
+  @Test("Empty offscreen DockDoor windows do not invalidate the menu-bar inventory")
+  func ignoresEmptyOffscreenWindows() throws {
+    let baseline = [windowMetadata(owner: 100, identifier: 1)]
+    let before = try #require(statusWindowObservations(in: baseline))
+    for size in [CGSize.zero, CGSize(width: 0, height: 24), CGSize(width: 24, height: 0)] {
+      for visibility in [false as Bool?, nil] {
+        var placeholder = windowMetadata(owner: 200, identifier: 2, onscreen: false)
+        placeholder[kCGWindowBounds as String] = CGRect(origin: CGPoint(x: 0, y: 1117), size: size).dictionaryRepresentation
+        placeholder[kCGWindowIsOnscreen as String] = visibility
+        let after = try #require(statusWindowObservations(in: baseline + [placeholder]))
+        #expect(after == before)
+        #expect(Set(after.map(\.windowIdentifier)) == [1])
+        #expect(unrepresentedStatusWindows(after, comparedTo: []).map(\.windowIdentifier) == [1])
+        placeholder[kCGWindowIsOnscreen as String] = true
+        #expect(statusWindowObservations(in: baseline + [placeholder]) == nil)
+      }
+    }
+  }
+
+  @Test("Empty offscreen windows still require valid ownership, visibility, and finite nonnegative bounds")
+  func rejectsMalformedOffscreenWindows() {
+    var placeholder = windowMetadata(owner: 200, identifier: 2, onscreen: false)
+    placeholder[kCGWindowBounds as String] = CGRect(x: 0, y: 1117, width: 0, height: 0).dictionaryRepresentation
+    let invalidValues: [(String, Any)] = [
+      (kCGWindowOwnerPID as String, 0),
+      (kCGWindowNumber as String, 0),
+      (kCGWindowIsOnscreen as String, "false"),
+      (kCGWindowBounds as String, ["X": 0]),
+      (kCGWindowBounds as String, CGRect(x: Double.infinity, y: 1117, width: 0, height: 0).dictionaryRepresentation),
+      (kCGWindowBounds as String, CGRect(x: 0, y: 1117, width: -1, height: 0).dictionaryRepresentation),
+      (kCGWindowBounds as String, CGRect(x: 0, y: 1117, width: 0, height: -1).dictionaryRepresentation),
+    ]
+    for (key, value) in invalidValues {
+      var malformed = placeholder
+      malformed[key] = value
+      #expect(statusWindowObservations(in: [malformed]) == nil)
+    }
+  }
+
   @Test("Visible-looking AX geometry inherits visibility only from overlapping windows of its owner")
   func distinguishesOffscreenAXGeometry() throws {
     let item = RawSourceItemObservation(
