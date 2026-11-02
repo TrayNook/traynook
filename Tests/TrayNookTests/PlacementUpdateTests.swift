@@ -21,14 +21,36 @@ struct PlacementUpdateTests {
     }
   }
 
-  @Test("Visible, mixed, missing, and empty batches retain full-layout handling")
+  @Test("Visible and mixed placement batches move only their selected sources")
+  func showsOnlyTheChangedItems() {
+    for keys: Set<String> in [["example.visible"], ["example.visible", "example.dropdown"]] {
+      #expect(AppModel.canApplyPlacementsIndividually(keys: keys, layout: layout,
+        concealed: true, hasPendingActivation: false))
+    }
+  }
+
+  @Test("Missing and empty batches cannot use individual placement")
   func rejectsIneligibleBatches() {
-    let batches: [Set<String>] = [["example.visible"], ["example.visible", "example.dropdown"],
-      ["example.missing"], ["example.dropdown", "example.missing"], []]
+    let batches: [Set<String>] = [["example.missing"], ["example.dropdown", "example.missing"], []]
     for keys in batches {
       #expect(!AppModel.canApplyPlacementsIndividually(keys: keys, layout: layout,
         concealed: true, hasPendingActivation: false))
     }
+  }
+
+  @Test("Picker promotion inserts before existing apps and protected system items")
+  func newMenuBarItemUsesLeftmostSlot() {
+    var requested = SavedLayout(items: [
+      SavedItem(id: "example.visible"),
+      SavedItem(id: "com.apple.controlcenter"),
+      SavedItem(id: "example.target", placement: .alwaysHidden),
+      SavedItem(id: "example.other", placement: .dropdown),
+    ])
+    let unrelated = requested.items.filter { $0.id != "example.target" }
+    requested.place("example.target", in: .menuBar)
+    #expect(requested.items.filter { $0.placement == .menuBar }.map(\.id)
+      == ["example.target", "example.visible", "com.apple.controlcenter"])
+    #expect(requested.items.filter { $0.id != "example.target" } == unrelated)
   }
 
   @Test("Revealed sections and active native handoffs retain full-layout handling")

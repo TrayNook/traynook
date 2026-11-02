@@ -40,6 +40,7 @@ final class AppModel: ObservableObject {
   @Published private(set) var pendingPlacementKeys: Set<String> = []
   private var placementOperationRunning = false
   private var placementStatuses: [String: String] = [:]
+  private var pendingVisiblePlacements: [String: NativeMenuBarController.VisiblePlacement] = [:]
   @Published var concealed = false
   @Published private(set) var nativeSetupMessage: String?
   @Published private var nativeItemStates: [String: NativeMenuBarController.ItemInspection] = [:]
@@ -653,10 +654,18 @@ final class AppModel: ObservableObject {
 
   func retryPlacement(_ key: String) {
     guard canEditPlacement(key), let item = liveItem(key), isManageable(item) else { return }
-    enqueuePlacement(key)
+    let menuBar = layout.items.filter { $0.placement == .menuBar }
+    var visiblePlacement: NativeMenuBarController.VisiblePlacement = .leftmost
+    if let index = menuBar.firstIndex(where: { $0.id == key }), index > 0 {
+      let next = menuBar.dropFirst(index + 1).compactMap { liveItem($0.id) }
+        .first { native.isBehindBoundary($0) == false }
+      visiblePlacement = next.map { .before($0) } ?? .beforeLauncher
+    }
+    enqueuePlacement(key, visiblePlacement: visiblePlacement)
   }
 
-  private func applyPlacementChange(_ key: String, from previous: Placement, item: ClassifiedSourceItem) {
+  private func applyPlacementChange(_ key: String, from previous: Placement, item: ClassifiedSourceItem,
+    visiblePlacement: NativeMenuBarController.VisiblePlacement = .leftmost) {
     // Both hidden lanes share one native section; only the proxy list changes.
     if previous != .menuBar, layout.items.first(where: { $0.id == key })?.placement != .menuBar,
       concealed, !native.hasPendingActivation, native.isBehindBoundary(item) == true {
@@ -665,14 +674,16 @@ final class AppModel: ObservableObject {
       }
       return
     }
-    enqueuePlacement(key)
+    enqueuePlacement(key, visiblePlacement: visiblePlacement)
   }
 
-  private func enqueuePlacement(_ key: String) {
+  private func enqueuePlacement(_ key: String,
+    visiblePlacement: NativeMenuBarController.VisiblePlacement = .leftmost) {
     if !placementOperationRunning {
       placementStatuses = Dictionary(uniqueKeysWithValues: layout.items.map { ($0.id, status(for: $0)) })
     }
     pendingPlacementKeys.insert(key)
+    pendingVisiblePlacements[key] = visiblePlacement
     guard !placementOperationRunning else { return }
     placementOperationRunning = true
     attemptedLaunchRestore = true
@@ -682,22 +693,30 @@ final class AppModel: ObservableObject {
         self.placementOperationRunning = false
         self.pendingPlacementKeys.removeAll()
         self.placementStatuses.removeAll()
+        self.pendingVisiblePlacements.removeAll()
       }
       while !self.pendingPlacementKeys.isEmpty {
         try Task.checkCancellation()
         let keys = self.pendingPlacementKeys
         let requested = self.layout
+        let visiblePlacements = self.pendingVisiblePlacements
         do {
           if Self.canApplyPlacementsIndividually(keys: keys, layout: requested,
             concealed: self.native.isConcealed, hasPendingActivation: self.native.hasPendingActivation) {
             for saved in requested.items where keys.contains(saved.id) {
               try Task.checkCancellation()
-              guard let item = self.liveItem(saved.id), self.isManageable(item),
-                self.native.isBehindBoundary(item) != true else { continue }
-              let moved = try await self.native.hideWhileConcealed(item)
+              guard let item = self.liveItem(saved.id), self.isManageable(item) else { continue }
+              let toHidden = saved.placement != .menuBar
+              if toHidden && self.native.isBehindBoundary(item) == true { continue }
+              let moved = try await (toHidden
+                ? self.native.hideWhileConcealed(item)
+                : self.native.showWhileConcealed(item, placement: visiblePlacements[saved.id] ?? .leftmost))
               if let index = self.items.firstIndex(where: { $0.identity.persistentKey == saved.id }) {
                 self.items[index] = moved
               }
+            }
+            if requested.items.contains(where: { keys.contains($0.id) && $0.placement == .menuBar }) {
+              try await self.synchronizeMenuBarOrder(self.menuBarItems(in: requested))
             }
             self.concealed = self.native.isConcealed
             self.message = nil
@@ -711,6 +730,7 @@ final class AppModel: ObservableObject {
           continue
         }
         self.pendingPlacementKeys.subtract(keys)
+        for key in keys { self.pendingVisiblePlacements.removeValue(forKey: key) }
       }
     }
   }
@@ -719,7 +739,7 @@ final class AppModel: ObservableObject {
     concealed: Bool, hasPendingActivation: Bool) -> Bool {
     guard concealed, !hasPendingActivation, !keys.isEmpty else { return false }
     return keys.allSatisfy { key in
-      layout.items.contains { $0.id == key && $0.placement != .menuBar }
+      layout.items.contains { $0.id == key }
     }
   }
 
@@ -971,7 +991,9 @@ final class AppModel: ObservableObject {
     guard replaceLayout(next, undoable: true,
       applyingMenuBarOrder: previousPlacement == placement && placement == .menuBar) else { return false }
     if previousPlacement != placement {
-      applyPlacementChange(key, from: previousPlacement, item: source)
+      let visiblePlacement: NativeMenuBarController.VisiblePlacement = anchor.flatMap { liveItem($0) }
+        .map { .before($0) } ?? .beforeLauncher
+      applyPlacementChange(key, from: previousPlacement, item: source, visiblePlacement: visiblePlacement)
     }
     return true
   }

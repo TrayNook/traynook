@@ -549,6 +549,57 @@ final class NativeMenuBarController: NSObject {
   private var activeEventRelay: TargetedMenuBarEventRelay?
   var hasPendingActivation: Bool { pendingActivation != nil }
 
+  enum VisiblePlacement {
+    case leftmost
+    case before(ClassifiedSourceItem)
+    case beforeLauncher
+  }
+
+  static func visiblePlacementAnchor(for placement: VisiblePlacement,
+    in items: [ClassifiedSourceItem], excluding runtimeID: String,
+    boundary: ItemFrame, safeFrame: ItemFrame, displayFrame: ItemFrame,
+    occlusionFrame: ItemFrame? = nil) throws -> ClassifiedSourceItem? {
+    switch placement {
+    case .leftmost:
+      return leftmostVisibleSource(in: items, excluding: runtimeID, boundary: boundary,
+        safeFrame: safeFrame, displayFrame: displayFrame, occlusionFrame: occlusionFrame)
+    case .beforeLauncher:
+      return nil
+    case .before(let original):
+      let matches = items.filter { $0.identity.persistentKey == original.identity.persistentKey }
+      guard original.identity.persistentKey != nil, matches.count == 1, let current = matches.first,
+        current.observation.runtimeID != runtimeID,
+        preservesSourceIdentity(original: original, current: current),
+        let window = original.observation.statusWindowIdentifier,
+        current.observation.statusWindowIdentifier == window,
+        isVerifiedVisible(current.observation, boundary: boundary, safeFrame: safeFrame,
+          displayFrame: displayFrame, occlusionFrame: occlusionFrame) else {
+        throw MenuBarFailure(L("The menu-bar items changed or are not safely visible. Refresh, then retry their order."))
+      }
+      return current
+    }
+  }
+
+  static func leftmostVisibleSource(in items: [ClassifiedSourceItem], excluding runtimeID: String,
+    boundary: ItemFrame, safeFrame: ItemFrame, displayFrame: ItemFrame,
+    occlusionFrame: ItemFrame? = nil) -> ClassifiedSourceItem? {
+    items.filter {
+      $0.observation.runtimeID != runtimeID
+        && isVerifiedVisible($0.observation, boundary: boundary, safeFrame: safeFrame,
+          displayFrame: displayFrame, occlusionFrame: occlusionFrame)
+    }.min {
+      let left = $0.observation.frame!.minX, right = $1.observation.frame!.minX
+      return left == right ? $0.observation.runtimeID < $1.observation.runtimeID : left < right
+    }
+  }
+
+  static func canShowWhileConcealed(sourceWidth: Double, anchor: ItemFrame,
+    boundary: ItemFrame, safeFrame: ItemFrame) -> Bool {
+    sourceWidth.isFinite && sourceWidth > 0 && anchor.isUsable && boundary.isUsable && safeFrame.isUsable
+      && anchor.minX - sourceWidth >= safeFrame.minX
+      && boundary.maxX - sourceWidth >= safeFrame.minX + 2
+  }
+
   /// Hide only this source without collapsing the expanded boundary.
   func hideWhileConcealed(_ original: ClassifiedSourceItem) async throws -> ClassifiedSourceItem {
     guard !isBusy, pendingActivation == nil else {
@@ -604,6 +655,112 @@ final class NativeMenuBarController: NSObject {
           (try? statusWindow(for: verified.item.observation)) == sourceWindow,
           isBehindBoundary(verified.item) == true {
           return verified.item
+        }
+        try await pause(0.02, token: token)
+      }
+      throw MenuBarFailure(L("macOS did not move this item to its saved section. Command-drag it to the right of the tray icon, then retry."))
+    } catch {
+      releasePointer()
+      throw error
+    }
+  }
+
+  /// Permanently show only this source, keeping the expanded separator and other hidden sources in place.
+  func showWhileConcealed(_ original: ClassifiedSourceItem,
+    placement: VisiblePlacement = .leftmost) async throws -> ClassifiedSourceItem {
+    guard !isBusy, pendingActivation == nil else {
+      throw MenuBarFailure(L("Finish the current item interaction before opening another item."))
+    }
+    guard isConcealed else { throw NativeMenuActionError.placementInterrupted }
+    isBusy = true
+    defer { isBusy = false }
+    let token = generation
+    do {
+      try await waitForIdleInput(token: token)
+      let prepared = try await stableTarget(original, token: token,
+        allowingClipped: true, allowingConcealed: true)
+      let before = prepared.environment
+      let source = prepared.item.observation
+      guard isConcealed, let key = prepared.item.identity.persistentKey else {
+        throw NativeMenuActionError.placementInterrupted
+      }
+      let alreadyVisible = Self.isVerifiedVisible(source, boundary: before.boundary, safeFrame: before.safeFrame,
+        displayFrame: before.displayFrame, occlusionFrame: before.occlusionFrame)
+      if alreadyVisible, case .leftmost = placement {
+        _ = try statusWindow(for: source, requiringOnscreen: true)
+        concealedSourcePIDs.removeValue(forKey: key)
+        return prepared.item
+      }
+      guard alreadyVisible || isBehindBoundary(prepared.item) == true else {
+        throw MenuBarFailure(L("The selected item is not safely visible. Other hidden items remain hidden."))
+      }
+      let sourceWindow = try statusWindow(for: source)
+      let ownPID = ProcessInfo.processInfo.processIdentifier
+      let boundaryWindow = StatusWindowBinding(id: before.boundaryWindowID, pid: ownPID,
+        bundle: Bundle.main.bundleIdentifier)
+      let anchorItem = try Self.visiblePlacementAnchor(for: placement, in: prepared.snapshot.items,
+        excluding: source.runtimeID, boundary: before.boundary, safeFrame: before.safeFrame,
+        displayFrame: before.displayFrame, occlusionFrame: before.occlusionFrame)
+      let anchor = try anchorItem.map { try statusWindow(for: $0.observation, requiringOnscreen: true) }
+        ?? StatusWindowBinding(id: before.launcherWindowID, pid: ownPID, bundle: Bundle.main.bundleIdentifier)
+      let anchorFrame = try statusWindowFrame(anchor)
+      let sourceFrame = try statusWindowFrame(sourceWindow)
+      guard alreadyVisible || Self.canShowWhileConcealed(sourceWidth: sourceFrame.width,
+        anchor: anchorFrame, boundary: before.boundary, safeFrame: before.safeFrame) else {
+        throw MenuBarFailure(L("There is not enough space to show this item safely beside TrayNook. Other hidden items remain hidden."))
+      }
+      let visible = prepared.snapshot.items.filter {
+        $0.observation.runtimeID != source.runtimeID
+          && Self.isVerifiedVisible($0.observation, boundary: before.boundary, safeFrame: before.safeFrame,
+            displayFrame: before.displayFrame, occlusionFrame: before.occlusionFrame)
+      }
+      let anchorX = anchorItem?.observation.frame?.minX ?? before.launcher.minX
+      let predecessor = try visible.filter { $0.observation.frame!.minX < anchorX }
+        .max { $0.observation.frame!.minX < $1.observation.frame!.minX }
+        .map { try statusWindow(for: $0.observation, requiringOnscreen: true) }
+      let fallback: StatusWindowBinding
+      if alreadyVisible {
+        fallback = try visible.filter { $0.observation.frame!.minX > source.frame!.minX }
+          .min { $0.observation.frame!.minX < $1.observation.frame!.minX }
+          .map { try statusWindow(for: $0.observation, requiringOnscreen: true) }
+          ?? StatusWindowBinding(id: before.launcherWindowID, pid: ownPID, bundle: Bundle.main.bundleIdentifier)
+      } else { fallback = boundaryWindow }
+      let windowBindings = statusWindows().map(\.binding).sorted { $0.id < $1.id }
+      guard try checkedEnvironment(allowingExpanded: true) == before else {
+        throw MenuBarFailure(L("The menu bar changed before the action. Try again."))
+      }
+      try await moveTargeted(source: sourceWindow, before: anchor,
+        fallbackBefore: fallback, token: token)
+      let deadline = ContinuousClock.now.advanced(by: .milliseconds(500))
+      while ContinuousClock.now < deadline {
+        try checkOperation(token)
+        let after = try checkedEnvironment(allowingExpanded: true)
+        guard isConcealed, after.display == before.display, after.displayFrame == before.displayFrame,
+          after.safeFrame == before.safeFrame, after.occlusionFrame == before.occlusionFrame,
+          after.boundaryWindowID == before.boundaryWindowID,
+          after.launcherWindowID == before.launcherWindowID, after.boundary.width == before.boundary.width,
+          statusWindows().map(\.binding).sorted(by: { $0.id < $1.id }) == windowBindings else {
+          throw MenuBarFailure(L("The item's native window changed. Other hidden items remain hidden."))
+        }
+        let windowFrame = try statusWindowFrame(sourceWindow)
+        guard let (_, frame) = try? accessibilityTarget(source, token: token, expectedFrame: windowFrame)
+        else {
+          try await pause(0.02, token: token)
+          continue
+        }
+        let moved = RawSourceItemObservation(runtimeID: source.runtimeID,
+          processIdentifier: source.processIdentifier, bundleIdentifier: source.bundleIdentifier,
+          applicationName: source.applicationName, role: source.role, subrole: source.subrole,
+          frame: frame, actions: source.actions, metadata: source.metadata,
+          observedOrder: source.observedOrder, isOnscreen: true, statusWindowIdentifier: sourceWindow.id)
+        if Self.isVerifiedVisible(moved, boundary: after.boundary, safeFrame: after.safeFrame,
+          displayFrame: after.displayFrame, occlusionFrame: after.occlusionFrame),
+          frame.maxX <= (try statusWindowFrame(anchor)).minX + 2,
+          try predecessor.map({ frame.minX >= (try statusWindowFrame($0)).maxX - 2 }) ?? true,
+          (try? statusWindow(for: moved, requiringOnscreen: true)) == sourceWindow {
+          concealedSourcePIDs.removeValue(forKey: key)
+          return ClassifiedSourceItem(observation: moved, identity: prepared.item.identity,
+            manageability: prepared.item.manageability)
         }
         try await pause(0.02, token: token)
       }

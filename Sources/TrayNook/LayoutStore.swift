@@ -35,7 +35,8 @@ struct SavedLayout: Codable, Equatable {
 
   mutating func place(_ id: String, in placement: Placement) {
     items.removeAll { $0.id == id }
-    items.append(SavedItem(id: id, placement: placement))
+    let index = placement == .menuBar ? items.firstIndex { $0.placement == .menuBar } : nil
+    items.insert(SavedItem(id: id, placement: placement), at: index ?? items.endIndex)
   }
 
   /// A preview draft changes only the dragged item; unrelated saved items,
