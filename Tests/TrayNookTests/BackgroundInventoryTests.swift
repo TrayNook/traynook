@@ -9,6 +9,47 @@ import Testing
   .enabled(if: ProcessInfo.processInfo.environment["TRAYNOOK_APPKIT_TESTS"] == "1"))
 @MainActor
 struct BackgroundInventoryTests {
+  @Test("Metadata timeouts reveal safely, preserve the layout, and allow a later healthy inventory",
+    arguments: [false, true], [false, true])
+  func metadataTimeoutRecovers(concealed: Bool, expired: Bool) async throws {
+    let fixture = try await InventoryFixture(metadataTimeout: .milliseconds(100))
+    defer { fixture.close() }
+    let model = fixture.model
+    let saved = model.layout
+    let originalItems = model.items
+    let blocked = fixture.begin(extra: "example.obsolete", capturedAt: expired ? .distantPast : Date())
+    try await waitUntil { fixture.load.calls == 1 }
+    model.concealed = concealed
+    #expect(try await finish(blocked) == false)
+    #expect(!model.concealed)
+    #expect(!model.scanComplete)
+    #expect(!model.canEdit)
+    #expect((model.reapplyNotBefore != nil) == concealed)
+    #expect(model.message != nil)
+    if !concealed { #expect(model.message == NativeMenuActionError.inventoryUnavailable.localizedDescription) }
+    #expect(model.layout == saved)
+    #expect(model.items == originalItems)
+
+    model.native.reveal(keepBoundaryVisible: true)
+    let queued = fixture.begin(extra: "example.also-obsolete")
+    #expect(try await finish(queued) == false)
+    #expect(fixture.load.calls == 1)
+    #expect(model.layout == saved)
+    #expect(model.items == originalItems)
+
+    fixture.load.release()
+    try await waitUntil { fixture.load.completed == 1 }
+    model.native.reveal(keepBoundaryVisible: true)
+    let healthy = fixture.begin(extra: "example.arrived")
+    try await waitUntil { fixture.load.calls == 2 }
+    fixture.load.release()
+    #expect(try await finish(healthy))
+    #expect(model.canEdit)
+    #expect(model.message == nil)
+    #expect(model.liveItem("example.arrived") != nil)
+    #expect(model.layout.items.first { $0.id == "example.baseline" }?.placement == .dropdown)
+  }
+
   @Test("A delayed read publishes neither new items nor layout until its result is accepted")
   func publishesOnlyAfterCompletion() async throws {
     let fixture = try await InventoryFixture()
@@ -130,7 +171,7 @@ private final class InventoryFixture {
   private let preferenceKeys: [String]
   private let previousPreferences: [String: Any]
 
-  init() async throws {
+  init(metadataTimeout: Duration = WindowMetadataReader.defaultReadTimeout) async throws {
     for id in ["io.github.mahenzon.TrayNook", "io.github.mahenzon.TrayNook.dev"] {
       try #require(NSRunningApplication.runningApplications(withBundleIdentifier: id).isEmpty,
         "Quit TrayNook before creating the isolated inventory test controls.")
@@ -146,7 +187,7 @@ private final class InventoryFixture {
     })
     launcher = NSStatusBar.system.statusItem(withLength: 24)
     let native = NativeMenuBarController(launcher: launcher,
-      metadataReader: WindowMetadataReader(load: load.read))
+      metadataReader: WindowMetadataReader(timeout: metadataTimeout, load: load.read))
     native.reveal(keepBoundaryVisible: true)
     let permission = Permission()
     self.permission = permission
@@ -158,9 +199,9 @@ private final class InventoryFixture {
     try await Task.sleep(for: .milliseconds(250))
   }
 
-  func begin(extra: String) -> PendingAcceptance {
+  func begin(extra: String, capturedAt: Date = Date()) -> PendingAcceptance {
     let outcome = AcceptanceOutcome()
-    let snapshot = Self.snapshot(extra: extra)
+    let snapshot = Self.snapshot(extra: extra, capturedAt: capturedAt)
     let task = Task { @MainActor [model] in
       outcome.started = true
       outcome.result = await model.acceptLatest(snapshot)
@@ -168,7 +209,7 @@ private final class InventoryFixture {
     return PendingAcceptance(outcome: outcome, task: task)
   }
 
-  static func snapshot(extra: String? = nil) -> InventorySnapshot {
+  static func snapshot(extra: String? = nil, capturedAt: Date = Date()) -> InventorySnapshot {
     let bundles = ["example.baseline"] + (extra.map { [$0] } ?? [])
     let items = IdentityAssessor().classify(bundles.enumerated().map { index, bundle in
       RawSourceItemObservation(runtimeID: "fixture:\(bundle)", processIdentifier: Int32(100 + index),
@@ -176,7 +217,7 @@ private final class InventoryFixture {
         frame: ItemFrame(x: 1200 + Double(index) * 28, y: 6, width: 24, height: 24),
         actions: ["AXPress"], metadata: LiveAccessibilityMetadata(), observedOrder: index)
     })
-    return InventorySnapshot(capturedAt: Date(), permission: .granted, completeness: .complete,
+    return InventorySnapshot(capturedAt: capturedAt, permission: .granted, completeness: .complete,
       items: items, warnings: [],
       metrics: ScanMetrics(durationMilliseconds: 0, inspectedApplicationCount: items.count, sourceItemCount: items.count))
   }

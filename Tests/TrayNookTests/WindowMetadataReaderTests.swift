@@ -51,6 +51,60 @@ struct WindowMetadataTests {
 @Suite("Bounded background window reader", .serialized)
 @MainActor
 struct WindowMetadataReaderTests {
+  @Test("A safety reveal cannot strand the next read behind a blocked metadata call")
+  func invalidatedBlockedReadDoesNotStrandNextRead() async throws {
+    let probe = BlockingWindowLoad()
+    let reader = WindowMetadataReader(timeout: .milliseconds(50), load: probe.load)
+    defer { reader.shutdown(); probe.release(3) }
+    let old = Task { await reader.read([1]) }
+    try await waitUntil { probe.calls == [[1]] }
+    reader.cancelAll()
+    #expect(await old.value == nil)
+    var finished = false
+    let current = Task {
+      let result = await reader.read([2])
+      finished = true
+      return result
+    }
+    try await waitUntil { finished }
+    #expect(await current.value == nil)
+    #expect(probe.calls == [[1]], "A logical timeout must not start another physical call.")
+  }
+
+  @Test("Active and queued reads expire without overlapping loads, then recover after the physical call returns")
+  func blockedReadsExpireAndRecover() async throws {
+    let probe = BlockingWindowLoad()
+    let reader = WindowMetadataReader(timeout: .milliseconds(100), load: probe.load)
+    defer { reader.shutdown(); probe.release(3) }
+    var firstFinished = false
+    let first = Task {
+      let result = await reader.read([1])
+      firstFinished = true
+      return result
+    }
+    try await waitUntil { probe.calls == [[1]] }
+    var pendingFinished = false
+    let pending = Task {
+      let result = await reader.read([2])
+      pendingFinished = true
+      return result
+    }
+    try await waitUntil { firstFinished && pendingFinished }
+    #expect(await first.value == nil)
+    #expect(await pending.value == nil)
+    #expect(probe.calls == [[1]])
+
+    probe.release()
+    try await waitUntil { probe.completedCalls == 1 }
+    #expect(await first.value == nil, "The late physical result must remain unpublished.")
+    let recovered = Task { await reader.read([3]) }
+    try await waitUntil { probe.calls.count == 2 }
+    #expect(probe.calls == [[1], [3]], "An expired pending read must never start later.")
+    probe.release()
+    #expect(await recovered.value?.map(\.id) == [3])
+    #expect(probe.maximumConcurrent == 1)
+  }
+
   @Test("Only the newest pending query runs and old results never publish")
   func coalescesPendingReads() async throws {
     let probe = BlockingWindowLoad()
@@ -159,6 +213,7 @@ private final class BlockingWindowLoad: @unchecked Sendable {
   private var onMain = false
 
   var calls: [[UInt32]] { lock.withLock { recordedCalls } }
+  var completedCalls: Int { lock.withLock { recordedCalls.count - concurrent } }
   var maximumConcurrent: Int { lock.withLock { maximum } }
   var ranOnMain: Bool { lock.withLock { onMain } }
 

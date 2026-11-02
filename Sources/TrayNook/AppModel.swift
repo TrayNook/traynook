@@ -361,14 +361,23 @@ final class AppModel: ObservableObject {
     guard let prepared = prepareInventory(snapshot) else { return true }
     let revision = observationRevision
     let generation = scanGeneration
-    guard let inspection = await native.inspectLatest(prepared.observed), !Task.isCancelled,
-      !busy, revision == observationRevision, generation == scanGeneration,
-      Date().timeIntervalSince(snapshot.capturedAt) <= 3 else { return false }
+    let inspection = await native.inspectLatest(prepared.observed)
+    guard !Task.isCancelled,
+      !busy, revision == observationRevision, generation == scanGeneration else { return false }
     guard currentAccessibilityPermission() else {
       accept(InventorySnapshot(capturedAt: Date(), permission: .denied, completeness: .incomplete,
         items: [], warnings: [], metrics: snapshot.metrics))
       return true
     }
+    let geometryUnavailable = L("Menu-bar geometry could not be verified. Items are revealed; the saved layout is applied again shortly.")
+    let inventoryUnavailable = NativeMenuActionError.inventoryUnavailable.localizedDescription
+    guard let inspection, Date().timeIntervalSince(snapshot.capturedAt) <= 3 else {
+      scanComplete = false
+      revealForInventoryRecovery()
+      message = reapplyNotBefore != nil ? geometryUnavailable : inventoryUnavailable
+      return false
+    }
+    if message == geometryUnavailable || message == inventoryUnavailable { message = nil }
     applyInventory(prepared, inspection: inspection)
     return true
   }

@@ -36,29 +36,44 @@ struct WindowMetadata: Equatable, Sendable {
 @MainActor
 final class WindowMetadataReader {
   typealias Load = @Sendable ([UInt32]) -> [WindowMetadata]
+  static let defaultReadTimeout: Duration = .seconds(1)
   private struct Request {
     let id: UUID
     let windowIDs: [UInt32]
+    let deadline: ContinuousClock.Instant
+    let deadlineTask: Task<Void, Never>
     var continuation: CheckedContinuation<[WindowMetadata]?, Never>?
   }
   private let queue = DispatchQueue(label: "TrayNook.WindowMetadata", qos: .utility)
   private let load: Load
+  private let timeout: Duration
   private var active: Request?
   private var pending: Request?
   private var stopped = false
   private var latestRequestID: UUID?
 
-  init(load: @escaping Load = WindowMetadata.read) { self.load = load }
+  init(timeout: Duration = defaultReadTimeout, load: @escaping Load = WindowMetadata.read) {
+    self.timeout = timeout
+    self.load = load
+  }
 
   func read(_ windowIDs: [UInt32]) async -> [WindowMetadata]? {
     let id = UUID()
     let result: [WindowMetadata]? = await withTaskCancellationHandler {
       await withCheckedContinuation { continuation in
         guard !stopped, !Task.isCancelled else { continuation.resume(returning: nil); return }
-        let request = Request(id: id, windowIDs: windowIDs, continuation: continuation)
+        let deadline = ContinuousClock.now.advanced(by: timeout)
+        let deadlineTask = Task { [weak self] in
+          do { try await ContinuousClock().sleep(until: deadline) }
+          catch { return }
+          self?.cancel(id)
+        }
+        let request = Request(id: id, windowIDs: windowIDs, deadline: deadline,
+          deadlineTask: deadlineTask, continuation: continuation)
         latestRequestID = id
         if active == nil { start(request) }
         else {
+          pending?.deadlineTask.cancel()
           pending?.continuation?.resume(returning: nil)
           pending = request
         }
@@ -71,8 +86,10 @@ final class WindowMetadataReader {
 
   func cancelAll() {
     latestRequestID = nil
+    active?.deadlineTask.cancel()
     active?.continuation?.resume(returning: nil)
     active?.continuation = nil
+    pending?.deadlineTask.cancel()
     pending?.continuation?.resume(returning: nil)
     pending = nil
   }
@@ -84,16 +101,23 @@ final class WindowMetadataReader {
 
   private func cancel(_ id: UUID) {
     if active?.id == id {
+      active?.deadlineTask.cancel()
       active?.continuation?.resume(returning: nil)
       active?.continuation = nil
     }
     if pending?.id == id {
+      pending?.deadlineTask.cancel()
       pending?.continuation?.resume(returning: nil)
       pending = nil
     }
   }
 
   private func start(_ request: Request) {
+    guard ContinuousClock.now < request.deadline else {
+      request.deadlineTask.cancel()
+      request.continuation?.resume(returning: nil)
+      return
+    }
     active = request
     let id = request.id
     let windowIDs = request.windowIDs
@@ -106,7 +130,9 @@ final class WindowMetadataReader {
 
   private func finish(_ id: UUID, result: [WindowMetadata]) {
     guard active?.id == id else { return }
-    active?.continuation?.resume(returning: !stopped && latestRequestID == id ? result : nil)
+    active?.deadlineTask.cancel()
+    let fresh = active.map { ContinuousClock.now < $0.deadline } == true
+    active?.continuation?.resume(returning: !stopped && latestRequestID == id && fresh ? result : nil)
     active = nil
     guard !stopped, let next = pending else { return }
     pending = nil
