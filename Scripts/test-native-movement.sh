@@ -7,6 +7,7 @@ set -euo pipefail
 # --pointer-motion checks AXPress while mouse-motion events remain active.
 # It posts moves at the current position, without displacing the pointer.
 # --reorder reverses/restores a disposable pair with a hidden sentinel witness.
+# --compile-only verifies the harness without launching it or posting input.
 repo_dir="$(cd "$(dirname "$0")/.." && pwd)"
 check_dir="$(mktemp -d "${TMPDIR:-/tmp}/traynook-movement-check.XXXXXX")"
 trap 'rm -rf "$check_dir"' EXIT
@@ -20,9 +21,12 @@ swiftc -swift-version 6 -parse-as-library -whole-module-optimization \
 swiftc -swift-version 6 -parse-as-library -I "$check_dir" \
   "$check_dir/InventoryIdentityCore.o" \
   "$repo_dir/Sources/TrayNook/NativeMenuBarController.swift" \
+  "$repo_dir/Sources/TrayNook/WindowMetadataReader.swift" \
   "$repo_dir/Sources/TrayNook/NativeMenuInteraction.swift" \
   "$repo_dir/Tests/Manual/NativeMovementCheck.swift" \
   -o "$check_dir/NativeMovementCheck"
+
+if [[ "${1:-}" == --compile-only ]]; then exit 0; fi
 
 for role in Harness Fixture; do
   app_dir="$check_dir/$role.app"

@@ -43,6 +43,7 @@ swiftc -swift-version 6 -parse-as-library -whole-module-optimization \
   -o "$check_dir/InventoryIdentityCore.o"
 swiftc -swift-version 6 -parse-as-library -I "$check_dir" \
   "$check_dir/InventoryIdentityCore.o" "$check_dir/NativeMenuBarController.swift" \
+  "$repo_dir/Sources/TrayNook/WindowMetadataReader.swift" \
   "$repo_dir/Tests/Manual/SelectiveCancellationCheck.swift" -o "$check_dir/Check"
 for role in Harness Fixture Sentinel; do
   app_dir="$check_dir/$role.app"

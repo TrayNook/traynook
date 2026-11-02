@@ -124,6 +124,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
   }
 
   func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+  func applicationDidBecomeActive(_ notification: Notification) {
+    guard !smokeTest, settingsWindow?.isVisible == true, let model else { return }
+    model.invalidateApplicationIcons()
+    if model.selectedTab == 2 { model.refreshLoginStatus() }
+  }
   func popoverDidClose(_ notification: Notification) { model.dropdownClosed() }
   func windowWillClose(_ notification: Notification) {
     guard (notification.object as? NSWindow) === settingsWindow else { return }
@@ -170,6 +175,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
   }
 
   @objc func openSettings() {
+    if !smokeTest { model.invalidateApplicationIcons() }
     model.selectedTab = 0
     dropdownRequest += 1
     popover.performClose(nil)

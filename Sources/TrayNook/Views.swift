@@ -42,7 +42,7 @@ struct SettingsView: View {
           .help(L("Reveal every item and cancel any action in progress"))
         Spacer()
         if model.busy || model.scanning { ProgressView().controlSize(.small) }
-        Button(L("Refresh")) { model.refresh() }.disabled(model.busy || model.scanning)
+        Button(L("Refresh")) { model.refresh(invalidateIcons: true) }.disabled(model.busy || model.scanning)
         Button(L("Quit TrayNook")) { NSApp.terminate(nil) }
       }.padding(14)
     }

@@ -10,8 +10,8 @@ import Testing
   .enabled(if: ProcessInfo.processInfo.environment["TRAYNOOK_SCROLL_BENCHMARK"] == "1"))
 @MainActor
 struct ScrollPerformanceTests {
-  // Measures synchronous main-thread work, not display FPS. No native input is posted.
-  @Test("Measure Settings scrolling with and without unchanged inventory polls")
+  // Measures synchronous work and main-loop scheduling gaps, not display FPS. No native input is posted.
+  @Test("Measure Settings scrolling concurrently with background inventory inspection")
   func settingsScroll() async throws {
     for id in ["io.github.mahenzon.TrayNook", "io.github.mahenzon.TrayNook.dev"] {
       try #require(NSRunningApplication.runningApplications(withBundleIdentifier: id).isEmpty,
@@ -50,7 +50,7 @@ struct ScrollPerformanceTests {
         observedOrder: index)
     }
     let inventory = IdentityAssessor().classify(observations)
-    let model = AppModel(native: native, store: nil)
+    let model = AppModel(native: native, store: nil, currentAccessibilityPermission: { true })
     model.permissionGranted = true
     model.scanComplete = true
     model.layout = SavedLayout(rowCapacity: 9, items: inventory.enumerated().compactMap { index, item in
@@ -76,18 +76,42 @@ struct ScrollPerformanceTests {
 
     for polling in [false, true] {
       var times: [Double] = []
-      var pollTimes: [Double] = []
+      let polls = PollMeasurements()
+      let heartbeat = HeartbeatMeasurements()
+      let heartbeatTask = Task { @MainActor in
+        while !Task.isCancelled {
+          do { try await Task.sleep(for: .milliseconds(2)) }
+          catch { break }
+          heartbeat.tick()
+        }
+      }
+      var pollTask: Task<Void, Never>?
+      defer {
+        heartbeatTask.cancel()
+        pollTask?.cancel()
+        model.scanning = false
+      }
       for step in 0..<360 {
+        if step == 20 { heartbeat.beginWarmed() }
         let start = ContinuousClock.now
-        if polling && step % 180 == 178 { model.scanning = true }
         if polling && step % 180 == 0 {
-          let pollStart = ContinuousClock.now
-          model.accept(InventorySnapshot(capturedAt: Date(), permission: .granted, completeness: .complete,
-            items: inventory, warnings: [],
-            metrics: ScanMetrics(durationMilliseconds: 0, inspectedApplicationCount: bundles.count,
-              sourceItemCount: inventory.count)))
-          model.scanning = false
-          pollTimes.append(milliseconds(since: pollStart))
+          #expect(!polls.running, "The benchmark must not accumulate overlapping inventory polls.")
+          if !polls.running {
+            polls.running = true
+            model.scanning = true
+            let snapshot = InventorySnapshot(capturedAt: Date(), permission: .granted, completeness: .complete,
+              items: inventory, warnings: [],
+              metrics: ScanMetrics(durationMilliseconds: 0, inspectedApplicationCount: bundles.count,
+                sourceItemCount: inventory.count))
+            pollTask = Task { @MainActor in
+              let pollStart = ContinuousClock.now
+              defer { polls.running = false; model.scanning = false }
+              let accepted = await model.acceptLatest(snapshot)
+              guard !Task.isCancelled else { return }
+              polls.latencies.append(milliseconds(pollStart.duration(to: .now)))
+              if accepted { polls.accepted += 1 }
+            }
+          }
         }
         let fraction = Double(step % 120) / 119
         let progress = (step / 120) % 2 == 0 ? fraction : 1 - fraction
@@ -96,21 +120,26 @@ struct ScrollPerformanceTests {
         host.layoutSubtreeIfNeeded()
         host.displayIfNeeded()
         CATransaction.flush()
-        times.append(milliseconds(since: start))
+        times.append(milliseconds(start.duration(to: .now)))
         try await Task.sleep(for: .milliseconds(16))
       }
+      // Worker latency is not UI blocking; await completion outside the frame stopwatch.
+      await pollTask?.value
+      heartbeatTask.cancel()
+      await heartbeatTask.value
       let sorted = times.sorted()
       let warmed = times.dropFirst(20)
-      print("SETTINGS_SCROLL polling=\(polling) rows=30 frames=360 median=\(sorted[180])ms p95=\(sorted[342])ms max=\(sorted.last!)ms warmedMax=\(warmed.max()!)ms pollMax=\(pollTimes.max() ?? 0)ms")
+      let gaps = heartbeat.gaps.sorted()
+      try #require(!gaps.isEmpty && !heartbeat.warmedGaps.isEmpty,
+        "The main-actor heartbeat must run during scrolling.")
+      print("SETTINGS_SCROLL polling=\(polling) rows=30 frames=360 median=\(sorted[180])ms p95=\(sorted[342])ms max=\(sorted.last!)ms warmedMax=\(warmed.max()!)ms heartbeatMedian=\(gaps[gaps.count / 2])ms heartbeatP95=\(gaps[Int(Double(gaps.count - 1) * 0.95)])ms heartbeatMax=\(gaps.last!)ms warmedHeartbeatMax=\(heartbeat.warmedGaps.max()!)ms acceptedPolls=\(polls.accepted) pollLatencyMax=\(polls.latencies.max() ?? 0)ms")
       #expect(times.allSatisfy { $0.isFinite })
       #expect(warmed.allSatisfy { $0 <= 100 },
-        "A warmed scrolling step, including poll acceptance and rendering, must not block the main thread for 100 ms.")
+        "A warmed synchronous scroll/layout/display step must not block the main thread for 100 ms.")
+      #expect(heartbeat.warmedGaps.allSatisfy { $0 <= 100 },
+        "Background completion and UI publication must not delay a warmed main-actor heartbeat for 100 ms.")
+      if polling { #expect(polls.accepted >= 2, "Both background inspection results must reach the model.") }
     }
-  }
-
-  private func milliseconds(since start: ContinuousClock.Instant) -> Double {
-    let duration = start.duration(to: .now).components
-    return Double(duration.seconds) * 1000 + Double(duration.attoseconds) / 1e15
   }
 
   private func scrollViews(in view: NSView) -> [NSScrollView] {
@@ -129,4 +158,37 @@ struct ScrollPerformanceTests {
     }).sorted()
     return installed.isEmpty ? ["example.fixture"] : Array(installed.prefix(10))
   }
+}
+
+@MainActor
+private final class PollMeasurements {
+  var running = false
+  var accepted = 0
+  var latencies: [Double] = []
+}
+
+@MainActor
+private final class HeartbeatMeasurements {
+  var gaps: [Double] = []
+  var warmedGaps: [Double] = []
+  private var previous = ContinuousClock.now
+  private var warmed = false
+
+  func beginWarmed() {
+    previous = .now
+    warmed = true
+  }
+
+  func tick() {
+    let now = ContinuousClock.now
+    let gap = milliseconds(previous.duration(to: now))
+    gaps.append(gap)
+    if warmed { warmedGaps.append(gap) }
+    previous = now
+  }
+}
+
+private func milliseconds(_ duration: Duration) -> Double {
+  let parts = duration.components
+  return Double(parts.seconds) * 1000 + Double(parts.attoseconds) / 1e15
 }

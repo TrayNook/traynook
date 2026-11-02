@@ -19,6 +19,7 @@ app_dir="$check_dir/BoundaryCheck.app"
 mkdir -p "$app_dir/Contents/MacOS"
 swiftc -swift-version 6 -parse-as-library -I "$check_dir" \
   "$check_dir/InventoryIdentityCore.o" "$repo_dir/Sources/TrayNook/NativeMenuBarController.swift" \
+  "$repo_dir/Sources/TrayNook/WindowMetadataReader.swift" \
   "$repo_dir/Tests/Manual/BoundaryVisibilityCheck.swift" -o "$app_dir/Contents/MacOS/Check"
 check_id="$(uuidgen)"
 cat > "$app_dir/Contents/Info.plist" <<EOF

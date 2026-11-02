@@ -9,9 +9,19 @@ let modelLog = Logger(subsystem: Bundle.main.bundleIdentifier ?? "io.github.mahe
 
 @MainActor
 final class AppModel: ObservableObject {
-  @Published var layout = SavedLayout()
+  @Published var layout = SavedLayout() {
+    didSet { if layout != oldValue { observationRevision &+= 1 } }
+  }
   @Published var items: [ClassifiedSourceItem] = [] {
     didSet {
+      if items != oldValue { observationRevision &+= 1 }
+      let oldOwners = Dictionary(grouping: oldValue, by: { $0.observation.bundleIdentifier ?? "" })
+        .mapValues { Set($0.map(\.observation.processIdentifier)) }
+      let owners = Dictionary(grouping: items, by: { $0.observation.bundleIdentifier ?? "" })
+        .mapValues { Set($0.map(\.observation.processIdentifier)) }
+      for bundle in Set(oldOwners.keys).union(owners.keys) where oldOwners[bundle] != owners[bundle] {
+        applicationIcons.invalidate(bundle: bundle)
+      }
       liveItemsByKey = Dictionary(grouping: items, by: \.identity.persistentKey)
         .reduce(into: [:]) { lookup, entry in
           if let key = entry.key, entry.value.count == 1 { lookup[key] = entry.value[0] }
@@ -19,10 +29,14 @@ final class AppModel: ObservableObject {
     }
   }
   private var liveItemsByKey: [String: ClassifiedSourceItem] = [:]
-  @Published var permissionGranted = false
+  @Published var permissionGranted = false {
+    didSet { if permissionGranted != oldValue { observationRevision &+= 1 } }
+  }
   @Published var scanComplete = false
   @Published var scanning = false
-  @Published var busy = false
+  @Published var busy = false {
+    didSet { if busy != oldValue { observationRevision &+= 1 } }
+  }
   @Published private(set) var pendingPlacementKeys: Set<String> = []
   private var placementOperationRunning = false
   private var placementStatuses: [String: String] = [:]
@@ -30,11 +44,15 @@ final class AppModel: ObservableObject {
   @Published private(set) var nativeSetupMessage: String?
   @Published private var nativeItemStates: [String: NativeMenuBarController.ItemInspection] = [:]
   @Published var message: String?
-  @Published var recoveryRequired = false
+  @Published var recoveryRequired = false {
+    didSet { if recoveryRequired != oldValue { observationRevision &+= 1 } }
+  }
   private var incompleteScans = 0
   private var unsafeScans = 0
-  @Published var selectedTab = 0
-  @Published var loginEnabled = SMAppService.mainApp.status == .enabled
+  @Published var selectedTab = 0 {
+    didSet { if selectedTab == 2 && oldValue != 2 { refreshLoginStatus() } }
+  }
+  @Published var loginEnabled: Bool
   @Published var screenRecordingGranted = ProxyImageCapture.isAuthorized
   /// Keyed by persistent identity. Session-only cache of each dropdown item's
   /// last onscreen capture; cleared when Screen Recording is unavailable.
@@ -44,12 +62,17 @@ final class AppModel: ObservableObject {
   var closeDropdown: (() -> Void)?
   var showSettings: (() -> Void)?
   private let store: LayoutStore?
+  private let loginItemStatus: LoginItemStatus
+  private let applicationIcons = ApplicationIconCache()
+  private var applicationObservers: [NSObjectProtocol] = []
   private let applyMenuBarOrder: (@MainActor ([ClassifiedSourceItem]) async throws -> Void)?
   private var scanTask: Task<Void, Never>?
   private var pollTask: Task<Void, Never>?
   private var operationTask: Task<Void, Never>?
   private(set) var pendingMenuBarOrder: [ClassifiedSourceItem]?
   private var scanGeneration = 0
+  private var observationRevision = 0
+  private let currentAccessibilityPermission: @MainActor () -> Bool
   private var attemptedLaunchRestore = false
   private var launchRestoreRunning = false
   /// After sleep or a display change the section is revealed, then the saved
@@ -75,19 +98,28 @@ final class AppModel: ObservableObject {
   private var previousItems: [ClassifiedSourceItem] = []
 
   init(native: NativeMenuBarController, store: LayoutStore?,
-    applyMenuBarOrder: (@MainActor ([ClassifiedSourceItem]) async throws -> Void)? = nil) {
+    applyMenuBarOrder: (@MainActor ([ClassifiedSourceItem]) async throws -> Void)? = nil,
+    loginItemStatus: LoginItemStatus? = nil,
+    currentAccessibilityPermission: @escaping @MainActor () -> Bool = { AXIsProcessTrusted() }) {
     self.native = native
     self.store = store
     self.applyMenuBarOrder = applyMenuBarOrder
+    self.currentAccessibilityPermission = currentAccessibilityPermission
+    let loginItemStatus = loginItemStatus ?? LoginItemStatus()
+    self.loginItemStatus = loginItemStatus
+    loginEnabled = loginItemStatus.isEnabled
     do { layout = try store?.load() ?? SavedLayout() }
     catch { recoveryRequired = true; message = L("Saved layout cannot be read safely. Reset Layout to start again; the original file is preserved until then.") }
     native.onReveal = { [weak self] in
-      self?.cancelPanelWatch()
-      self?.concealed = false
-      if self?.nativeSetupMessage != nil { self?.nativeSetupMessage = nil }
-      if self?.nativeItemStates.isEmpty == false { self?.nativeItemStates = [:] }
+      guard let self else { return }
+      self.observationRevision &+= 1
+      self.cancelPanelWatch()
+      self.concealed = false
+      if self.nativeSetupMessage != nil { self.nativeSetupMessage = nil }
+      if !self.nativeItemStates.isEmpty { self.nativeItemStates = [:] }
     }
     native.onExternalReveal = { [weak self] in
+      self?.observationRevision &+= 1
       self?.cancelPanelWatch()
       self?.pendingMenuBarOrder = nil
       self?.attemptedLaunchRestore = true
@@ -137,7 +169,7 @@ final class AppModel: ObservableObject {
   func name(for key: String) -> String {
     let bundle = Self.bundle(ofKey: key)
     let appName = liveItem(key)?.observation.applicationName
-      ?? NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundle)?
+      ?? applicationIcons.applicationURL(for: bundle)?
         .deletingPathExtension().lastPathComponent ?? bundle
     guard key != bundle else { return appName }
     let metadata = liveItem(key)?.observation.metadata
@@ -149,15 +181,12 @@ final class AppModel: ObservableObject {
 
   func icon(for key: String) -> NSImage {
     let bundle = Self.bundle(ofKey: key)
-    // System menu extras have no app icon worth showing; use a symbol.
-    if let symbol = Self.systemSymbol(forKey: key),
-      let image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil) {
-      return image
-    }
-    if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundle) {
-      return NSWorkspace.shared.icon(forFile: url.path)
-    }
-    return NSImage(systemSymbolName: "app.dashed", accessibilityDescription: nil)!
+    return applicationIcons.icon(bundle: bundle, systemSymbol: Self.systemSymbol(forKey: key))
+  }
+
+  func invalidateApplicationIcons() {
+    applicationIcons.invalidateAll()
+    objectWillChange.send()
   }
 
   static func systemSymbol(forKey key: String) -> String? {
@@ -224,7 +253,7 @@ final class AppModel: ObservableObject {
       if items.contains(where: { $0.observation.bundleIdentifier == bundle && $0.identity.persistentKey == nil }) {
         return L("Multiple items — kept visible")
       }
-      return NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundle) == nil
+      return applicationIcons.applicationURL(for: bundle) == nil
         ? L("App not found") : L("Not running")
     }
     if !isManageable(item) { return L("Protected — kept visible") }
@@ -247,6 +276,7 @@ final class AppModel: ObservableObject {
   }
 
   func start() {
+    observeApplicationChanges()
     refresh()
     pollTask = Task { [weak self] in
       while !Task.isCancelled {
@@ -258,12 +288,16 @@ final class AppModel: ObservableObject {
   }
 
   func stop() {
+    observationRevision &+= 1
     pendingMenuBarOrder = nil
     pollTask?.cancel(); scanTask?.cancel(); operationTask?.cancel(); cancelPanelWatch()
+    for observer in applicationObservers { NSWorkspace.shared.notificationCenter.removeObserver(observer) }
+    applicationObservers.removeAll()
     native.remove()
   }
 
-  func refresh() {
+  func refresh(invalidateIcons: Bool = false) {
+    if invalidateIcons { invalidateApplicationIcons() }
     guard !scanning, !busy else { return }
     scanning = true
     scanGeneration += 1
@@ -282,8 +316,13 @@ final class AppModel: ObservableObject {
         AccessibilityInventoryScanner().scan()
       }.value
       guard !Task.isCancelled, let self else { return }
-      self.accept(snapshot)
+      defer {
+        if self.scanGeneration == generation { self.scanning = false; self.scanTask = nil }
+      }
+      let accepted = await self.acceptLatest(snapshot)
+      guard !Task.isCancelled, self.scanGeneration == generation else { return }
       self.scanning = false
+      guard accepted else { return }
       if self.takeLayoutRecovery() {
         modelLog.notice("re-applying the saved layout after a temporary reveal")
         self.applySavedLayout(recovering: true)
@@ -300,14 +339,47 @@ final class AppModel: ObservableObject {
     }
   }
 
+  private struct PreparedInventory {
+    let observed: [ClassifiedSourceItem]
+    let watchingLayout: Bool
+    let changes: [KeyedChange]
+    let known: Set<String>
+    let hidden: Set<String>
+  }
+
+  /// Explicit native operations retain their synchronous fresh inspection.
   func accept(_ snapshot: InventorySnapshot) {
+    observationRevision &+= 1
+    guard let prepared = prepareInventory(snapshot) else { return }
+    applyInventory(prepared, inspection: native.inspect(prepared.observed))
+  }
+
+  /// Polling suspends for metadata without blocking scrolling or native actions.
+  @discardableResult func acceptLatest(_ snapshot: InventorySnapshot) async -> Bool {
+    observationRevision &+= 1
+    guard !busy, !Task.isCancelled else { return false }
+    guard let prepared = prepareInventory(snapshot) else { return true }
+    let revision = observationRevision
+    let generation = scanGeneration
+    guard let inspection = await native.inspectLatest(prepared.observed), !Task.isCancelled,
+      !busy, revision == observationRevision, generation == scanGeneration,
+      Date().timeIntervalSince(snapshot.capturedAt) <= 3 else { return false }
+    guard currentAccessibilityPermission() else {
+      accept(InventorySnapshot(capturedAt: Date(), permission: .denied, completeness: .incomplete,
+        items: [], warnings: [], metrics: snapshot.metrics))
+      return true
+    }
+    applyInventory(prepared, inspection: inspection)
+    return true
+  }
+
+  private func prepareInventory(_ snapshot: InventorySnapshot) -> PreparedInventory? {
     native.noteInventory(snapshot)
     let firstSnapshot = !hasAcceptedSnapshot
     hasAcceptedSnapshot = true
-    loginEnabled = SMAppService.mainApp.status == .enabled
     screenRecordingGranted = ProxyImageCapture.isAuthorized
     concealed = native.isConcealed
-    guard acceptScanStatus(snapshot, firstSnapshot: firstSnapshot) else { return }
+    guard acceptScanStatus(snapshot, firstSnapshot: firstSnapshot) else { return nil }
     let observed = snapshot.items.filter { $0.observation.bundleIdentifier != ownBundle }
     let watchingLayout = concealed || reapplyNotBefore != nil || recoveringLayout
     let changes = watchingLayout ? Self.keyedChanges(from: previousItems, to: observed) : []
@@ -319,12 +391,20 @@ final class AppModel: ObservableObject {
         native.adoptProcess(key: key, pid: item.observation.processIdentifier)
       }
     }
-    let inspection = native.inspect(observed)
+    return PreparedInventory(observed: observed, watchingLayout: watchingLayout,
+      changes: changes, known: known, hidden: hidden)
+  }
+
+  private func applyInventory(_ prepared: PreparedInventory, inspection: NativeMenuBarController.Inspection) {
+    let observed = prepared.observed
+    let changes = prepared.changes
+    let known = prepared.known
+    let hidden = prepared.hidden
     if nativeSetupMessage != inspection.setupMessage { nativeSetupMessage = inspection.setupMessage }
     if nativeItemStates != inspection.items { nativeItemStates = inspection.items }
     // Polling diff: hidden sources rebind, other additions reconcile, and
     // ambiguous identities stop for review, including during recovery.
-    if watchingLayout {
+    if prepared.watchingLayout {
       let verifiedVisible = Set(observed.compactMap { item in
         inspection.items[item.observation.runtimeID]?.isVerifiedVisible == true ? item.identity.persistentKey : nil
       })
@@ -959,13 +1039,43 @@ final class AppModel: ObservableObject {
 
   func setLoginEnabled(_ enabled: Bool) {
     do {
-      if enabled { try SMAppService.mainApp.register() }
-      else { try SMAppService.mainApp.unregister() }
-      loginEnabled = SMAppService.mainApp.status == .enabled
-      if SMAppService.mainApp.status == .requiresApproval {
+      let status = try loginItemStatus.setEnabled(enabled)
+      loginEnabled = loginItemStatus.isEnabled
+      if status == .requiresApproval {
         message = L("Approve TrayNook in System Settings → General → Login Items.")
       }
-    } catch { message = L("Could not change Launch at Login. Check System Settings → General → Login Items.") }
+    } catch {
+      loginEnabled = loginItemStatus.isEnabled
+      message = L("Could not change Launch at Login. Check System Settings → General → Login Items.")
+    }
+  }
+
+  func refreshLoginStatus() {
+    _ = loginItemStatus.refresh()
+    if loginEnabled != loginItemStatus.isEnabled { loginEnabled = loginItemStatus.isEnabled }
+  }
+
+  private func observeApplicationChanges() {
+    guard applicationObservers.isEmpty else { return }
+    let center = NSWorkspace.shared.notificationCenter
+    for name in [NSWorkspace.didLaunchApplicationNotification, NSWorkspace.didTerminateApplicationNotification] {
+      applicationObservers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] notification in
+        let bundle = (notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?.bundleIdentifier
+        MainActor.assumeIsolated {
+          guard let self else { return }
+          self.observationRevision &+= 1
+          if let bundle { self.applicationIcons.invalidate(bundle: bundle) }
+          else { self.applicationIcons.invalidateAll() }
+          self.objectWillChange.send()
+        }
+      })
+    }
+    for name in [NSWorkspace.didMountNotification, NSWorkspace.didUnmountNotification,
+      NSWorkspace.didRenameVolumeNotification] {
+      applicationObservers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+        MainActor.assumeIsolated { self?.invalidateApplicationIcons() }
+      })
+    }
   }
 
   func copyDiagnostics() {
