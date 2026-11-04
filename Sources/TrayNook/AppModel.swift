@@ -75,6 +75,7 @@ final class AppModel: ObservableObject {
   private var scanGeneration = 0
   private var observationRevision = 0
   private let currentAccessibilityPermission: @MainActor () -> Bool
+  private let inventoryScanner: any InventoryScanning
   private var attemptedLaunchRestore = false
   private var launchRestoreRunning = false
   /// After sleep or a display change the section is revealed, then the saved
@@ -102,11 +103,13 @@ final class AppModel: ObservableObject {
   init(native: NativeMenuBarController, store: LayoutStore?,
     applyMenuBarOrder: (@MainActor ([ClassifiedSourceItem]) async throws -> Void)? = nil,
     loginItemStatus: LoginItemStatus? = nil,
-    currentAccessibilityPermission: @escaping @MainActor () -> Bool = { AXIsProcessTrusted() }) {
+    currentAccessibilityPermission: @escaping @MainActor () -> Bool = { AXIsProcessTrusted() },
+    inventoryScanner: any InventoryScanning = AccessibilityInventoryScanner()) {
     self.native = native
     self.store = store
     self.applyMenuBarOrder = applyMenuBarOrder
     self.currentAccessibilityPermission = currentAccessibilityPermission
+    self.inventoryScanner = inventoryScanner
     let loginItemStatus = loginItemStatus ?? LoginItemStatus()
     self.loginItemStatus = loginItemStatus
     loginEnabled = loginItemStatus.isEnabled
@@ -285,7 +288,7 @@ final class AppModel: ObservableObject {
       while !Task.isCancelled {
         try? await Task.sleep(for: .seconds(3))
         guard !Task.isCancelled, let self else { return }
-        if !self.busy { self.refresh() }
+        if !self.busy { self.refresh(showProgress: false) }
       }
     }
   }
@@ -293,38 +296,42 @@ final class AppModel: ObservableObject {
   func stop() {
     observationRevision &+= 1
     pendingMenuBarOrder = nil
-    pollTask?.cancel(); scanTask?.cancel(); operationTask?.cancel(); cancelPanelWatch()
+    pollTask?.cancel(); cancelScan(); operationTask?.cancel(); cancelPanelWatch()
     for observer in applicationObservers { NSWorkspace.shared.notificationCenter.removeObserver(observer) }
     applicationObservers.removeAll()
     native.remove()
   }
 
-  func refresh(invalidateIcons: Bool = false) {
+  func refresh(invalidateIcons: Bool = false, showProgress: Bool = true) {
     if invalidateIcons { invalidateApplicationIcons() }
-    guard !scanning, !busy else { return }
-    scanning = true
+    guard scanTask == nil, !scanning, !busy else { return }
+    if showProgress { scanning = true }
     scanGeneration += 1
     let generation = scanGeneration
+    let scanner = inventoryScanner
     scanTask = Task { [weak self] in
+      defer {
+        if let self, self.scanGeneration == generation {
+          if self.scanning { self.scanning = false }
+          self.scanTask = nil
+        }
+      }
       let deadline = Task { @MainActor [weak self] in
         try? await Task.sleep(for: .seconds(3))
         guard !Task.isCancelled, let self, self.scanGeneration == generation,
-          self.scanning, self.concealed, !self.busy else { return }
+          self.scanTask != nil, self.concealed, !self.busy else { return }
         self.revealForInventoryRecovery()
         self.message = L("Discovery is taking too long. Items are revealed until a fresh scan completes.")
         modelLog.error("revealed: discovery exceeded 3 s")
       }
       defer { deadline.cancel() }
       let snapshot = await Task.detached(priority: .utility) {
-        AccessibilityInventoryScanner().scan()
+        scanner.scan(promptForPermission: false)
       }.value
       guard !Task.isCancelled, let self else { return }
-      defer {
-        if self.scanGeneration == generation { self.scanning = false; self.scanTask = nil }
-      }
       let accepted = await self.acceptLatest(snapshot)
       guard !Task.isCancelled, self.scanGeneration == generation else { return }
-      self.scanning = false
+      if self.scanning { self.scanning = false }
       guard accepted else { return }
       if self.takeLayoutRecovery() {
         modelLog.notice("re-applying the saved layout after a temporary reveal")
@@ -340,6 +347,13 @@ final class AppModel: ObservableObject {
         }
       }
     }
+  }
+
+  private func cancelScan() {
+    scanGeneration += 1
+    scanTask?.cancel()
+    scanTask = nil
+    if scanning { scanning = false }
   }
 
   private struct PreparedInventory {
@@ -390,8 +404,9 @@ final class AppModel: ObservableObject {
     native.noteInventory(snapshot)
     let firstSnapshot = !hasAcceptedSnapshot
     hasAcceptedSnapshot = true
-    screenRecordingGranted = ProxyImageCapture.isAuthorized
-    concealed = native.isConcealed
+    let recordingGranted = ProxyImageCapture.isAuthorized
+    if screenRecordingGranted != recordingGranted { screenRecordingGranted = recordingGranted }
+    if concealed != native.isConcealed { concealed = native.isConcealed }
     guard acceptScanStatus(snapshot, firstSnapshot: firstSnapshot) else { return nil }
     let observed = snapshot.items.filter { $0.observation.bundleIdentifier != ownBundle }
     let watchingLayout = concealed || reapplyNotBefore != nil || recoveringLayout
@@ -451,7 +466,7 @@ final class AppModel: ObservableObject {
       // System items are never manageable; a transient one (Control Centre's
       // camera indicator) is forgotten as soon as it is gone.
       let stale = layout.items.filter { Self.bundle(ofKey: $0.id).hasPrefix("com.apple.") && liveItem($0.id) == nil }
-      layout.items.removeAll { saved in stale.contains { $0.id == saved.id } }
+      if !stale.isEmpty { layout.items.removeAll { saved in stale.contains { $0.id == saved.id } } }
       if !added.isEmpty || !stale.isEmpty { persist() }
     }
     lastCompleteStatusWindows = prepared.statusWindows
@@ -491,8 +506,10 @@ final class AppModel: ObservableObject {
   func acceptScanStatus(_ snapshot: InventorySnapshot, firstSnapshot: Bool = false) -> Bool {
     let wasGranted = permissionGranted
     let wasComplete = scanComplete
-    permissionGranted = snapshot.permission == .granted
-    scanComplete = snapshot.completeness == .complete
+    let granted = snapshot.permission == .granted
+    let complete = snapshot.completeness == .complete
+    if permissionGranted != granted { permissionGranted = granted }
+    if scanComplete != complete { scanComplete = complete }
     // An AX read failure cannot undo a verified layout when WindowServer still
     // reports the same owners, windows, geometry, and visibility.
     if permissionGranted, !scanComplete, concealed, !busy, unsafeScans == 0,
@@ -911,7 +928,7 @@ final class AppModel: ObservableObject {
     _ operation: @escaping @MainActor () async throws -> Void) {
     guard !busy else { return }
     busy = true
-    scanTask?.cancel(); scanning = false
+    cancelScan()
     closeDropdown?()
     let wasActive = NSApp.isActive
     if deactivateApp { NSApp.deactivate() }
@@ -1153,8 +1170,7 @@ final class AppModel: ObservableObject {
     func finish(_ model: AppModel) async -> Bool {
       guard let task = model.operationTask else { return false }
       await task.value
-      model.scanTask?.cancel()
-      model.scanning = false
+      model.cancelScan()
       return !model.busy
     }
 
