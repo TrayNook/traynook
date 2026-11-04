@@ -49,6 +49,7 @@ final class AppModel: ObservableObject {
     didSet { if recoveryRequired != oldValue { observationRevision &+= 1 } }
   }
   private var incompleteScans = 0
+  private var lastCompleteStatusWindows: [StatusWindowState]?
   private var unsafeScans = 0
   @Published var selectedTab = 0 {
     didSet { if selectedTab == 2 && oldValue != 2 { refreshLoginStatus() } }
@@ -116,6 +117,7 @@ final class AppModel: ObservableObject {
       self.observationRevision &+= 1
       self.cancelPanelWatch()
       self.concealed = false
+      self.lastCompleteStatusWindows = nil
       if self.nativeSetupMessage != nil { self.nativeSetupMessage = nil }
       if !self.nativeItemStates.isEmpty { self.nativeItemStates = [:] }
     }
@@ -342,6 +344,7 @@ final class AppModel: ObservableObject {
 
   private struct PreparedInventory {
     let observed: [ClassifiedSourceItem]
+    let statusWindows: [StatusWindowState]?
     let watchingLayout: Bool
     let changes: [KeyedChange]
     let known: Set<String>
@@ -401,7 +404,7 @@ final class AppModel: ObservableObject {
         native.adoptProcess(key: key, pid: item.observation.processIdentifier)
       }
     }
-    return PreparedInventory(observed: observed, watchingLayout: watchingLayout,
+    return PreparedInventory(observed: observed, statusWindows: snapshot.statusWindows, watchingLayout: watchingLayout,
       changes: changes, known: known, hidden: hidden)
   }
 
@@ -451,6 +454,7 @@ final class AppModel: ObservableObject {
       layout.items.removeAll { saved in stale.contains { $0.id == saved.id } }
       if !added.isEmpty || !stale.isEmpty { persist() }
     }
+    lastCompleteStatusWindows = prepared.statusWindows
     validateConcealment { inspection.items[$0.observation.runtimeID]?.behindBoundary }
   }
 
@@ -484,10 +488,21 @@ final class AppModel: ObservableObject {
     }
   }
 
-  private func acceptScanStatus(_ snapshot: InventorySnapshot, firstSnapshot: Bool = false) -> Bool {
+  func acceptScanStatus(_ snapshot: InventorySnapshot, firstSnapshot: Bool = false) -> Bool {
     let wasGranted = permissionGranted
+    let wasComplete = scanComplete
     permissionGranted = snapshot.permission == .granted
     scanComplete = snapshot.completeness == .complete
+    // An AX read failure cannot undo a verified layout when WindowServer still
+    // reports the same owners, windows, geometry, and visibility.
+    if permissionGranted, !scanComplete, concealed, !busy, unsafeScans == 0,
+      Date().timeIntervalSince(snapshot.capturedAt) <= 3,
+      let windows = snapshot.statusWindows, !windows.isEmpty,
+      windows == lastCompleteStatusWindows {
+      incompleteScans = 0
+      if wasComplete { modelLog.notice("incomplete scan with unchanged native windows; keeping items concealed") }
+      return false
+    }
     // One app answering Accessibility late (a launching app, a busy main
     // thread) makes a scan incomplete every few minutes on a crowded bar.
     // Nothing moved, so the section stays hidden through a few such scans;
@@ -1276,6 +1291,22 @@ final class AppModel: ObservableObject {
     let granted = InventorySnapshot(capturedAt: Date(), permission: .granted, completeness: .complete,
       items: [], warnings: [], metrics: ScanMetrics(durationMilliseconds: 0, inspectedApplicationCount: 0, sourceItemCount: 0))
     guard navigation.acceptScanStatus(granted), navigation.selectedTab == 2 else { return false }
+    let stable = AppModel(native: native, store: nil)
+    let windows = [StatusWindowState(processIdentifier: 10, windowIdentifier: 1,
+      frame: ItemFrame(x: -100, y: 0, width: 24, height: 24), isOnscreen: false)]
+    stable.accept(InventorySnapshot(capturedAt: Date(), permission: .granted, items: [],
+      statusWindows: windows, warnings: [], metrics: granted.metrics))
+    stable.layout.items = [SavedItem(id: "example.fixture", placement: .dropdown)]
+    stable.concealed = true
+    let stableIncomplete = InventorySnapshot(capturedAt: Date(), permission: .granted,
+      completeness: .incomplete, items: [], statusWindows: windows, warnings: [], metrics: granted.metrics)
+    for _ in 0..<8 {
+      guard !stable.acceptScanStatus(stableIncomplete), stable.concealed,
+        !stable.canEdit, stable.reapplyNotBefore == nil else {
+        fputs("TRAYNOOK_UNCHANGED_WINDOWS_REVEALED\n", stderr)
+        return false
+      }
+    }
     navigation.reveal()
     guard navigation.attemptedLaunchRestore else { return false }
     let recovering = AppModel(native: native, store: nil)

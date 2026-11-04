@@ -8,6 +8,92 @@ import Testing
   .enabled(if: ProcessInfo.processInfo.environment["TRAYNOOK_APPKIT_TESTS"] == "1"))
 @MainActor
 struct ConcealmentRecoveryTests {
+  @Test("Repeated incomplete reads keep an unchanged native section concealed")
+  func unchangedWindowsStayConcealed() {
+    let fixture = Fixture()
+    defer { fixture.close() }
+    let model = fixture.model
+    let initial = fixture.snapshot()
+    model.accept(initial)
+    model.concealed = true
+    let saved = model.layout
+    let observed = model.items
+
+    for _ in 0..<8 {
+      #expect(!model.acceptScanStatus(fixture.snapshot(complete: false)))
+      #expect(model.concealed)
+      #expect(!model.scanComplete)
+      #expect(!model.canEdit)
+      #expect(model.reapplyNotBefore == nil)
+      #expect(model.layout == saved)
+      #expect(model.items == observed)
+    }
+
+    #expect(model.acceptScanStatus(initial))
+    #expect(model.canEdit)
+    #expect(model.concealed)
+  }
+
+  @Test("Changed or unavailable native windows still require scan recovery",
+    arguments: ["added", "moved", "owner", "visibility", "missing", "permission", "stale"])
+  func changedWindowsRecover(_ change: String) {
+    let fixture = Fixture()
+    defer { fixture.close() }
+    let model = fixture.model
+    model.accept(fixture.snapshot())
+    model.concealed = true
+    let saved = model.layout
+    let observed = model.items
+    var windows = fixture.windows
+    let first = windows[0]
+    switch change {
+    case "added": windows.append(StatusWindowState(processIdentifier: 102, windowIdentifier: 102,
+      frame: ItemFrame(x: 1250, y: 6, width: 24, height: 24), isOnscreen: true))
+    case "moved": windows[0] = StatusWindowState(processIdentifier: first.processIdentifier,
+      windowIdentifier: first.windowIdentifier,
+      frame: ItemFrame(x: -200, y: 6, width: 24, height: 24), isOnscreen: first.isOnscreen)
+    case "owner": windows[0] = StatusWindowState(processIdentifier: 999,
+      windowIdentifier: first.windowIdentifier, frame: first.frame, isOnscreen: first.isOnscreen)
+    case "visibility": windows[0] = StatusWindowState(processIdentifier: first.processIdentifier,
+      windowIdentifier: first.windowIdentifier, frame: first.frame, isOnscreen: !first.isOnscreen)
+    default: break
+    }
+    let snapshot = fixture.snapshot(complete: false, windows: change == "missing" ? nil : windows,
+      permission: change == "permission" ? .denied : .granted,
+      capturedAt: change == "stale" ? .distantPast : Date())
+    for _ in 0..<4 { #expect(!model.acceptScanStatus(snapshot)) }
+    #expect(!model.concealed)
+    #expect(!model.canEdit)
+    #expect(model.layout == saved)
+    #expect(model.items == observed)
+    #expect(model.reapplyNotBefore != nil)
+  }
+
+  @Test("Reveal invalidates the previously verified native windows")
+  func revealInvalidatesWindowBaseline() {
+    let fixture = Fixture()
+    defer { fixture.close() }
+    let model = fixture.model
+    model.accept(fixture.snapshot())
+    model.reveal()
+    model.concealed = true
+    for _ in 0..<4 { #expect(!model.acceptScanStatus(fixture.snapshot(complete: false))) }
+    #expect(!model.concealed)
+  }
+
+  @Test("An unverified concealment scan cannot become a stable-window baseline")
+  func unsafeGeometryStillRecovers() {
+    let fixture = Fixture()
+    defer { fixture.close() }
+    let model = fixture.model
+    model.accept(fixture.snapshot())
+    model.concealed = true
+    model.validateConcealment { _ in nil }
+    for _ in 0..<4 { #expect(!model.acceptScanStatus(fixture.snapshot(complete: false))) }
+    #expect(!model.concealed)
+    #expect(model.reapplyNotBefore != nil)
+  }
+
   @Test("Malformed Accessibility geometry reaches safety recovery without crashing diagnostics")
   func malformedGeometryRecovers() throws {
     let fixture = Fixture()
@@ -117,6 +203,28 @@ private final class Fixture {
   private let launcher: NSStatusItem
   private let preferenceKeys: [String]
   private let previousPreferences: [String: Any]
+
+  var windows: [StatusWindowState] {
+    model.items.map { item in
+      StatusWindowState(processIdentifier: item.observation.processIdentifier,
+        windowIdentifier: UInt32(item.observation.processIdentifier), frame: item.observation.frame!,
+        isOnscreen: item.observation.isOnscreen == true)
+    }
+  }
+
+  func snapshot(complete: Bool = true) -> InventorySnapshot {
+    snapshot(complete: complete, windows: windows)
+  }
+
+  func snapshot(complete: Bool, windows: [StatusWindowState]?,
+    permission: AccessibilityPermissionStatus = .granted, capturedAt: Date = Date()) -> InventorySnapshot {
+    InventorySnapshot(capturedAt: capturedAt, permission: permission,
+      completeness: complete ? .complete : .incomplete, items: complete ? model.items : [],
+      statusWindowRuntimeIDs: Set((windows ?? []).map(\.windowIdentifier)), statusWindows: windows,
+      warnings: complete ? [] : ["Fixture app did not respond"],
+      metrics: ScanMetrics(durationMilliseconds: 0, inspectedApplicationCount: 2,
+        sourceItemCount: complete ? model.items.count : 0))
+  }
 
   init() {
     NSApplication.shared.setActivationPolicy(.accessory)

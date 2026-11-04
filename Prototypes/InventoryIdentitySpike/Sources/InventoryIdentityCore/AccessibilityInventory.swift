@@ -427,6 +427,10 @@ public struct AccessibilityInventoryScanner: InventoryScanning, Sendable {
         : .incomplete,
       items: classifiedItems,
       statusWindowRuntimeIDs: Set(statusWindows.map(\.windowIdentifier)),
+      statusWindows: statusWindows.sorted { $0.windowIdentifier < $1.windowIdentifier }.map {
+        StatusWindowState(processIdentifier: $0.processIdentifier, windowIdentifier: $0.windowIdentifier,
+          frame: $0.frame, isOnscreen: $0.isOnscreen)
+      },
       warnings: warnings,
       metrics: ScanMetrics(
         durationMilliseconds: elapsedMilliseconds(since: startedAt),

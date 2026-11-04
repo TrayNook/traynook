@@ -213,6 +213,20 @@ public struct ScanMetrics: Codable, Equatable, Sendable {
   }
 }
 
+public struct StatusWindowState: Codable, Equatable, Sendable {
+  public let processIdentifier: Int32
+  public let windowIdentifier: UInt32
+  public let frame: ItemFrame
+  public let isOnscreen: Bool
+
+  public init(processIdentifier: Int32, windowIdentifier: UInt32, frame: ItemFrame, isOnscreen: Bool) {
+    self.processIdentifier = processIdentifier
+    self.windowIdentifier = windowIdentifier
+    self.frame = frame
+    self.isOnscreen = isOnscreen
+  }
+}
+
 public struct InventorySnapshot: Codable, Equatable, Sendable {
   public let capturedAt: Date
   public let permission: AccessibilityPermissionStatus
@@ -220,6 +234,8 @@ public struct InventorySnapshot: Codable, Equatable, Sendable {
   public let items: [ClassifiedSourceItem]
   /// Runtime window-server identity only; never store in Desired Layout or diagnostics.
   public let statusWindowRuntimeIDs: Set<UInt32>
+  /// Fresh WindowServer state, even when Accessibility did not answer completely.
+  public let statusWindows: [StatusWindowState]?
   public let warnings: [String]
   public let metrics: ScanMetrics
 
@@ -229,6 +245,7 @@ public struct InventorySnapshot: Codable, Equatable, Sendable {
     completeness: InventoryScanCompleteness = .complete,
     items: [ClassifiedSourceItem],
     statusWindowRuntimeIDs: Set<UInt32> = [],
+    statusWindows: [StatusWindowState]? = nil,
     warnings: [String],
     metrics: ScanMetrics
   ) {
@@ -237,6 +254,7 @@ public struct InventorySnapshot: Codable, Equatable, Sendable {
     self.completeness = completeness
     self.items = items
     self.statusWindowRuntimeIDs = statusWindowRuntimeIDs
+    self.statusWindows = statusWindows
     self.warnings = warnings
     self.metrics = metrics
   }

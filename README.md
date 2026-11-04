@@ -50,8 +50,11 @@ An interrupted return waits for idle input and retries only the move. Without
 confirmed dismissal, the source stays visible until the next launcher click.
 Unrecognized windows, changed
 inventory, or display changes can still trigger conservative recovery.
-Repeated Accessibility scan failures temporarily reveal items; the saved layout
-resumes after a complete scan unless identities changed or you chose Show Items.
+Accessibility scan failures keep the section concealed while native window owners,
+positions, and visibility are unchanged. Incomplete observations cannot change the
+saved layout or drive native actions. Changed or unavailable windows still trigger
+temporary reveal; the saved layout resumes after a complete scan unless identities
+changed or you chose Show Items.
 Inventory traversal stops at each status icon; the contents of an app's popup
 menu do not block discovery. The internal concealment boundary reserves no
 menu-bar slot while items are revealed. It returns only for placement and
