@@ -1,12 +1,31 @@
-# TrayNook: build 33, measured Settings opening and cheaper localization
+# TrayNook: build 41, idle boundary recovery
 
-Updated 2026-11-02. Build 18's measurements are in
+Updated 2026-11-05. Build 18's measurements are in
 [MVP_REPORT.md](MVP_REPORT.md); build 19's decisions are in
 [ADR 0009](adr/0009-hidden-pointer-sibling-keys-and-session-image-cache.md) and
 [ADR 0010](adr/0010-geometry-follows-the-active-menu-bar-row.md).
 
 ## Current state
 
+- **Idle recurrence (2026-11-05):** build 39 temporarily revealed after unknown
+  boundary geometry, then stopped automatic recovery at 16:33:17. DockDoor's
+  AX frame (`x=1108, width=24`) overlapped the compact separator
+  (`x=1129, width=2`); the generic placement error discarded the pending retry.
+  Build 41 treats unknown placement sides and missing control geometry as
+  unavailable inventory: native movement remains blocked, and automatic recovery
+  retries after three seconds and a complete scan. Confirmed unsafe placements
+  still stop for review. Compact controls must have onscreen native windows;
+  expanded separators can report offscreen, so they retain the existing native
+  allocation, mirror-width, and recovery-edge checks. An initial visibility
+  guard rejected valid expanded separators on device and was narrowed before
+  final verification. Two captured regressions failed before the fix; expanded
+  home/mirror/compact-allocation regressions, 184 standard tests, nine AppKit
+  recovery tests, and packaged smoke pass. The smoke also drives the captured
+  overlap through automatic layout recovery. Signed build 41 reopened with the
+  existing saved layout; four native-window readbacks over 30 seconds found nine
+  hidden-source owners and zero visible hidden-source windows. The initial
+  cause of the unknown polling geometry and prolonged idle behavior remain
+  unverified.
 - **First Settings opening (2026-11-02):** controlled profiling did not reproduce
   the earlier multi-second redraw burst. Build 33 resolves the immutable
   localization resource bundle once while retaining per-call `NSLocalizedString`.
@@ -105,7 +124,7 @@ Updated 2026-11-02. Build 18's measurements are in
   WindowServer confirmed the real BroGlow source left of Tunnelblick, matching
   their saved order. The separate disposable `--reorder` check compiled but
   stopped before posting input because its harness lacks Accessibility permission.
-- Development app: `dist/TrayNook Dev.app`, **1.0.0 (33)**, signed with the
+- Development app: `dist/TrayNook Dev.app`, **1.0.0 (41)**, signed with the
   user's `TrayNook Dev` certificate (README "Development signing and
   permissions"). The unit suite, packaged smoke test, and opt-in GUI preview
   snapshots pass, including minimum Settings width and row capacities 1/30.

@@ -1219,6 +1219,19 @@ final class AppModel: ObservableObject {
       }
     }
 
+    let overlapping = launchModel()
+    overlapping.runLayoutOperation(recovering: true) {
+      _ = try NativeMenuBarController.checkedHiddenSide(
+        ItemFrame(x: 1108, y: 6.5, width: 24, height: 24),
+        boundary: ItemFrame(x: 1129, y: 7.5, width: 2, height: 22))
+    }
+    guard await finish(overlapping), let retry = overlapping.reapplyNotBefore,
+      !overlapping.takeLayoutRecovery(now: retry.addingTimeInterval(-1)),
+      overlapping.takeLayoutRecovery(now: retry) else {
+      fputs("TRAYNOOK_BOUNDARY_OVERLAP_DROPPED_RECOVERY\n", stderr)
+      return false
+    }
+
     let cancelled = launchModel()
     cancelled.runLayoutOperation(recovering: false) {
       cancelled.reveal()

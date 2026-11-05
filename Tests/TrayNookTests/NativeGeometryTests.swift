@@ -148,6 +148,65 @@ struct NativeGeometryTests {
     }
   }
 
+  @Test("An offscreen home control cannot supply a stale separator position")
+  func rejectsOffscreenHomeControl() throws {
+    // Captured while DockDoor occupied the hidden separator's old native slot.
+    let frame = CGRect(x: 1121, y: 0, width: 18, height: 37)
+    let button = try #require(NativeMenuBarController.controlButtonFrame(in: frame, width: 2, height: 22))
+    #expect(button == CGRect(x: 1129, y: 7.5, width: 2, height: 22))
+    let hidden = NativeMenuBarController.ControlWindow(id: 37020, display: 1,
+      frame: frame, isVisible: false)
+    #expect(NativeMenuBarController.controlGeometry(home: hidden, button: button,
+      on: 1, statusWindows: [hidden]) == nil)
+
+    let visible = NativeMenuBarController.ControlWindow(id: hidden.id, display: 1,
+      frame: frame, isVisible: true)
+    #expect(NativeMenuBarController.controlGeometry(home: visible, button: button,
+      on: 1, statusWindows: [visible])?.windowID == visible.id)
+
+    let mirror = NativeMenuBarController.ControlWindow(id: 37021, display: 2,
+      frame: CGRect(x: 1400, y: -1440, width: 18, height: 24), isVisible: true)
+    #expect(NativeMenuBarController.controlGeometry(home: hidden, button: button,
+      on: 2, statusWindows: [hidden, mirror])?.windowID == mirror.id)
+  }
+
+  @Test("Unverified boundary overlap retains automatic layout recovery without moving a source")
+  func overlappingPlacementRequiresFreshInventory() throws {
+    // The automatic recovery stopped permanently on these frames at 16:33:17.
+    let divider = ItemFrame(x: 1129, y: 7.5, width: 2, height: 22)
+    let source = ItemFrame(x: 1108, y: 6.5, width: 24, height: 24)
+    #expect(throws: NativeMenuActionError.inventoryUnavailable) {
+      try NativeMenuBarController.checkedHiddenSide(source, boundary: divider)
+    }
+    #expect(try NativeMenuBarController.checkedHiddenSide(
+      ItemFrame(x: 1104, y: 6.5, width: 24, height: 24), boundary: divider))
+    #expect(try !NativeMenuBarController.checkedHiddenSide(
+      ItemFrame(x: 1132, y: 6.5, width: 24, height: 24), boundary: divider))
+  }
+
+  @Test("An expanded separator may be offscreen while its launcher remains visible")
+  func acceptsOffscreenExpandedSeparator() throws {
+    let home = NativeMenuBarController.ControlWindow(id: 10, display: 1,
+      frame: CGRect(x: -607, y: 0, width: 1746, height: 37), isVisible: false)
+    let button = try #require(NativeMenuBarController.controlButtonFrame(
+      in: home.frame, width: 1730, height: 22))
+    #expect(NativeMenuBarController.controlGeometry(home: home, button: button,
+      on: 1, statusWindows: [home], allowingOffscreen: true)?.windowID == home.id)
+    #expect(NativeMenuBarController.controlGeometry(home: home, button: button,
+      on: 1, statusWindows: [home]) == nil)
+
+    let mirror = NativeMenuBarController.ControlWindow(id: 20, display: 2,
+      frame: CGRect(x: -400, y: -1440, width: 1746, height: 24), isVisible: false)
+    #expect(NativeMenuBarController.controlGeometry(home: home, button: button,
+      on: 2, statusWindows: [home, mirror], allowingOffscreen: true)?.windowID == mirror.id)
+    #expect(NativeMenuBarController.controlGeometry(home: home, button: button,
+      on: 2, statusWindows: [home, mirror]) == nil)
+    let compact = NativeMenuBarController.ControlWindow(id: mirror.id, display: 2,
+      frame: CGRect(x: 1328, y: -1440, width: 18, height: 24), isVisible: false)
+    #expect(NativeMenuBarController.controlGeometry(home: home, button: button,
+      on: 2, statusWindows: [home, compact], allowingOffscreen: true) == nil)
+  }
+
   @Test("A mirror is unavailable until its status window finishes expanding")
   func waitsForExpandedMirrorGeometry() throws {
     let home = NativeMenuBarController.ControlWindow(id: 10, display: 1,

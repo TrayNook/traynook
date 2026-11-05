@@ -1342,9 +1342,7 @@ final class NativeMenuBarController: NSObject {
       let source = CGPoint(x: frame.midX, y: frame.midY)
       let events: [(CGEventType, CGPoint, Bool)]?
       if let toHidden = movingToHidden {
-        guard let alreadyHidden = Self.hiddenSide(frame, boundary: environment.boundary) else {
-          throw MenuBarFailure(L("This item's position overlaps the hidden section boundary. Command-drag it to the right of the tray icon, then retry."))
-        }
+        let alreadyHidden = try Self.checkedHiddenSide(frame, boundary: environment.boundary)
         if alreadyHidden == toHidden { return }
         if toHidden {
           let sourceWindow = try statusWindow(for: target.observation, requiringOnscreen: true)
@@ -1700,13 +1698,11 @@ final class NativeMenuBarController: NSObject {
   }
 
   private func checkedEnvironment(allowingExpanded: Bool = false) throws -> MenuBarEnvironment {
-    guard let environment = environment(),
-      Self.launcherIsSafe(environment.launcher, boundary: environment.boundary,
+    guard let environment = environment() else { throw NativeMenuActionError.inventoryUnavailable }
+    guard Self.launcherIsSafe(environment.launcher, boundary: environment.boundary,
         safeFrame: environment.safeFrame, expanded: allowingExpanded && isConcealed)
     else {
-      if let environment = environment() {
-        nativeLog.error("unsafe geometry launcher=\(String(describing: environment.launcher), privacy: .public) boundary=\(String(describing: environment.boundary), privacy: .public) safe=\(String(describing: environment.safeFrame), privacy: .public)")
-      }
+      nativeLog.error("unsafe geometry launcher=\(String(describing: environment.launcher), privacy: .public) boundary=\(String(describing: environment.boundary), privacy: .public) safe=\(String(describing: environment.safeFrame), privacy: .public)")
       throw MenuBarFailure(setupMessage ?? L("The menu-bar geometry is unavailable."))
     }
     return environment
@@ -1762,11 +1758,15 @@ final class NativeMenuBarController: NSObject {
 
   /// Keep the window identity and button rect together: targeted moves must
   /// use the same display's control that was used for safe-area validation.
+  /// Expanded separators can report offscreen while their recovery edge remains visible.
   static func controlGeometry(home: ControlWindow, button: CGRect, on display: UInt32,
-    statusWindows: [ControlWindow]) -> (windowID: UInt32, button: CGRect)? {
-    if home.display == display { return (home.id, button) }
+    statusWindows: [ControlWindow], allowingOffscreen: Bool = false) -> (windowID: UInt32, button: CGRect)? {
+    if home.display == display {
+      guard home.isVisible || allowingOffscreen else { return nil }
+      return (home.id, button)
+    }
     let mirrors = statusWindows.filter {
-      $0.id != home.id && $0.display == display && $0.isVisible
+      $0.id != home.id && $0.display == display && ($0.isVisible || allowingOffscreen)
         && abs($0.frame.width - home.frame.width) < 0.5
     }
     guard mirrors.count == 1, let mirror = mirrors.first else { return nil }
@@ -1837,7 +1837,7 @@ final class NativeMenuBarController: NSObject {
     guard let launcherGeometry = Self.controlGeometry(home: launcherHome, button: launcherFrame,
       on: display, statusWindows: windows),
       let boundaryGeometry = Self.controlGeometry(home: boundaryHome, button: boundaryFrame,
-        on: display, statusWindows: windows),
+        on: display, statusWindows: windows, allowingOffscreen: seed.isConcealed),
       let rowWindow = windows.first(where: { $0.id == launcherGeometry.windowID }) else {
       nativeLog.error("no unambiguous mirrored controls on display \(display)")
       return nil
@@ -1892,6 +1892,14 @@ final class NativeMenuBarController: NSObject {
     if frame.maxX <= boundary.minX + 1 { return true }
     if frame.minX >= boundary.maxX - 1 { return false }
     return nil
+  }
+
+  static func checkedHiddenSide(_ frame: ItemFrame, boundary: ItemFrame) throws -> Bool {
+    guard let behind = hiddenSide(frame, boundary: boundary) else {
+      // Unknown geometry must retain recovery without authorizing a native move.
+      throw NativeMenuActionError.inventoryUnavailable
+    }
+    return behind
   }
 
   static func visibleSideIsSafe(_ frame: ItemFrame, safeFrame: ItemFrame) -> Bool {
