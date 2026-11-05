@@ -1,4 +1,4 @@
-# TrayNook: build 41, idle boundary recovery
+# TrayNook: build 42, concealment resilience across app failures
 
 Updated 2026-11-05. Build 18's measurements are in
 [MVP_REPORT.md](MVP_REPORT.md); build 19's decisions are in
@@ -7,6 +7,26 @@ Updated 2026-11-05. Build 18's measurements are in
 
 ## Current state
 
+- **Concealment resilience audit (2026-11-05):** three Lazarus researchers audited
+  discovery, native layout, and handoff, followed by independent correctness
+  review. Build 42 keeps hiding independent of optional Menu Bar ordering,
+  isolates a refusing source after fresh safety checks, and rechecks successful
+  placements after boundary repair. New verified-visible apps do not reveal the
+  hidden section; restarting/recreated hidden sources receive selected-only
+  repair. Unrelated panels are excluded from source stability, and slow/stale AX
+  scans retain hiding only after fresh full native-source verification. Native
+  handoff retains long-menu observation, tracks real panel disappearance,
+  retries transient selected returns without replaying activation, and handles
+  moved/missing return anchors and owner termination. Actual unsafe identities,
+  permission loss, unobservable UI, and confirmed OS refusal retain explicit
+  safety/manual recovery. The standard suite passes 223 tests, four isolated
+  AppKit suites pass 30, three native harnesses compile, and packaged smoke
+  passes. The native-menu runtime fixture could not pass the invoking terminal's
+  Accessibility preflight. Signed build 42 reopened; four readbacks over 30
+  seconds found nine hidden-source owners and zero visible hidden-source
+  windows. Live logs show automatic recovery after two temporary inventory failures
+  and subsequent incomplete scans preserving concealment. See the
+  [audit and verification limits](CONCEALMENT_RESILIENCE_AUDIT.md).
 - **Idle recurrence (2026-11-05):** build 39 temporarily revealed after unknown
   boundary geometry, then stopped automatic recovery at 16:33:17. DockDoor's
   AX frame (`x=1108, width=24`) overlapped the compact separator
@@ -124,7 +144,7 @@ Updated 2026-11-05. Build 18's measurements are in
   WindowServer confirmed the real BroGlow source left of Tunnelblick, matching
   their saved order. The separate disposable `--reorder` check compiled but
   stopped before posting input because its harness lacks Accessibility permission.
-- Development app: `dist/TrayNook Dev.app`, **1.0.0 (41)**, signed with the
+- Development app: `dist/TrayNook Dev.app`, **1.0.0 (42)**, signed with the
   user's `TrayNook Dev` certificate (README "Development signing and
   permissions"). The unit suite, packaged smoke test, and opt-in GUI preview
   snapshots pass, including minimum Settings width and row capacities 1/30.
