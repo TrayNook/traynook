@@ -10,14 +10,14 @@ import Testing
 @MainActor
 struct BackgroundInventoryTests {
   @Test("Metadata timeouts reveal safely, preserve the layout, and allow a later healthy inventory",
-    arguments: [false, true], [false, true])
-  func metadataTimeoutRecovers(concealed: Bool, expired: Bool) async throws {
+    arguments: [false, true])
+  func metadataTimeoutRecovers(concealed: Bool) async throws {
     let fixture = try await InventoryFixture(metadataTimeout: .milliseconds(100))
     defer { fixture.close() }
     let model = fixture.model
     let saved = model.layout
     let originalItems = model.items
-    let blocked = fixture.begin(extra: "example.obsolete", capturedAt: expired ? .distantPast : Date())
+    let blocked = fixture.begin(extra: "example.obsolete")
     try await waitUntil { fixture.load.calls == 1 }
     model.concealed = concealed
     #expect(try await finish(blocked) == false)
@@ -48,6 +48,22 @@ struct BackgroundInventoryTests {
     #expect(model.message == nil)
     #expect(model.liveItem("example.arrived") != nil)
     #expect(model.layout.items.first { $0.id == "example.baseline" }?.placement == .dropdown)
+  }
+
+  @Test("Expired inventories never request targeted metadata or replace the accepted layout")
+  func expiredInventoryIsDiscardedBeforeInspection() async throws {
+    let fixture = try await InventoryFixture()
+    defer { fixture.close() }
+    let saved = fixture.model.layout
+    let originalItems = fixture.model.items
+    let expired = fixture.begin(extra: "example.obsolete", capturedAt: .distantPast)
+    #expect(try await finish(expired) == false)
+    #expect(fixture.load.calls == 0)
+    #expect(fixture.model.items == originalItems)
+    #expect(fixture.model.layout == saved)
+    #expect(!fixture.model.scanComplete)
+    #expect(!fixture.model.canEdit)
+    #expect(fixture.model.reapplyNotBefore == nil)
   }
 
   @Test("A delayed read publishes neither new items nor layout until its result is accepted")

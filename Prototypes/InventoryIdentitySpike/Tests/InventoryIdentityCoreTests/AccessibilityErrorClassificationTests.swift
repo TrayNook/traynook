@@ -204,6 +204,39 @@ struct AccessibilityErrorClassificationTests {
       displays: [display], ownProcessIdentifier: own) == windows)
   }
 
+  @Test("Concealment baselines ignore unrelated panels but retain genuine source changes")
+  func panelsDoNotInvalidateConcealmentBaseline() throws {
+    let own = Int(ProcessInfo.processInfo.processIdentifier)
+    let display = CGRect(x: 0, y: 0, width: 1728, height: 1117)
+    func metadata(panel: CGRect? = nil, sourceX: CGFloat = 1300) -> [[String: Any]] {
+      var control = windowMetadata(owner: own, identifier: 10)
+      control[kCGWindowBounds as String] = CGRect(x: 1500, y: 0, width: 24, height: 37).dictionaryRepresentation
+      var source = windowMetadata(owner: 100, identifier: 1)
+      source[kCGWindowBounds as String] = CGRect(x: sourceX, y: 0, width: 24, height: 37).dictionaryRepresentation
+      var result = [control, source]
+      if let panel {
+        var preview = windowMetadata(owner: 100, identifier: 2)
+        preview[kCGWindowBounds as String] = panel.dictionaryRepresentation
+        result.append(preview)
+      }
+      return result
+    }
+    func inventory(_ metadata: [[String: Any]], displays: [CGRect] = [display]) throws -> StatusWindowInventory {
+      StatusWindowInventory(windows: try #require(statusWindowObservations(in: metadata)),
+        metadata: metadata, displays: displays)
+    }
+    let baseline = try inventory(metadata()).concealmentStates
+    for panel in [CGRect(x: 24, y: 19, width: 1680, height: 1079),
+      CGRect(x: 400, y: 400, width: 400, height: 200)] {
+      let changed = try inventory(metadata(panel: panel))
+      #expect(changed.windows.count == 2, "Raw windows remain available for diagnostics.")
+      #expect(changed.concealmentStates == baseline)
+      #expect(try inventory(metadata(panel: panel), displays: []).concealmentStates.count == 2,
+        "Unknown rows must retain possible sources.")
+    }
+    #expect(try inventory(metadata(sourceX: 1320)).concealmentStates != baseline)
+  }
+
   @Test("Unexposed visible status windows are Protected; offscreen identities remain trackable")
   func unexposedStatusWindowsAreProtected() throws {
     let windows = try #require(statusWindowObservations(in: [

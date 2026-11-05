@@ -81,6 +81,167 @@ struct AppModelInventoryTests {
     #expect(AppModel.inventoryRequiresReview(ambiguous))
   }
 
+  @Test("A new stable source already verified visible does not reopen hidden items")
+  func visibleNewSourceKeepsConcealment() {
+    let assessor = IdentityAssessor()
+    let changes = AppModel.keyedChanges(from: assessor.classify([item()]),
+      to: assessor.classify([item(), item(bundle: "example.new", pid: 30)]))
+    #expect(!reveals(changes, visible: ["example.new"]))
+    #expect(reveals(changes))
+  }
+
+  @Test("Slow discovery needs a nonempty unchanged native baseline with no unsafe geometry")
+  func slowDiscoveryRequiresUnchangedNativeSources() {
+    let hidden = StatusWindowState(processIdentifier: 10, windowIdentifier: 1,
+      frame: ItemFrame(x: -100, y: 0, width: 24, height: 37), isOnscreen: false)
+    let visible = StatusWindowState(processIdentifier: 20, windowIdentifier: 2,
+      frame: ItemFrame(x: 1300, y: 0, width: 24, height: 37), isOnscreen: true)
+    let baseline = [hidden, visible]
+    #expect(AppModel.canRetainConcealment(lastVerified: baseline, current: baseline, unsafeScans: 0))
+    for current: [StatusWindowState]? in [nil, [], [hidden], baseline + [visible],
+      [hidden, StatusWindowState(processIdentifier: 21, windowIdentifier: visible.windowIdentifier,
+        frame: visible.frame, isOnscreen: true)],
+      [StatusWindowState(processIdentifier: 10, windowIdentifier: 1,
+        frame: ItemFrame(x: -200, y: 0, width: 24, height: 37), isOnscreen: false), visible],
+      [StatusWindowState(processIdentifier: 10, windowIdentifier: 1,
+        frame: hidden.frame, isOnscreen: true), visible]] {
+      #expect(!AppModel.canRetainConcealment(lastVerified: baseline, current: current, unsafeScans: 0))
+    }
+    #expect(!AppModel.canRetainConcealment(lastVerified: [], current: [], unsafeScans: 0))
+    #expect(!AppModel.canRetainConcealment(lastVerified: nil, current: baseline, unsafeScans: 0))
+    #expect(!AppModel.canRetainConcealment(lastVerified: baseline, current: baseline, unsafeScans: 1))
+  }
+
+  @Test("Only visible lifecycle returns of saved hidden identities request individual repair")
+  func returnedHiddenSourcesNeedPlacementRepair() {
+    let assessor = IdentityAssessor()
+    let original = assessor.classify([item(identifier: "primary", window: 10)])
+    let returned = assessor.classify([item(pid: 30, identifier: "primary", x: 1300, window: 20)])
+    let restart = AppModel.keyedChanges(from: original, to: returned)
+    #expect(AppModel.hiddenSourceRepairKeys(restart, hidden: hidden,
+      verifiedVisible: ["example.timer"]) == ["example.timer"])
+    #expect(AppModel.hiddenSourceRepairKeys(restart, hidden: hidden, verifiedVisible: []) == [])
+    #expect(AppModel.hiddenSourceRepairKeys(restart, hidden: [],
+      verifiedVisible: ["example.timer"]) == [])
+
+    let reappeared = AppModel.keyedChanges(from: [], to: assessor.classify([item(bundle: "example.known", pid: 31)]))
+    #expect(AppModel.hiddenSourceRepairKeys(reappeared, hidden: hidden,
+      verifiedVisible: ["example.known"]) == ["example.known"])
+    let drag = AppModel.keyedChanges(from: returned,
+      to: assessor.classify([item(pid: 30, identifier: "primary", x: 1400, window: 20)]))
+    #expect(AppModel.hiddenSourceRepairKeys(drag, hidden: hidden,
+      verifiedVisible: ["example.timer"]) == [])
+    let recreated = AppModel.keyedChanges(from: original,
+      to: assessor.classify([item(identifier: "primary", x: 1300, window: 21)]))
+    #expect(AppModel.hiddenSourceRepairKeys(recreated, hidden: hidden,
+      verifiedVisible: ["example.timer"]) == ["example.timer"])
+  }
+
+  @Test("Individual lifecycle repair requires an onscreen bound native window")
+  func repairRequiresPositiveNativeVisibility() throws {
+    func source(visible: Bool?, window: UInt32?) throws -> ClassifiedSourceItem {
+      try #require(IdentityAssessor().classify([RawSourceItemObservation(runtimeID: "10:0",
+        processIdentifier: 10, bundleIdentifier: "example.timer", applicationName: "Fixture",
+        role: "AXMenuBarItem", frame: ItemFrame(x: 1300, y: 0, width: 24, height: 24),
+        actions: ["AXPress"], metadata: LiveAccessibilityMetadata(), observedOrder: 0,
+        isOnscreen: visible, statusWindowIdentifier: window)]).first)
+    }
+    let inspection = NativeMenuBarController.Inspection(setupMessage: nil,
+      items: ["10:0": .init(behindBoundary: false, isClipped: false, isVerifiedVisible: true)])
+    for visibility: Bool? in [nil, false, true] {
+      for window: UInt32? in [nil, 20] {
+        let keys = AppModel.verifiedVisibleSourceKeys([try source(visible: visibility, window: window)],
+          inspection: inspection)
+        #expect(keys == (visibility == true && window != nil ? ["example.timer"] : []))
+      }
+    }
+  }
+
+  @Test("Returned-source repair is paced, bounded, and bound to the observed native identity")
+  func repairAttemptsAreBounded() throws {
+    let assessor = IdentityAssessor()
+    let source = try #require(assessor.classify([item(window: 10)]).first)
+    var repair = AppModel.HiddenSourceRepair(source: source)
+    let now = Date(timeIntervalSince1970: 100)
+    let first = repair.takeAttempt(now: now)
+    let early = repair.takeAttempt(now: now.addingTimeInterval(2.9))
+    let second = repair.takeAttempt(now: now.addingTimeInterval(3))
+    let third = repair.takeAttempt(now: now.addingTimeInterval(6))
+    let exhausted = repair.takeAttempt(now: now.addingTimeInterval(60))
+    #expect(first)
+    #expect(!early)
+    #expect(second)
+    #expect(third)
+    #expect(!exhausted)
+    #expect(repair.attempts == 3)
+    #expect(repair.matches(source))
+    #expect(!repair.matches(try #require(assessor.classify([item(pid: 20, window: 10)]).first)))
+    #expect(!repair.matches(try #require(assessor.classify([item(window: 11)]).first)))
+    var exhaustedRepair: AppModel.HiddenSourceRepair? = repair
+    let automatic = AppModel.takePlacementAttempt(automatic: true, repair: &exhaustedRepair, source: source,
+      now: now.addingTimeInterval(60))
+    let manual = AppModel.takePlacementAttempt(automatic: false, repair: &exhaustedRepair, source: source,
+      now: now.addingTimeInterval(60))
+    #expect(!automatic)
+    #expect(manual, "Explicit Retry is independent of the automatic repair budget.")
+    #expect(exhaustedRepair?.attempts == 3)
+  }
+
+  @Test("A refused returned source cannot consume a later source's repair budget or block its move")
+  func returnedSourceFailuresAreIsolated() async throws {
+    let assessor = IdentityAssessor()
+    let refusing = try #require(assessor.classify([item(bundle: "example.refusing", window: 10)]).first)
+    let working = try #require(assessor.classify([item(bundle: "example.working", pid: 20, window: 20)]).first)
+    let sources = ["example.refusing": refusing, "example.working": working]
+    var repairs = sources.mapValues { AppModel.HiddenSourceRepair(source: $0) }
+    let now = Date(timeIntervalSince1970: 100)
+    let queued = sources.keys.filter { repairs[$0]?.canAttempt(now: now) == true }
+    #expect(queued.count == 2)
+    #expect(repairs.values.allSatisfy { $0.attempts == 0 }, "Queueing is not a native move attempt.")
+    let placements = [SavedItem(id: "example.refusing", placement: .dropdown),
+      SavedItem(id: "example.working", placement: .alwaysHidden)]
+    var calls: [String] = []
+    var validations = 0
+    let warnings = try await AppModel.applyIndividualPlacementsWithFallback(placements, move: { saved in
+      let source = try #require(sources[saved.id])
+      let dispatched = AppModel.takePlacementAttempt(automatic: true, repair: &repairs[saved.id],
+        source: source, now: now)
+      guard dispatched else { return false }
+      calls.append(saved.id)
+      if saved.id == "example.refusing" { throw AppError.message("App refused movement") }
+      return true
+    }, refresh: { validations += 1 }, verifyConcealed: {}, reorder: {})
+    #expect(calls == placements.map(\.id))
+    #expect(repairs["example.refusing"]?.attempts == 1)
+    #expect(repairs["example.working"]?.attempts == 1)
+    #expect(validations > 0)
+    #expect(warnings == ["App refused movement"])
+  }
+
+  @Test("Temporary input and inventory failures defer automatic repairs without exhausting refusals",
+    arguments: [NativeMenuActionError.inputNotIdle, .inputInterrupted, .placementInterrupted, .inventoryUnavailable])
+  func transientRepairsRemainEligible(_ error: NativeMenuActionError) throws {
+    let source = try #require(IdentityAssessor().classify([item(window: 10)]).first)
+    var repair: AppModel.HiddenSourceRepair? = AppModel.HiddenSourceRepair(source: source)
+    let now = Date(timeIntervalSince1970: 100)
+    for attempt in 0..<5 {
+      let dispatched = AppModel.takePlacementAttempt(automatic: true, repair: &repair, source: source,
+        now: now.addingTimeInterval(Double(attempt * 3)))
+      #expect(dispatched)
+      let deferred = AppModel.deferAutomaticPlacementFailure(error, repair: &repair)
+      #expect(deferred)
+      #expect(repair?.attempts == 0)
+      #expect(repair?.canAttempt(now: now.addingTimeInterval(Double(attempt * 3) + 1)) == false,
+        "A transient refund must retain the three-second pause.")
+    }
+    let healthy = AppModel.takePlacementAttempt(automatic: true, repair: &repair, source: source,
+      now: now.addingTimeInterval(15))
+    #expect(healthy)
+    let refused = AppModel.deferAutomaticPlacementFailure(AppError.message("App refused movement"), repair: &repair)
+    #expect(!refused)
+    #expect(repair?.attempts == 1)
+  }
+
   @Test("Ambiguous identity blocks recovery even alongside a returning Menu Bar source")
   func ambiguityWinsOverRecoverableChanges() {
     let assessor = IdentityAssessor()

@@ -58,6 +58,23 @@ struct StatusWindowObservation: Equatable {
   let isOnscreen: Bool
 }
 
+struct StatusWindowInventory {
+  let windows: [StatusWindowObservation]
+  let sources: [StatusWindowObservation]
+
+  init(windows: [StatusWindowObservation], metadata: [[String: Any]], displays: [CGRect]) {
+    self.windows = windows
+    sources = statusWindowSourceCandidates(in: windows, windowMetadata: metadata, displays: displays)
+  }
+
+  var concealmentStates: [StatusWindowState] {
+    sources.sorted { $0.windowIdentifier < $1.windowIdentifier }.map {
+      StatusWindowState(processIdentifier: $0.processIdentifier, windowIdentifier: $0.windowIdentifier,
+        frame: $0.frame, isOnscreen: $0.isOnscreen)
+    }
+  }
+}
+
 func statusWindowObservations(in windows: [[String: Any]]?) -> [StatusWindowObservation]? {
   guard let windows else { return nil }
   var result: [StatusWindowObservation] = []
@@ -289,6 +306,14 @@ public struct AccessibilityInventoryScanner: InventoryScanning, Sendable {
   private let messagingTimeoutSeconds: Double
   private let scanBudgetSeconds: Double
 
+  /// Full source-window metadata without querying any application's Accessibility tree.
+  public static func sourceStatusSnapshot() -> [StatusWindowState]? {
+    guard let metadata = CGWindowListCopyWindowInfo(.optionAll, kCGNullWindowID) as? [[String: Any]],
+      let windows = statusWindowObservations(in: metadata) else { return nil }
+    return StatusWindowInventory(windows: windows, metadata: metadata,
+      displays: activeDisplayFrames()).concealmentStates
+  }
+
   public init(
     assessor: IdentityAssessor = IdentityAssessor(),
     messagingTimeoutSeconds: Double =
@@ -344,8 +369,9 @@ public struct AccessibilityInventoryScanner: InventoryScanning, Sendable {
     let issueTracker = AccessibilityScanIssueTracker(
       deadline: startedAt + UInt64(scanBudgetSeconds * 1_000_000_000)
     )
-    let sourceCandidates = statusWindowSourceCandidates(in: statusWindows,
-      windowMetadata: windowMetadata ?? [], displays: activeDisplayFrames())
+    let windowInventory = StatusWindowInventory(windows: statusWindows,
+      metadata: windowMetadata ?? [], displays: activeDisplayFrames())
+    let sourceCandidates = windowInventory.sources
 
     for processIdentifier in Set(sourceCandidates.map(\.processIdentifier)).sorted() {
       guard !issueTracker.scanBudgetExceeded else { break }
@@ -426,11 +452,8 @@ public struct AccessibilityInventoryScanner: InventoryScanning, Sendable {
         ? .complete
         : .incomplete,
       items: classifiedItems,
-      statusWindowRuntimeIDs: Set(statusWindows.map(\.windowIdentifier)),
-      statusWindows: statusWindows.sorted { $0.windowIdentifier < $1.windowIdentifier }.map {
-        StatusWindowState(processIdentifier: $0.processIdentifier, windowIdentifier: $0.windowIdentifier,
-          frame: $0.frame, isOnscreen: $0.isOnscreen)
-      },
+      statusWindowRuntimeIDs: Set(windowInventory.windows.map(\.windowIdentifier)),
+      statusWindows: windowInventory.concealmentStates,
       warnings: warnings,
       metrics: ScanMetrics(
         durationMilliseconds: elapsedMilliseconds(since: startedAt),

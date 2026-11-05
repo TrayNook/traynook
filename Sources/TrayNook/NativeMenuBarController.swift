@@ -344,7 +344,10 @@ final class NativeMenuBarController: NSObject {
           Self.restorePosition(of: separator, name: "TrayNook.HiddenBoundary", fallback: position, force: true)
           try await pause(0.25, token: token)
           // Items shift when the separator is inserted; judge fresh frames.
-          guard let positioned = try? checkedEnvironment() else {
+          let positioned: MenuBarEnvironment
+          do { positioned = try checkedEnvironment() }
+          catch let error as NativeMenuActionError { throw error }
+          catch {
             // Shifted off the safe area (under the notch): put it back and report.
             if attempt > 0 {
               Self.restorePosition(of: separator, name: "TrayNook.HiddenBoundary", fallback: firstPosition, force: true)
@@ -481,7 +484,7 @@ final class NativeMenuBarController: NSObject {
       }
       try requireIdleInput(checkingKeys: false)
       guard try checkedEnvironment() == before else {
-        throw MenuBarFailure(L("The menu bar changed. Try hiding again."))
+        throw NativeMenuActionError.inventoryUnavailable
       }
       concealedSourcePIDs = Dictionary(items.compactMap { item in
         guard let key = item.identity.persistentKey, let bundle = item.observation.bundleIdentifier,
@@ -522,7 +525,7 @@ final class NativeMenuBarController: NSObject {
       } while ContinuousClock.now < deadline
       guard settled else {
         nativeLog.error("conceal geometry did not settle: boundary=\(String(describing: afterConcealment?.boundary), privacy: .public) launcher=\(String(describing: afterConcealment?.launcher), privacy: .public)")
-        throw MenuBarFailure(L("macOS could not hide this section while keeping TrayNook accessible. The section has been revealed."))
+        throw NativeMenuActionError.inventoryUnavailable
       }
       try requirePermission()
     } catch {
@@ -531,7 +534,7 @@ final class NativeMenuBarController: NSObject {
     }
   }
 
-  private struct StatusWindowBinding: Equatable {
+  struct StatusWindowBinding: Equatable {
     let id: UInt32
     let pid: Int32
     let bundle: String?
@@ -958,20 +961,54 @@ final class NativeMenuBarController: NSObject {
       }
     }
     let token = generation
-    func restored() throws -> Bool {
-      let source = try statusWindowFrame(pending.sourceWindow)
-      let anchor = try statusWindowFrame(pending.returnWindow)
-      return abs(anchor.minX - source.maxX - pending.originalGap) <= 2
-        && source.minX < anchor.minX
-    }
-    while true {
+    for attempt in 0..<3 {
       do {
-        _ = try await stableTarget(pending.source, token: token,
+        try checkOperation(token)
+        let initialBindings = try restorationBindings()
+        if !initialBindings.contains(where: { $0.id == pending.sourceWindow.id }) {
+          pendingActivation = nil
+          return
+        }
+        guard initialBindings.contains(pending.sourceWindow) else {
+          throw NativeMenuActionError.inventoryUnavailable
+        }
+        let prepared = try await stableTarget(pending.source, token: token,
           allowingClipped: true, allowingConcealed: true)
+        guard prepared.item.observation.statusWindowIdentifier == pending.sourceWindow.id,
+          try statusWindow(for: prepared.item.observation) == pending.sourceWindow else {
+          throw NativeMenuActionError.inventoryUnavailable
+        }
+        let boundary = isConcealed
+          ? StatusWindowBinding(id: prepared.environment.boundaryWindowID,
+            pid: ProcessInfo.processInfo.processIdentifier, bundle: Bundle.main.bundleIdentifier)
+          : nil
+        let bindings = try restorationBindings()
+        let preferredIsHidden: Bool
+        if isConcealed, pending.returnWindow != boundary, bindings.contains(pending.returnWindow) {
+          preferredIsHidden = Self.hiddenSide(try statusWindowFrame(pending.returnWindow),
+            boundary: prepared.environment.boundary) == true
+        } else { preferredIsHidden = true }
+        guard let anchor = try Self.restorationAnchor(source: pending.sourceWindow,
+          preferred: pending.returnWindow, boundary: boundary, current: bindings,
+          preferredIsHidden: preferredIsHidden) else {
+          pendingActivation = nil
+          return
+        }
+        let usingBoundary = anchor != pending.returnWindow
+        func restored() throws -> Bool {
+          let source = try statusWindowFrame(pending.sourceWindow)
+          let destination = try statusWindowFrame(anchor)
+          let boundary = isConcealed ? try checkedEnvironment(allowingExpanded: true).boundary : nil
+          return Self.restorationVerified(source: source, destination: destination,
+            boundary: boundary, originalGap: usingBoundary ? nil : pending.originalGap)
+        }
         if try !restored() {
           try await waitForIdleInput(token: token)
-          try await moveTargeted(source: pending.sourceWindow, before: pending.returnWindow,
-            fallbackBefore: pending.returnWindow, token: token)
+          guard try checkedEnvironment(allowingExpanded: true) == prepared.environment else {
+            throw NativeMenuActionError.inventoryUnavailable
+          }
+          try await moveTargeted(source: pending.sourceWindow, before: anchor,
+            fallbackBefore: anchor, token: token)
           let deadline = ContinuousClock.now.advanced(by: .milliseconds(500))
           while ContinuousClock.now < deadline {
             try checkOperation(token)
@@ -984,11 +1021,79 @@ final class NativeMenuBarController: NSObject {
         }
         pendingActivation = nil
         return
-      } catch NativeMenuActionError.inputNotIdle, NativeMenuActionError.inputInterrupted {
+      } catch let error as NativeMenuActionError where [.inputNotIdle, .inputInterrupted].contains(error) {
+        guard attempt < 2 else { throw error }
         // The click dismissing a menu can overlap its return; retry only the move.
         nativeLog.notice("return interrupted; waiting for idle input")
         try await pause(0.3, token: token)
       }
+    }
+  }
+
+  static func restorationAnchor(source: StatusWindowBinding, preferred: StatusWindowBinding,
+    boundary: StatusWindowBinding?, current: [StatusWindowBinding],
+    preferredIsHidden: Bool = true) throws -> StatusWindowBinding? {
+    let sources = current.filter { $0.id == source.id }
+    guard !sources.isEmpty else { return nil }
+    guard sources == [source] else { throw NativeMenuActionError.inventoryUnavailable }
+    let preferredMatches = current.filter { $0.id == preferred.id }
+    if !preferredMatches.isEmpty {
+      guard preferredMatches == [preferred] else { throw NativeMenuActionError.inventoryUnavailable }
+      if preferredIsHidden { return preferred }
+    }
+    guard let boundary, current.filter({ $0.id == boundary.id }) == [boundary] else {
+      throw NativeMenuActionError.inventoryUnavailable
+    }
+    return boundary
+  }
+
+  static func restorationVerified(source: ItemFrame, destination: ItemFrame,
+    boundary: ItemFrame?, originalGap: Double?) -> Bool {
+    guard source.isUsable, destination.isUsable,
+      source.y < destination.maxY, source.maxY > destination.y else { return false }
+    if let boundary, hiddenSide(source, boundary: boundary) != true { return false }
+    if let originalGap {
+      return abs(destination.minX - source.maxX - originalGap) <= 2
+        && source.minX < destination.minX
+    }
+    return source.maxX <= destination.minX + 2
+  }
+
+  static func retrySelectedReturn(isPending: () -> Bool,
+    restore: () async throws -> Void,
+    sleep: (Duration) async throws -> Void = { try await Task.sleep(for: $0) }) async throws {
+    while isPending() {
+      try Task.checkCancellation()
+      do {
+        try await restore()
+        try Task.checkCancellation()
+        guard !isPending() else { throw NativeMenuActionError.inventoryUnavailable }
+      } catch where shouldRetrySelectedReturn(after: error) {
+        try await sleep(.seconds(3))
+      }
+    }
+  }
+
+  static func shouldRetrySelectedReturn(after error: Error) -> Bool {
+    guard let error = error as? NativeMenuActionError else { return false }
+    return [.inventoryUnavailable, .inputNotIdle, .inputInterrupted, .placementInterrupted].contains(error)
+  }
+
+  private func restorationBindings() throws -> [StatusWindowBinding] {
+    guard let windows = CGWindowListCopyWindowInfo(.optionAll, kCGNullWindowID) as? [[String: Any]] else {
+      throw NativeMenuActionError.inventoryUnavailable
+    }
+    return try windows.compactMap { window in
+      guard let layer = window[kCGWindowLayer as String] as? Int else {
+        throw NativeMenuActionError.inventoryUnavailable
+      }
+      guard layer == Int(CGWindowLevelForKey(.statusWindow)) else { return nil }
+      guard let id = window[kCGWindowNumber as String] as? UInt32,
+        let pid = (window[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value else {
+        throw NativeMenuActionError.inventoryUnavailable
+      }
+      return StatusWindowBinding(id: id, pid: pid,
+        bundle: NSRunningApplication(processIdentifier: pid)?.bundleIdentifier)
     }
   }
 
@@ -1042,7 +1147,7 @@ final class NativeMenuBarController: NSObject {
   private func statusWindowFrame(_ binding: StatusWindowBinding) throws -> ItemFrame {
     guard NSRunningApplication(processIdentifier: binding.pid)?.bundleIdentifier == binding.bundle,
       let window = statusWindows().first(where: { $0.binding.id == binding.id && $0.binding.pid == binding.pid }) else {
-      throw MenuBarFailure(L("The item's native window changed. Other hidden items remain hidden."))
+      throw NativeMenuActionError.inventoryUnavailable
     }
     return window.frame
   }
@@ -1177,11 +1282,11 @@ final class NativeMenuBarController: NSObject {
     func readOrder() async throws
       -> (items: [ClassifiedSourceItem], visible: [ClassifiedSourceItem], environment: MenuBarEnvironment) {
       for _ in 0..<4 {
-        let beforeWindows = statusWindows().sorted { $0.binding.id < $1.binding.id }
         let beforeEnvironment = try checkedEnvironment(allowingExpanded: true)
+        let beforeWindows = stableStatusWindows(in: beforeEnvironment).sorted { $0.binding.id < $1.binding.id }
         let snapshot = try await freshInventory(token: token)
         let environment = try checkedEnvironment(allowingExpanded: true)
-        let afterWindows = statusWindows().sorted { $0.binding.id < $1.binding.id }
+        let afterWindows = stableStatusWindows(in: environment).sorted { $0.binding.id < $1.binding.id }
         guard environment == beforeEnvironment, beforeWindows.elementsEqual(afterWindows, by: {
           $0.binding == $1.binding && $0.frame == $1.frame && $0.isOnscreen == $1.isOnscreen
         }) else { try await pause(0.02, token: token); continue }
@@ -1203,7 +1308,7 @@ final class NativeMenuBarController: NSObject {
         for item in visible { _ = try statusWindow(for: item.observation, requiringOnscreen: true) }
         return (current, visible, environment)
       }
-      throw failure
+      throw NativeMenuActionError.inventoryUnavailable
     }
 
     var current = try await readOrder()
@@ -1214,7 +1319,7 @@ final class NativeMenuBarController: NSObject {
     let bindings = try Dictionary(uniqueKeysWithValues: current.items.map {
       ($0.identity.persistentKey!, try statusWindow(for: $0.observation))
     })
-    let windowBindings = statusWindows().map(\.binding).sorted { $0.id < $1.id }
+    let windowBindings = stableStatusWindows(in: current.environment).map(\.binding).sorted { $0.id < $1.id }
     func requireUnchangedRow(_ environment: MenuBarEnvironment) throws {
       guard isConcealed == wasConcealed, environment.display == before.display,
         environment.displayFrame == before.displayFrame, environment.safeFrame == before.safeFrame,
@@ -1222,7 +1327,7 @@ final class NativeMenuBarController: NSObject {
         environment.boundaryWindowID == before.boundaryWindowID,
         environment.launcherWindowID == before.launcherWindowID,
         Set(current.visible.compactMap(\.identity.persistentKey)) == visibleKeys,
-        statusWindows().map(\.binding).sorted(by: { $0.id < $1.id }) == windowBindings else { throw failure }
+        stableStatusWindows(in: environment).map(\.binding).sorted(by: { $0.id < $1.id }) == windowBindings else { throw failure }
       for item in current.items {
         guard try statusWindow(for: item.observation,
           requiringOnscreen: visibleKeys.contains(item.identity.persistentKey!))
@@ -1401,8 +1506,8 @@ final class NativeMenuBarController: NSObject {
     -> (item: ClassifiedSourceItem, environment: MenuBarEnvironment, snapshot: InventorySnapshot)
   {
     for _ in 0..<4 {
-      let before = statusWindows().sorted { $0.binding.id < $1.binding.id }
       let beforeEnvironment = try checkedEnvironment(allowingExpanded: allowingConcealed)
+      let before = stableStatusWindows(in: beforeEnvironment).sorted { $0.binding.id < $1.binding.id }
       let snapshot = try await freshInventory(token: token)
       let environment = try checkedEnvironment(allowingExpanded: allowingConcealed)
       guard let bundle = original.observation.bundleIdentifier, !bundle.hasPrefix("com.apple."),
@@ -1425,9 +1530,9 @@ final class NativeMenuBarController: NSObject {
         throw MenuBarFailure(L("This item is unavailable, ambiguous, or outside the visible menu bar. Reveal it manually and refresh."))
       }
       // One complete AX inventory, bracketed by fresh WindowServer observations.
-      // Any window/process/geometry/visibility or display change invalidates it.
+      // Any source-row window/process/geometry/visibility or display change invalidates it.
       // No inventory is cached across actions; AX identity is rebound at delivery.
-      let after = statusWindows().sorted { $0.binding.id < $1.binding.id }
+      let after = stableStatusWindows(in: environment).sorted { $0.binding.id < $1.binding.id }
       if environment == beforeEnvironment, before.elementsEqual(after, by: {
         $0.binding == $1.binding && $0.frame == $1.frame && $0.isOnscreen == $1.isOnscreen
       }) {
@@ -1435,7 +1540,18 @@ final class NativeMenuBarController: NSObject {
       }
       try await pause(0.02, token: token)
     }
-    throw MenuBarFailure(L("The menu bar is still changing. Try again when it has settled."))
+    throw NativeMenuActionError.inventoryUnavailable
+  }
+
+  private func stableStatusWindows(in environment: MenuBarEnvironment)
+    -> [(binding: StatusWindowBinding, frame: ItemFrame, isOnscreen: Bool)] {
+    statusWindows().filter { Self.isStatusWindowOnRow($0.frame, row: environment.safeFrame) }
+  }
+
+  static func isStatusWindowOnRow(_ frame: ItemFrame, row: ItemFrame) -> Bool {
+    // Unknown geometry remains relevant; only conclusively unrelated panels are omitted.
+    guard frame.isUsable, row.isUsable else { return true }
+    return frame.height <= 2 * row.height && frame.y < row.maxY && frame.maxY > row.y
   }
 
   /// Ranked sibling keys can be reassigned when one window disappears. A

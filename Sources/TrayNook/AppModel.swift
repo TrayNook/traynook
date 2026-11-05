@@ -41,6 +41,7 @@ final class AppModel: ObservableObject {
   private var placementOperationRunning = false
   private var placementStatuses: [String: String] = [:]
   private var pendingVisiblePlacements: [String: NativeMenuBarController.VisiblePlacement] = [:]
+  private var automaticPlacementKeys: Set<String> = []
   @Published var concealed = false
   @Published private(set) var nativeSetupMessage: String?
   @Published private var nativeItemStates: [String: NativeMenuBarController.ItemInspection] = [:]
@@ -76,6 +77,7 @@ final class AppModel: ObservableObject {
   private var observationRevision = 0
   private let currentAccessibilityPermission: @MainActor () -> Bool
   private let inventoryScanner: any InventoryScanning
+  private let sourceStatusReader: WindowMetadataReader
   private var attemptedLaunchRestore = false
   private var launchRestoreRunning = false
   /// After sleep or a display change the section is revealed, then the saved
@@ -91,7 +93,7 @@ final class AppModel: ObservableObject {
     guard native.hasPendingActivation, !busy else { return }
     modelLog.notice("dropdown closed; returning the promoted item")
     runOperation(restoreSettingsFocus: false, revealOnFailure: false) {
-      try await self.native.restoreActivation()
+      try await self.returnPromotedItem()
       self.message = nil
     }
   }
@@ -99,17 +101,27 @@ final class AppModel: ObservableObject {
   private var queuedDropdown: (@MainActor () -> Void)?
   private var hasAcceptedSnapshot = false
   private var previousItems: [ClassifiedSourceItem] = []
+  private var hiddenSourceRepairs: [String: HiddenSourceRepair] = [:]
 
   init(native: NativeMenuBarController, store: LayoutStore?,
     applyMenuBarOrder: (@MainActor ([ClassifiedSourceItem]) async throws -> Void)? = nil,
     loginItemStatus: LoginItemStatus? = nil,
     currentAccessibilityPermission: @escaping @MainActor () -> Bool = { AXIsProcessTrusted() },
-    inventoryScanner: any InventoryScanning = AccessibilityInventoryScanner()) {
+    inventoryScanner: any InventoryScanning = AccessibilityInventoryScanner(),
+    sourceStatusSnapshot: @escaping @Sendable () -> [StatusWindowState]? = AccessibilityInventoryScanner.sourceStatusSnapshot) {
     self.native = native
     self.store = store
     self.applyMenuBarOrder = applyMenuBarOrder
     self.currentAccessibilityPermission = currentAccessibilityPermission
     self.inventoryScanner = inventoryScanner
+    sourceStatusReader = WindowMetadataReader(load: { _ in
+      // Enumerate every source window; known IDs alone cannot detect newly hidden items.
+      (sourceStatusSnapshot() ?? []).map { window in
+        WindowMetadata(id: window.windowIdentifier, pid: window.processIdentifier,
+          frame: CGRect(x: window.frame.x, y: window.frame.y, width: window.frame.width, height: window.frame.height),
+          isVisible: window.isOnscreen)
+      }
+    })
     let loginItemStatus = loginItemStatus ?? LoginItemStatus()
     self.loginItemStatus = loginItemStatus
     loginEnabled = loginItemStatus.isEnabled
@@ -118,8 +130,10 @@ final class AppModel: ObservableObject {
     native.onReveal = { [weak self] in
       guard let self else { return }
       self.observationRevision &+= 1
+      self.sourceStatusReader.cancelAll()
       self.cancelPanelWatch()
       self.concealed = false
+      self.hiddenSourceRepairs.removeAll()
       self.lastCompleteStatusWindows = nil
       if self.nativeSetupMessage != nil { self.nativeSetupMessage = nil }
       if !self.nativeItemStates.isEmpty { self.nativeItemStates = [:] }
@@ -297,6 +311,7 @@ final class AppModel: ObservableObject {
     observationRevision &+= 1
     pendingMenuBarOrder = nil
     pollTask?.cancel(); cancelScan(); operationTask?.cancel(); cancelPanelWatch()
+    sourceStatusReader.shutdown()
     for observer in applicationObservers { NSWorkspace.shared.notificationCenter.removeObserver(observer) }
     applicationObservers.removeAll()
     native.remove()
@@ -320,9 +335,7 @@ final class AppModel: ObservableObject {
         try? await Task.sleep(for: .seconds(3))
         guard !Task.isCancelled, let self, self.scanGeneration == generation,
           self.scanTask != nil, self.concealed, !self.busy else { return }
-        self.revealForInventoryRecovery()
-        self.message = L("Discovery is taking too long. Items are revealed until a fresh scan completes.")
-        modelLog.error("revealed: discovery exceeded 3 s")
+        await self.handleSlowInventory()
       }
       defer { deadline.cancel() }
       let snapshot = await Task.detached(priority: .utility) {
@@ -352,8 +365,51 @@ final class AppModel: ObservableObject {
   private func cancelScan() {
     scanGeneration += 1
     scanTask?.cancel()
+    sourceStatusReader.cancelAll()
     scanTask = nil
     if scanning { scanning = false }
+  }
+
+  func handleSlowInventory() async {
+    guard scanTask != nil else { return }
+    await verifyConcealmentDuringInventoryFailure(requiringScan: true)
+  }
+
+  private func verifyConcealmentDuringInventoryFailure(requiringScan: Bool = false) async {
+    guard !Task.isCancelled, (!requiringScan || scanTask != nil), concealed, !busy else { return }
+    let generation = scanGeneration
+    let revision = observationRevision
+    let baseline = lastCompleteStatusWindows
+    scanComplete = false
+    var current: [StatusWindowState]?
+    if permissionGranted, unsafeScans == 0, let baseline, !baseline.isEmpty {
+      current = await sourceStatusReader.read([])?.map { window in
+        StatusWindowState(processIdentifier: window.pid, windowIdentifier: window.id,
+          frame: ItemFrame(x: window.frame.minX, y: window.frame.minY,
+            width: window.frame.width, height: window.frame.height), isOnscreen: window.isVisible)
+      }
+    }
+    guard !Task.isCancelled, (!requiringScan || scanTask != nil), concealed, !busy,
+      generation == scanGeneration, revision == observationRevision else { return }
+    let granted = currentAccessibilityPermission()
+    if permissionGranted != granted { permissionGranted = granted }
+    if granted, Self.canRetainConcealment(lastVerified: baseline, current: current, unsafeScans: unsafeScans) {
+      message = NativeMenuActionError.inventoryUnavailable.localizedDescription
+      modelLog.notice("discovery exceeded 3 s with unchanged native sources; keeping items concealed")
+      return
+    }
+    revealForInventoryRecovery()
+    message = granted
+      ? L("Discovery is taking too long. Items are revealed until a fresh scan completes.")
+      : L("Grant Accessibility to discover and organize menu-bar items.")
+    modelLog.error("revealed: discovery exceeded 3 s")
+  }
+
+  static func canRetainConcealment(lastVerified: [StatusWindowState]?, current: [StatusWindowState]?,
+    unsafeScans: Int) -> Bool {
+    guard unsafeScans == 0, let lastVerified, !lastVerified.isEmpty, let current,
+      current == lastVerified, Set(current.map(\.windowIdentifier)).count == current.count else { return false }
+    return current.allSatisfy { $0.processIdentifier > 0 && $0.windowIdentifier > 0 && $0.frame.isUsable }
   }
 
   private struct PreparedInventory {
@@ -376,6 +432,12 @@ final class AppModel: ObservableObject {
   @discardableResult func acceptLatest(_ snapshot: InventorySnapshot) async -> Bool {
     observationRevision &+= 1
     guard !busy, !Task.isCancelled else { return false }
+    guard Date().timeIntervalSince(snapshot.capturedAt) <= 3 else {
+      scanComplete = false
+      if concealed { await verifyConcealmentDuringInventoryFailure() }
+      else { message = NativeMenuActionError.inventoryUnavailable.localizedDescription }
+      return false
+    }
     guard let prepared = prepareInventory(snapshot) else { return true }
     let revision = observationRevision
     let generation = scanGeneration
@@ -391,8 +453,8 @@ final class AppModel: ObservableObject {
     let inventoryUnavailable = NativeMenuActionError.inventoryUnavailable.localizedDescription
     guard let inspection, Date().timeIntervalSince(snapshot.capturedAt) <= 3 else {
       scanComplete = false
-      revealForInventoryRecovery()
-      message = reapplyNotBefore != nil ? geometryUnavailable : inventoryUnavailable
+      if concealed { await verifyConcealmentDuringInventoryFailure() }
+      else { message = inventoryUnavailable }
       return false
     }
     if message == geometryUnavailable || message == inventoryUnavailable { message = nil }
@@ -428,14 +490,12 @@ final class AppModel: ObservableObject {
     let changes = prepared.changes
     let known = prepared.known
     let hidden = prepared.hidden
+    let verifiedVisible = Self.verifiedVisibleSourceKeys(observed, inspection: inspection)
     if nativeSetupMessage != inspection.setupMessage { nativeSetupMessage = inspection.setupMessage }
     if nativeItemStates != inspection.items { nativeItemStates = inspection.items }
     // Polling diff: hidden sources rebind, other additions reconcile, and
     // ambiguous identities stop for review, including during recovery.
     if prepared.watchingLayout {
-      let verifiedVisible = Set(observed.compactMap { item in
-        inspection.items[item.observation.runtimeID]?.isVerifiedVisible == true ? item.identity.persistentKey : nil
-      })
       if Self.inventoryRequiresReveal(changes, known: known, hidden: hidden, verifiedVisible: verifiedVisible) {
         let needsReview = Self.inventoryRequiresReview(changes)
         if needsReview {
@@ -471,6 +531,26 @@ final class AppModel: ObservableObject {
     }
     lastCompleteStatusWindows = prepared.statusWindows
     validateConcealment { inspection.items[$0.observation.runtimeID]?.behindBoundary }
+    repairReturnedHiddenSources(changes, inspection: inspection)
+  }
+
+  func repairReturnedHiddenSources(_ changes: [KeyedChange], inspection: NativeMenuBarController.Inspection) {
+    guard concealed, !recoveryRequired else { return }
+    let hidden = Set(layout.items.filter { $0.placement != .menuBar }.map(\.id))
+    let verifiedVisible = Self.verifiedVisibleSourceKeys(items, inspection: inspection)
+    hiddenSourceRepairs = hiddenSourceRepairs.filter { key, repair in
+      guard hidden.contains(key), let item = liveItem(key), isManageable(item), repair.matches(item) else { return false }
+      return inspection.items[item.observation.runtimeID]?.behindBoundary != true
+    }
+    for key in Self.hiddenSourceRepairKeys(changes, hidden: hidden, verifiedVisible: verifiedVisible) {
+      if let item = liveItem(key), isManageable(item) { hiddenSourceRepairs[key] = HiddenSourceRepair(source: item) }
+    }
+    guard canEdit, !native.hasPendingActivation else { return }
+    let now = Date()
+    for key in hiddenSourceRepairs.keys.sorted() where verifiedVisible.contains(key) {
+      guard let repair = hiddenSourceRepairs[key], repair.canAttempt(now: now) else { continue }
+      enqueuePlacement(key, automatic: true)
+    }
   }
 
   func validateConcealment(using side: (ClassifiedSourceItem) -> Bool?) {
@@ -512,10 +592,10 @@ final class AppModel: ObservableObject {
     if scanComplete != complete { scanComplete = complete }
     // An AX read failure cannot undo a verified layout when WindowServer still
     // reports the same owners, windows, geometry, and visibility.
-    if permissionGranted, !scanComplete, concealed, !busy, unsafeScans == 0,
+    if permissionGranted, !scanComplete, concealed, !busy,
       Date().timeIntervalSince(snapshot.capturedAt) <= 3,
-      let windows = snapshot.statusWindows, !windows.isEmpty,
-      windows == lastCompleteStatusWindows {
+      Self.canRetainConcealment(lastVerified: lastCompleteStatusWindows,
+        current: snapshot.statusWindows, unsafeScans: unsafeScans) {
       incompleteScans = 0
       if wasComplete { modelLog.notice("incomplete scan with unchanged native windows; keeping items concealed") }
       return false
@@ -590,6 +670,49 @@ final class AppModel: ObservableObject {
     }
   }
 
+  static func hiddenSourceRepairKeys(_ changes: [KeyedChange], hidden: Set<String>,
+    verifiedVisible: Set<String>) -> Set<String> {
+    guard !inventoryRequiresReview(changes) else { return [] }
+    return Set(changes.compactMap { change in
+      guard let key = change.key, hidden.contains(key),
+        rebindsProcess(change, hidden: hidden) || (change.windowReplaced && !change.isRankedSibling),
+        verifiedVisible.contains(key) else { return nil }
+      return key
+    })
+  }
+
+  static func verifiedVisibleSourceKeys(_ items: [ClassifiedSourceItem],
+    inspection: NativeMenuBarController.Inspection) -> Set<String> {
+    Set(items.compactMap { item -> String? in
+      guard item.observation.isOnscreen == true, item.observation.statusWindowIdentifier != nil,
+        inspection.items[item.observation.runtimeID]?.isVerifiedVisible == true else { return nil }
+      return item.identity.persistentKey
+    })
+  }
+
+  @MainActor struct HiddenSourceRepair {
+    let source: ClassifiedSourceItem
+    private(set) var attempts = 0
+    private(set) var notBefore = Date.distantPast
+
+    func matches(_ current: ClassifiedSourceItem) -> Bool {
+      NativeMenuBarController.preservesSourceIdentity(original: source, current: current)
+        && source.observation.statusWindowIdentifier == current.observation.statusWindowIdentifier
+    }
+
+    mutating func takeAttempt(now: Date) -> Bool {
+      // A refused source stays in its mismatch/Retry state instead of causing endless native input.
+      guard canAttempt(now: now) else { return false }
+      attempts += 1
+      notBefore = now.addingTimeInterval(3)
+      return true
+    }
+
+    func canAttempt(now: Date) -> Bool { attempts < 3 && now >= notBefore }
+
+    mutating func deferTransientFailure() { attempts = max(0, attempts - 1) }
+  }
+
   /// Reveal when something could be hidden that the user did not place there:
   /// an unknown source, a Menu Bar source that is not verified visible, an
   /// ambiguous group change, a sibling leaving, or a ranked sibling's window
@@ -603,7 +726,9 @@ final class AppModel: ObservableObject {
       // Centre's camera indicator) changes nothing about the hidden section.
       if key.hasPrefix("com.apple.") && change.change.kind == .created { return false }
       switch change.change.kind {
-      case .created: return !known.contains(key) || (!hidden.contains(key) && !verifiedVisible.contains(key))
+      case .created:
+        if change.isSibling && !known.contains(key) { return true }
+        return !hidden.contains(key) && !verifiedVisible.contains(key)
       case .processReplaced: return !hidden.contains(key) && !verifiedVisible.contains(key)
       case .removed, .orderChanged, .runtimeMetadataChanged, .ambiguousInventoryChanged: return false
       }
@@ -710,12 +835,14 @@ final class AppModel: ObservableObject {
   }
 
   private func enqueuePlacement(_ key: String,
-    visiblePlacement: NativeMenuBarController.VisiblePlacement = .leftmost) {
+    visiblePlacement: NativeMenuBarController.VisiblePlacement = .leftmost, automatic: Bool = false) {
     if !placementOperationRunning {
       placementStatuses = Dictionary(uniqueKeysWithValues: layout.items.map { ($0.id, status(for: $0)) })
     }
     pendingPlacementKeys.insert(key)
     pendingVisiblePlacements[key] = visiblePlacement
+    if automatic { automaticPlacementKeys.insert(key) }
+    else { automaticPlacementKeys.remove(key) }
     guard !placementOperationRunning else { return }
     placementOperationRunning = true
     attemptedLaunchRestore = true
@@ -726,7 +853,9 @@ final class AppModel: ObservableObject {
         self.pendingPlacementKeys.removeAll()
         self.placementStatuses.removeAll()
         self.pendingVisiblePlacements.removeAll()
+        self.automaticPlacementKeys.removeAll()
       }
+      var warnings: [String] = []
       while !self.pendingPlacementKeys.isEmpty {
         try Task.checkCancellation()
         let keys = self.pendingPlacementKeys
@@ -735,23 +864,60 @@ final class AppModel: ObservableObject {
         do {
           if Self.canApplyPlacementsIndividually(keys: keys, layout: requested,
             concealed: self.native.isConcealed, hasPendingActivation: self.native.hasPendingActivation) {
-            for saved in requested.items where keys.contains(saved.id) {
+            var failedSource: ClassifiedSourceItem?
+            var deferredWarnings: [String] = []
+            let batchWarnings = try await Self.applyIndividualPlacementsWithFallback(
+              requested.items.filter { keys.contains($0.id) }, move: { saved in
+              failedSource = nil
               try Task.checkCancellation()
-              guard let item = self.liveItem(saved.id), self.isManageable(item) else { continue }
+              guard let item = self.liveItem(saved.id), self.isManageable(item) else { return false }
               let toHidden = saved.placement != .menuBar
-              if toHidden && self.native.isBehindBoundary(item) == true { continue }
-              let moved = try await (toHidden
-                ? self.native.hideWhileConcealed(item)
-                : self.native.showWhileConcealed(item, placement: visiblePlacements[saved.id] ?? .leftmost))
+              if toHidden && self.native.isBehindBoundary(item) == true { return false }
+              guard Self.takePlacementAttempt(automatic: self.automaticPlacementKeys.contains(saved.id),
+                repair: &self.hiddenSourceRepairs[saved.id], source: item, now: Date()) else { return false }
+              failedSource = item
+              let moved: ClassifiedSourceItem
+              do {
+                moved = try await (toHidden
+                  ? self.native.hideWhileConcealed(item)
+                  : self.native.showWhileConcealed(item, placement: visiblePlacements[saved.id] ?? .leftmost))
+              } catch is CancellationError { throw CancellationError() }
+              catch let error as NativeMenuActionError {
+                if self.automaticPlacementKeys.contains(saved.id),
+                  Self.deferAutomaticPlacementFailure(error, repair: &self.hiddenSourceRepairs[saved.id]) {
+                  deferredWarnings.append(error.localizedDescription)
+                  failedSource = nil
+                  return false
+                }
+                throw error
+              }
+              catch { throw AppError.message("\(self.name(for: saved.id)): \(error.localizedDescription)") }
               if let index = self.items.firstIndex(where: { $0.identity.persistentKey == saved.id }) {
                 self.items[index] = moved
               }
-            }
-            if requested.items.contains(where: { keys.contains($0.id) && $0.placement == .menuBar }) {
-              try await self.synchronizeMenuBarOrder(self.menuBarItems(in: requested))
-            }
+              failedSource = nil
+              return true
+            }, refresh: {
+              try await self.freshOperationInventory(preservingConcealment: true)
+              if let original = failedSource {
+                guard let key = original.identity.persistentKey, let current = self.liveItem(key),
+                  NativeMenuBarController.preservesSourceIdentity(original: original, current: current),
+                  original.observation.statusWindowIdentifier == current.observation.statusWindowIdentifier else {
+                  throw AppError.message(L("Menu-bar items changed. Review the layout before hiding again."))
+                }
+              }
+            }, verifyConcealed: {
+              guard self.native.isConcealed, !self.native.hasPendingActivation else {
+                throw NativeMenuActionError.inventoryUnavailable
+              }
+            }, reorder: {
+              if requested.items.contains(where: { keys.contains($0.id) && $0.placement == .menuBar }) {
+                try await self.synchronizeMenuBarOrder(self.menuBarItems(in: requested))
+              }
+            })
+            warnings += batchWarnings + deferredWarnings
             self.concealed = self.native.isConcealed
-            self.message = nil
+            self.message = warnings.isEmpty ? nil : warnings.joined(separator: "\n")
           } else {
             let restoring = Set(requested.items.filter { keys.contains($0.id) && $0.placement == .menuBar }.map(\.id))
             try await self.applyAndConceal(restoringToMenuBar: restoring, layout: requested)
@@ -762,6 +928,7 @@ final class AppModel: ObservableObject {
           continue
         }
         self.pendingPlacementKeys.subtract(keys)
+        self.automaticPlacementKeys.subtract(keys)
         for key in keys { self.pendingVisiblePlacements.removeValue(forKey: key) }
       }
     }
@@ -780,6 +947,31 @@ final class AppModel: ObservableObject {
     return [.inputNotIdle, .inputInterrupted, .placementInterrupted].contains(error)
   }
 
+  static func takePlacementAttempt(automatic: Bool, repair: inout HiddenSourceRepair?,
+    source: ClassifiedSourceItem, now: Date) -> Bool {
+    guard automatic else { return true }
+    guard var pending = repair, pending.matches(source), pending.takeAttempt(now: now) else { return false }
+    repair = pending
+    return true
+  }
+
+  static func applyIndividualPlacementsWithFallback(_ placements: [SavedItem],
+    move: (SavedItem) async throws -> Bool, refresh: () async throws -> Void,
+    verifyConcealed: () throws -> Void, reorder: () async throws -> Void) async throws -> [String] {
+    try verifyConcealed()
+    return try await applyPlacementsWithFallback(placements, move: move, refresh: refresh,
+      repairBoundary: { try verifyConcealed() }, conceal: { try verifyConcealed() }, reorder: reorder)
+  }
+
+  static func deferAutomaticPlacementFailure(_ error: Error, repair: inout HiddenSourceRepair?) -> Bool {
+    guard let error = error as? NativeMenuActionError,
+      [.inputNotIdle, .inputInterrupted, .placementInterrupted, .inventoryUnavailable].contains(error),
+      var pending = repair else { return false }
+    pending.deferTransientFailure()
+    repair = pending
+    return true
+  }
+
   func applySavedLayout(restoringToMenuBar key: String? = nil, recovering: Bool = false) {
     runLayoutOperation(recovering: recovering) {
       try await self.applyAndConceal(restoringToMenuBar: Set(key.map { [$0] } ?? []))
@@ -792,7 +984,7 @@ final class AppModel: ObservableObject {
     let shouldRecover = recovering || launchRestoreRunning
     attemptedLaunchRestore = true
     message = L("Applying placements…")
-    runOperation {
+    runOperation(revealOnFailure: false) {
       self.recoveringLayout = shouldRecover
       defer { self.recoveringLayout = false }
       do { try await operation() }
@@ -811,11 +1003,20 @@ final class AppModel: ObservableObject {
     modelLog.notice("temporary layout failure; retrying after input and inventory settle: \(error.localizedDescription, privacy: .public)")
   }
 
-  private func freshOperationInventory() async throws {
+  private func freshOperationInventory(preservingConcealment: Bool = false) async throws {
     let snapshot = await Task.detached(priority: .userInitiated) {
       AccessibilityInventoryScanner().scan()
     }.value
     try Task.checkCancellation()
+    if preservingConcealment {
+      let granted = currentAccessibilityPermission() && snapshot.permission == .granted
+      if permissionGranted != granted { permissionGranted = granted }
+      guard granted, snapshot.completeness == .complete,
+        Date().timeIntervalSince(snapshot.capturedAt) <= 3 else {
+        scanComplete = false
+        throw NativeMenuActionError.inventoryUnavailable
+      }
+    }
     accept(snapshot)
     try Task.checkCancellation() // identity review or a failed save cancels recovery
     guard permissionGranted, !recoveryRequired else {
@@ -838,83 +1039,229 @@ final class AppModel: ObservableObject {
     }
     let placements = layout.items.filter { $0.placement != .menuBar }
       + layout.items.filter { $0.placement == .menuBar }
-    for saved in placements {
+    var failedSource: ClassifiedSourceItem?
+    let warnings = try await Self.applyPlacementsWithFallback(placements,
+      move: { saved in
+        failedSource = nil
+        guard let item = self.liveItem(saved.id), self.isManageable(item) else { return false }
+        let hidden = saved.placement != .menuBar
+        let behind = self.native.isBehindBoundary(item)
+        modelLog.notice("apply \(saved.id, privacy: .public) toHidden=\(hidden) behind=\(String(describing: behind), privacy: .public) clipped=\(self.native.isClipped(item.observation))")
+        if hidden && self.native.isClipped(item.observation) { return false }
+        // Already-clipped, unassigned items cannot be dragged. The native guard
+        // still rejects any visible protected/unassigned item in the hidden section.
+        if hidden ? behind == true : behind != true { return false }
+        do { try await self.native.move(item, toHidden: hidden) }
+        catch is CancellationError { throw CancellationError() }
+        catch let error as NativeMenuActionError { throw error }
+        catch {
+          failedSource = item
+          throw AppError.message("\(self.name(for: saved.id)): \(error.localizedDescription)")
+        }
+        return true
+    }, refresh: {
+      try await self.freshOperationInventory()
+      if let original = failedSource, let key = original.identity.persistentKey {
+        let identityChanged: Bool
+        if let current = self.liveItem(key) {
+          identityChanged = !NativeMenuBarController.preservesSourceIdentity(original: original, current: current)
+        } else {
+          guard let window = original.observation.statusWindowIdentifier,
+            let windows = self.lastCompleteStatusWindows else { throw NativeMenuActionError.inventoryUnavailable }
+          identityChanged = windows.contains {
+            $0.windowIdentifier == window && $0.processIdentifier == original.observation.processIdentifier
+          }
+        }
+        if identityChanged {
+          throw AppError.message(L("Menu-bar items changed. Review the layout before hiding again."))
+        }
+      }
+    }, repairBoundary: {
+      try await self.native.prepareLayout(keepingVisible: Set(layout.items.filter { $0.placement == .menuBar }.map(\.id)))
+    }, conceal: {
+      let hidden = Set(layout.items.filter { $0.placement != .menuBar }.map(\.id))
+      if !hidden.isEmpty { try await self.native.conceal(allowedKeys: hidden) }
+      else { self.native.reveal() }
+      self.concealed = self.native.isConcealed
+    }, reorder: { try await self.synchronizeMenuBarOrder(self.menuBarItems(in: layout)) })
+    concealed = native.isConcealed
+    message = warnings.isEmpty ? nil : warnings.joined(separator: "\n")
+  }
+
+  static func applyPlacementsWithFallback(_ placements: [SavedItem],
+    move: (SavedItem) async throws -> Bool,
+    refresh: () async throws -> Void,
+    repairBoundary: () async throws -> Void,
+    conceal: () async throws -> Void,
+    reorder: () async throws -> Void) async throws -> [String] {
+    var warnings: [String] = []
+    var failedKeys = Set<String>()
+    var next = 0
+    while next < placements.count {
       try Task.checkCancellation()
-      guard let item = liveItem(saved.id), isManageable(item) else { continue }
-      let hidden = saved.placement != .menuBar
-      let behind = native.isBehindBoundary(item)
-      modelLog.notice("apply \(saved.id, privacy: .public) toHidden=\(hidden) behind=\(String(describing: behind), privacy: .public) clipped=\(self.native.isClipped(item.observation))")
-      if hidden && native.isClipped(item.observation) { continue }
-      // Already-clipped, unassigned items cannot be dragged. The native guard
-      // still rejects any visible protected/unassigned item in the hidden section.
-      if hidden ? behind == true : behind != true { continue }
-      do { try await native.move(item, toHidden: hidden) }
+      let saved = placements[next]
+      next += 1
+      guard !failedKeys.contains(saved.id) else { continue }
+      let moved: Bool
+      do { moved = try await move(saved) }
       catch is CancellationError { throw CancellationError() }
       catch let error as NativeMenuActionError { throw error }
-      catch { throw AppError.message("\(name(for: saved.id)): \(error.localizedDescription)") }
-      try await freshOperationInventory()
+      catch {
+        // A refused source must not undo other placements, but its failed move may remove our boundary.
+        try Task.checkCancellation()
+        try await refresh()
+        try await repairBoundary()
+        try await refresh()
+        warnings.append(error.localizedDescription)
+        failedKeys.insert(saved.id)
+        // A repaired divider can expose earlier placements; each refused source causes at most one restart.
+        next = 0
+        continue
+      }
+      if moved { try await refresh() }
     }
-    try await synchronizeMenuBarOrder(menuBarItems(in: layout))
     try Task.checkCancellation()
-    let hidden = Set(layout.items.filter { $0.placement != .menuBar }.map(\.id))
-    if !hidden.isEmpty {
-      try await native.conceal(allowedKeys: hidden)
-    } else {
-      native.reveal()
+    try await conceal()
+    try Task.checkCancellation()
+    do { try await reorder() }
+    catch is CancellationError { throw CancellationError() }
+    catch { warnings.append(error.localizedDescription) }
+    return warnings
+  }
+
+  static func deliverActivationOnce(activate: () async throws -> Void,
+    cleanupUndelivered: () -> Void) async throws {
+    try Task.checkCancellation()
+    do { try await activate() }
+    catch {
+      // These errors are emitted only by checks before the first AX/pointer delivery.
+      if !Task.isCancelled, let failure = error as? NativeMenuActionError,
+        [.inputNotIdle, .inventoryUnavailable].contains(failure) {
+        cleanupUndelivered()
+      }
+      throw error
     }
-    concealed = native.isConcealed
-    message = nil
   }
 
   func activate(_ item: ClassifiedSourceItem, secondary: Bool = false) {
     guard canEdit, isManageable(item) else { return }
+    let owner = NSRunningApplication(processIdentifier: item.observation.processIdentifier)
     // A previous panel's lifetime must never restore this new interaction.
     cancelPanelWatch()
     runOperation(restoreSettingsFocus: false, revealOnFailure: false, showSettingsOnFailure: true) {
       self.message = nil
-      if self.native.hasPendingActivation { try await self.native.restoreActivation() }
+      if self.native.hasPendingActivation { try await self.returnPromotedItem() }
       try await self.native.waitForActivationReadiness(item, secondary: secondary)
-      let prepared = try await self.native.prepareActivation(item)
+      let prepared: ClassifiedSourceItem
+      do { prepared = try await self.native.prepareActivation(item) }
+      catch {
+        // No activation was delivered, so a partially promoted source can return safely.
+        self.watchPanel(of: 0, opened: [], dismissed: true)
+        throw error
+      }
       let pid = item.observation.processIdentifier
       let interaction = NativeMenuInteraction(processIdentifier: pid)
-      defer { interaction?.cancel() }
+      var backgroundObservation = false
+      defer { if !backgroundObservation { interaction?.cancel() } }
       var responseTimedOut = false
-      do { try await self.native.activatePrepared(prepared, secondary: secondary) }
+      var cleanupScheduled = false
+      do {
+        try await Self.deliverActivationOnce(activate: {
+          try await self.native.activatePrepared(prepared, secondary: secondary)
+        }, cleanupUndelivered: {
+          cleanupScheduled = self.watchPanel(of: 0, opened: [], dismissed: true)
+        })
+      }
       catch NativeMenuActionError.responseTimedOut { responseTimedOut = true }
-      let dismissed = await interaction?.waitForDismissal() == true
+      catch {
+        if !cleanupScheduled {
+          backgroundObservation = self.watchPanel(of: pid, opened: interaction?.observedWindowIDs ?? [],
+            interaction: interaction, owner: owner)
+        }
+        throw error
+      }
+      let dismissed = await interaction?.waitForDismissal(retainingObservationOnTimeout: true) == true
       try Task.checkCancellation()
       if responseTimedOut && !dismissed && interaction?.observedInterface != true {
+        backgroundObservation = self.watchPanel(of: pid, opened: interaction?.observedWindowIDs ?? [],
+          interaction: interaction, owner: owner)
         throw NativeMenuActionError.responseTimedOut
       }
       if dismissed {
-        try await self.native.restoreActivation()
+        try await self.returnPromotedItem()
       } else {
         self.message = L("This app stays visible while its panel is in use. Open TrayNook again to return it to the hidden section.")
-        self.watchPanel(of: pid, opened: interaction?.observedWindowIDs ?? [])
+        backgroundObservation = self.watchPanel(of: pid,
+          opened: interaction?.observedWindowIDs ?? [], interaction: interaction, owner: owner)
       }
     }
   }
 
   /// Once the panel the activation opened is gone, return the item on its own
   /// so the next click on the tray icon opens the dropdown directly.
-  private func watchPanel(of pid: Int32, opened: Set<UInt32>) {
+  private func returnPromotedItem() async throws {
+    do { try await native.restoreActivation() }
+    catch {
+      if NativeMenuBarController.shouldRetrySelectedReturn(after: error) {
+        watchPanel(of: 0, opened: [], dismissed: true)
+      }
+      throw error
+    }
+  }
+
+  @discardableResult private func watchPanel(of pid: Int32, opened: Set<UInt32>,
+    interaction: NativeMenuInteraction? = nil, owner: NSRunningApplication? = nil,
+    dismissed: Bool = false) -> Bool {
+    guard !Task.isCancelled else { return false }
     cancelPanelWatch()
-    guard !opened.isEmpty else { return }
+    guard native.hasPendingActivation,
+      dismissed || interaction?.observedInterface == true || !opened.isEmpty || owner != nil else { return false }
     panelWatch = Task { [weak self] in
+      defer { interaction?.cancel() }
+      var dismissed = dismissed
       while !Task.isCancelled {
-        try? await Task.sleep(for: .milliseconds(500))
+        do { try await Task.sleep(for: .milliseconds(500)) }
+        catch { return }
         guard let self, !Task.isCancelled, self.native.hasPendingActivation else { return }
-        guard let current = NativeMenuInteraction.panelWindows(of: pid), current.isDisjoint(with: opened)
-        else { continue }
-        if self.busy || self.dropdownShown { continue }
-        modelLog.notice("panel closed; returning the promoted item")
-        self.runOperation(restoreSettingsFocus: false, revealOnFailure: false) {
-          try await self.native.restoreActivation()
-          self.message = nil
+        if !dismissed {
+          if owner?.isTerminated == true { dismissed = true }
+          else if let interaction { dismissed = interaction.dismissalObserved() }
+          else if !opened.isEmpty, let current = NativeMenuInteraction.visibleWindowIDs(of: pid) {
+            dismissed = current.isDisjoint(with: opened)
+          }
+        }
+        guard dismissed else { continue }
+        do {
+          try await NativeMenuBarController.retrySelectedReturn(isPending: { [weak self] in
+            self?.native.hasPendingActivation == true
+          }, restore: { [weak self] in
+            guard let self, !Task.isCancelled else { throw CancellationError() }
+            guard !self.busy, !self.dropdownShown else { throw NativeMenuActionError.inputNotIdle }
+            modelLog.notice("interface closed; returning the promoted item")
+            var outcome: Result<Void, Error>?
+            self.runOperation(restoreSettingsFocus: false, revealOnFailure: false) {
+              do {
+                try await self.native.restoreActivation()
+                self.message = nil
+                outcome = .success(())
+              } catch {
+                outcome = .failure(error)
+                throw error
+              }
+            }
+            guard let task = self.operationTask else { throw NativeMenuActionError.inputNotIdle }
+            await task.value
+            try Task.checkCancellation()
+            guard let outcome else { throw CancellationError() }
+            try outcome.get()
+          })
+        } catch {
+          // The operation already reports permanent errors; another explicit action can retry.
         }
         return
       }
     }
+    return true
   }
 
   private func cancelPanelWatch() {

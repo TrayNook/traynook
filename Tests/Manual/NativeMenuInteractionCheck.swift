@@ -80,6 +80,7 @@ import ApplicationServices
       guard let noOpen = NativeMenuInteraction(processIdentifier: child.processIdentifier) else {
         print("FAILED: No-open registration."); return
       }
+      defer { noOpen.cancel() }
       let started = ContinuousClock.now
       let unexpectedClose = await noOpen.waitForDismissal()
       let elapsed = started.duration(to: .now)
@@ -91,6 +92,7 @@ import ApplicationServices
       guard let cancellation = NativeMenuInteraction(processIdentifier: child.processIdentifier) else {
         print("FAILED: Cancellation registration."); return
       }
+      defer { cancellation.cancel() }
       let waiting = Task { await cancellation.waitForDismissal() }
       try await Task.sleep(for: .milliseconds(100))
       waiting.cancel()
