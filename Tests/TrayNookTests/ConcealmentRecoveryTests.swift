@@ -8,6 +8,37 @@ import Testing
   .enabled(if: ProcessInfo.processInfo.environment["TRAYNOOK_APPKIT_TESTS"] == "1"))
 @MainActor
 struct ConcealmentRecoveryTests {
+  @Test("Diagnostics snapshot preserves scheduled recovery and its original event")
+  func diagnosticsPreservesRecovery() throws {
+    let fixture = Fixture()
+    defer { fixture.close() }
+    let model = fixture.model
+    model.environmentChanged("fixture")
+    let event = try #require(model.lastReveal)
+    let retry = try #require(model.reapplyNotBefore)
+    let saved = model.layout
+    let observed = model.items
+    let report = model.diagnosticsReport()
+    #expect(report.lastReveal == event)
+    #expect(event.reason == .environmentChange)
+    #expect(report.reapplyNotBefore == retry)
+    #expect(!report.concealed && !report.busy)
+    #expect(report.hiddenSourceRepairs.isEmpty)
+    #expect(model.diagnosticsReport() == report)
+    #expect(model.lastReveal == event && model.reapplyNotBefore == retry)
+    #expect(model.layout == saved && model.items == observed)
+    model.reveal()
+    #expect(model.lastReveal?.reason == .userReveal)
+    #expect(model.diagnosticsReport().reapplyNotBefore == nil)
+  }
+
+  @Test("Diagnostics preserves original failure through native cleanup and Settings reveal")
+  func diagnosticsPreservesFailure() async {
+    let fixture = Fixture()
+    defer { fixture.close() }
+    #expect(await AppModel.verifyLaunchRecoveryBehavior(native: fixture.model.native))
+  }
+
   @Test("Slow AX discovery keeps a verified unchanged native section hidden and pauses editing")
   func slowDiscoveryRetainsVerifiedConcealment() async throws {
     let scanner = HeldConcealmentScanner()
@@ -191,6 +222,12 @@ struct ConcealmentRecoveryTests {
     #expect(model.pendingPlacementKeys == [Fixture.hidden])
     #expect(model.concealed)
     #expect(model.layout == saved)
+    let diagnostics = model.diagnosticsReport()
+    #expect(diagnostics.pendingPlacementCount == 1 && diagnostics.automaticPlacementCount == 1)
+    #expect(diagnostics.pendingPlacementBundles == [Fixture.hidden])
+    #expect(diagnostics.hiddenSourceRepairs.first?.attempts == 0)
+    #expect(model.diagnosticsReport() == diagnostics)
+    #expect(model.pendingPlacementKeys == [Fixture.hidden] && model.concealed)
     // Cancel before the queued task can perform native work; this is a scheduling check.
     model.reveal()
     await Task.yield()

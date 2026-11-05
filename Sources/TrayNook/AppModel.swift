@@ -52,6 +52,8 @@ final class AppModel: ObservableObject {
   private var incompleteScans = 0
   private var lastCompleteStatusWindows: [StatusWindowState]?
   private var unsafeScans = 0
+  private(set) var lastReveal: DiagnosticsReport.Event?
+  private var operationInitialReveal: DiagnosticsReport.Event?
   @Published var selectedTab = 0 {
     didSet { if selectedTab == 2 && oldValue != 2 { refreshLoginStatus() } }
   }
@@ -126,7 +128,11 @@ final class AppModel: ObservableObject {
     self.loginItemStatus = loginItemStatus
     loginEnabled = loginItemStatus.isEnabled
     do { layout = try store?.load() ?? SavedLayout() }
-    catch { recoveryRequired = true; message = L("Saved layout cannot be read safely. Reset Layout to start again; the original file is preserved until then.") }
+    catch {
+      recoveryRequired = true
+      recordReveal(.operationFailure, failure: "layoutLoadFailed")
+      message = L("Saved layout cannot be read safely. Reset Layout to start again; the original file is preserved until then.")
+    }
     native.onReveal = { [weak self] in
       guard let self else { return }
       self.observationRevision &+= 1
@@ -139,6 +145,7 @@ final class AppModel: ObservableObject {
       if !self.nativeItemStates.isEmpty { self.nativeItemStates = [:] }
     }
     native.onExternalReveal = { [weak self] in
+      self?.recordReveal(.userReveal)
       self?.observationRevision &+= 1
       self?.cancelPanelWatch()
       self?.pendingMenuBarOrder = nil
@@ -498,11 +505,14 @@ final class AppModel: ObservableObject {
     if prepared.watchingLayout {
       if Self.inventoryRequiresReveal(changes, known: known, hidden: hidden, verifiedVisible: verifiedVisible) {
         let needsReview = Self.inventoryRequiresReview(changes)
+        let affected = changes.filter {
+          Self.inventoryRequiresReveal([$0], known: known, hidden: hidden, verifiedVisible: verifiedVisible)
+        }.compactMap { $0.change.identity?.bundleIdentifier ?? $0.change.runtimeGroup?.bundleIdentifier }
         if needsReview {
-          reveal()
+          reveal(reason: .identityReview, affectedBundles: affected)
           message = L("Menu-bar items changed. Review the layout before hiding again.")
         } else if !recoveringLayout {
-          revealForInventoryRecovery()
+          revealForInventoryRecovery(affectedBundles: affected)
         }
         // Log each actual trigger separately: order changes used to fill the
         // log entry and truncate the source that caused the reveal.
@@ -557,10 +567,12 @@ final class AppModel: ObservableObject {
     guard concealed else { unsafeScans = 0; return }
     // Sample each source once: re-reading changing geometry can disagree with the decision.
     var needsReview = false
+    var affected: [String] = []
     let unsafe = items.compactMap { item -> String? in
       let behind = side(item)
       let assigned = isManageable(item) && layout.items.contains { $0.id == item.identity.persistentKey && $0.placement != .menuBar }
       guard behind == nil || (behind == true && !assigned) else { return nil }
+      if let bundle = item.observation.bundleIdentifier { affected.append(bundle) }
       if behind == true { needsReview = true }
       let frame = item.observation.frame.map { "\($0.x),\($0.y) \($0.width)x\($0.height)" } ?? "no frame"
       return "\(item.identity.persistentKey ?? "nil")[\(frame) on=\(String(describing: item.observation.isOnscreen))] behind=\(String(describing: behind)) assigned=\(assigned)"
@@ -574,10 +586,10 @@ final class AppModel: ObservableObject {
     }
     modelLog.error("revealed: unsafe items: \(unsafe.joined(separator: " ; "), privacy: .public)")
     if needsReview {
-      reveal()
+      reveal(reason: .identityReview, affectedBundles: affected)
       message = L("An unassigned or protected item is behind the separator. Items have been revealed.")
     } else {
-      revealForInventoryRecovery()
+      revealForInventoryRecovery(reason: .geometryUnavailable, affectedBundles: affected)
       if reapplyNotBefore != nil { reapplyNotBefore = Date().addingTimeInterval(3) }
       message = L("Menu-bar geometry could not be verified. Items are revealed; the saved layout is applied again shortly.")
     }
@@ -613,7 +625,12 @@ final class AppModel: ObservableObject {
     guard permissionGranted, scanComplete else {
       // A preparation error must reach the operation's completion UI. Only an
       // external reveal cancels that task; failing its own scan is an error.
-      if busy { native.reveal(); concealed = false }
+      if busy {
+        if lastReveal == operationInitialReveal {
+          recordReveal(.inventoryUnavailable, failure: granted ? nil : "accessibilityDenied")
+        }
+        native.reveal(); concealed = false
+      }
       else { revealForInventoryRecovery() }
       modelLog.error("revealed: scan permission=\(snapshot.permission.rawValue, privacy: .public) completeness=\(snapshot.completeness.rawValue, privacy: .public) warnings=\(snapshot.warnings.joined(separator: " | "), privacy: .public)")
       guard !recoveryRequired else { return false }
@@ -746,7 +763,7 @@ final class AppModel: ObservableObject {
 
   func environmentChanged(_ reason: String) {
     modelLog.notice("environment changed: \(reason, privacy: .public); revealing, re-applying in 10 s")
-    reveal()
+    reveal(reason: .environmentChange)
     message = L("Display or session changed. Items are revealed; the saved layout is applied again shortly.")
     if layout.items.contains(where: { $0.placement != .menuBar }) {
       reapplyNotBefore = Date().addingTimeInterval(10)
@@ -759,14 +776,22 @@ final class AppModel: ObservableObject {
     return true
   }
 
-  private func revealForInventoryRecovery() {
+  private func revealForInventoryRecovery(reason: DiagnosticsReport.Reason = .inventoryUnavailable,
+    affectedBundles: [String] = []) {
     let shouldRecover = concealed && layout.items.contains { $0.placement != .menuBar }
-    reveal(cancelLaunchRestore: false)
+    // Repeated incomplete polls must not replace the event that started recovery.
+    if concealed || lastReveal == nil {
+      reveal(cancelLaunchRestore: false, reason: reason, affectedBundles: affectedBundles)
+    } else {
+      preservingRevealReason { reveal(cancelLaunchRestore: false) }
+    }
     // A transient scan failure must not permanently turn off the saved layout.
     if shouldRecover { reapplyNotBefore = Date() }
   }
 
-  func reveal(cancelLaunchRestore: Bool = true) {
+  func reveal(cancelLaunchRestore: Bool = true, reason: DiagnosticsReport.Reason = .userReveal,
+    affectedBundles: [String] = []) {
+    recordReveal(reason, affectedBundles: affectedBundles)
     pendingMenuBarOrder = nil
     cancelPanelWatch()
     if cancelLaunchRestore {
@@ -774,6 +799,33 @@ final class AppModel: ObservableObject {
       reapplyNotBefore = nil
     }
     operationTask?.cancel(); native.reveal(); concealed = false
+  }
+
+  private func recordReveal(_ reason: DiagnosticsReport.Reason, failure: String? = nil,
+    affectedBundles: [String] = [], at timestamp: Date = Date()) {
+    lastReveal = DiagnosticsReport.Event(reason: reason, timestamp: timestamp,
+      failure: failure, affectedBundles: affectedBundles)
+  }
+
+  private func preservingRevealReason(_ cleanup: () -> Void) {
+    let original = lastReveal
+    defer { lastReveal = original }
+    cleanup()
+  }
+
+  private func recordOperationFailure(_ error: Error, context: String, affectedBundles: [String] = []) {
+    let code: String
+    switch error {
+    case NativeMenuActionError.responseTimedOut: code = "responseTimedOut"
+    case NativeMenuActionError.inputNotIdle: code = "inputNotIdle"
+    case NativeMenuActionError.inputInterrupted: code = "inputInterrupted"
+    case NativeMenuActionError.placementInterrupted: code = "placementInterrupted"
+    case NativeMenuActionError.inventoryUnavailable: code = "inventoryUnavailable"
+    default: code = "failed"
+    }
+    // Localized errors may contain item labels; copy only fixed categories.
+    recordReveal(code == "inventoryUnavailable" ? .inventoryUnavailable : .operationFailure,
+      failure: "\(context).\(code)", affectedBundles: affectedBundles)
   }
 
   func toggleConcealment() {
@@ -847,7 +899,7 @@ final class AppModel: ObservableObject {
     placementOperationRunning = true
     attemptedLaunchRestore = true
     message = nil
-    runOperation(revealOnFailure: false, deactivateApp: false) {
+    runOperation(revealOnFailure: false, deactivateApp: false, diagnosticContext: "placement") {
       defer {
         self.placementOperationRunning = false
         self.pendingPlacementKeys.removeAll()
@@ -883,6 +935,8 @@ final class AppModel: ObservableObject {
                   : self.native.showWhileConcealed(item, placement: visiblePlacements[saved.id] ?? .leftmost))
               } catch is CancellationError { throw CancellationError() }
               catch let error as NativeMenuActionError {
+                self.recordOperationFailure(error, context: "placement",
+                  affectedBundles: item.observation.bundleIdentifier.map { [$0] } ?? [])
                 if self.automaticPlacementKeys.contains(saved.id),
                   Self.deferAutomaticPlacementFailure(error, repair: &self.hiddenSourceRepairs[saved.id]) {
                   deferredWarnings.append(error.localizedDescription)
@@ -891,7 +945,11 @@ final class AppModel: ObservableObject {
                 }
                 throw error
               }
-              catch { throw AppError.message("\(self.name(for: saved.id)): \(error.localizedDescription)") }
+              catch {
+                self.recordOperationFailure(error, context: "placement",
+                  affectedBundles: item.observation.bundleIdentifier.map { [$0] } ?? [])
+                throw AppError.message("\(self.name(for: saved.id)): \(error.localizedDescription)")
+              }
               if let index = self.items.firstIndex(where: { $0.identity.persistentKey == saved.id }) {
                 self.items[index] = moved
               }
@@ -903,6 +961,8 @@ final class AppModel: ObservableObject {
                 guard let key = original.identity.persistentKey, let current = self.liveItem(key),
                   NativeMenuBarController.preservesSourceIdentity(original: original, current: current),
                   original.observation.statusWindowIdentifier == current.observation.statusWindowIdentifier else {
+                  self.recordReveal(.identityReview,
+                    affectedBundles: original.observation.bundleIdentifier.map { [$0] } ?? [])
                   throw AppError.message(L("Menu-bar items changed. Review the layout before hiding again."))
                 }
               }
@@ -984,7 +1044,7 @@ final class AppModel: ObservableObject {
     let shouldRecover = recovering || launchRestoreRunning
     attemptedLaunchRestore = true
     message = L("Applying placements…")
-    runOperation(revealOnFailure: false) {
+    runOperation(revealOnFailure: false, diagnosticContext: "layout") {
       self.recoveringLayout = shouldRecover
       defer { self.recoveringLayout = false }
       do { try await operation() }
@@ -1053,8 +1113,14 @@ final class AppModel: ObservableObject {
         if hidden ? behind == true : behind != true { return false }
         do { try await self.native.move(item, toHidden: hidden) }
         catch is CancellationError { throw CancellationError() }
-        catch let error as NativeMenuActionError { throw error }
+        catch let error as NativeMenuActionError {
+          self.recordOperationFailure(error, context: "placement",
+            affectedBundles: item.observation.bundleIdentifier.map { [$0] } ?? [])
+          throw error
+        }
         catch {
+          self.recordOperationFailure(error, context: "placement",
+            affectedBundles: item.observation.bundleIdentifier.map { [$0] } ?? [])
           failedSource = item
           throw AppError.message("\(self.name(for: saved.id)): \(error.localizedDescription)")
         }
@@ -1073,6 +1139,8 @@ final class AppModel: ObservableObject {
           }
         }
         if identityChanged {
+          self.recordReveal(.identityReview,
+            affectedBundles: original.observation.bundleIdentifier.map { [$0] } ?? [])
           throw AppError.message(L("Menu-bar items changed. Review the layout before hiding again."))
         }
       }
@@ -1148,7 +1216,8 @@ final class AppModel: ObservableObject {
     let owner = NSRunningApplication(processIdentifier: item.observation.processIdentifier)
     // A previous panel's lifetime must never restore this new interaction.
     cancelPanelWatch()
-    runOperation(restoreSettingsFocus: false, revealOnFailure: false, showSettingsOnFailure: true) {
+    runOperation(restoreSettingsFocus: false, revealOnFailure: false, showSettingsOnFailure: true,
+      diagnosticContext: "activation", affectedBundles: item.observation.bundleIdentifier.map { [$0] } ?? []) {
       self.message = nil
       if self.native.hasPendingActivation { try await self.returnPromotedItem() }
       try await self.native.waitForActivationReadiness(item, secondary: secondary)
@@ -1271,9 +1340,13 @@ final class AppModel: ObservableObject {
 
   private func runOperation(restoreSettingsFocus: Bool = true, revealOnFailure: Bool = true, deactivateApp: Bool = true,
     showSettingsOnFailure: Bool = false,
+    diagnosticContext: String = "operation", affectedBundles: [String] = [],
     completion: (@MainActor () -> Void)? = nil,
     _ operation: @escaping @MainActor () async throws -> Void) {
     guard !busy else { return }
+    let previousReveal = lastReveal
+    operationInitialReveal = previousReveal
+    let affected = affectedBundles + (native.pendingActivationBundleIdentifier.map { [$0] } ?? [])
     busy = true
     cancelScan()
     closeDropdown?()
@@ -1285,25 +1358,34 @@ final class AppModel: ObservableObject {
       catch is CancellationError { if revealOnFailure { native.reveal() } }
       catch NativeMenuActionError.inputNotIdle {
         failed = true
+        if lastReveal == previousReveal {
+          recordOperationFailure(NativeMenuActionError.inputNotIdle, context: diagnosticContext, affectedBundles: affected)
+        }
         message = NativeMenuActionError.inputNotIdle.localizedDescription
       }
       catch {
         failed = true
-        if revealOnFailure { native.reveal() }
-        message = error.localizedDescription
-        modelLog.error("operation failed: \(error.localizedDescription, privacy: .public)")
-        if launchRestoreRunning && reapplyNotBefore == nil { modelLog.notice("settings: launch restore failed"); showSettings?() }
+        if lastReveal == previousReveal {
+          recordOperationFailure(error, context: diagnosticContext, affectedBundles: affected)
+        }
+        preservingRevealReason {
+          if revealOnFailure { native.reveal() }
+          message = error.localizedDescription
+          modelLog.error("operation failed: \(error.localizedDescription, privacy: .public)")
+          if launchRestoreRunning && reapplyNotBefore == nil { modelLog.notice("settings: launch restore failed"); showSettings?() }
+        }
       }
       launchRestoreRunning = false
       concealed = native.isConcealed
       busy = false
+      operationInitialReveal = nil
       operationTask = nil
       if !Task.isCancelled { applyPendingMenuBarOrder() }
       if deactivateApp && restoreSettingsFocus && wasActive { NSApp.activate(ignoringOtherApps: true) }
       refresh()
       if failed && showSettingsOnFailure && !Task.isCancelled {
         queuedDropdown = nil
-        showSettings?()
+        preservingRevealReason { showSettings?() }
       }
       if !Task.isCancelled { completion?() }
       if let queued = queuedDropdown {
@@ -1352,8 +1434,15 @@ final class AppModel: ObservableObject {
 
   private func synchronizeMenuBarOrder(_ ordered: [ClassifiedSourceItem]) async throws {
     guard ordered.count > 1 else { return }
-    if let applyMenuBarOrder { try await applyMenuBarOrder(ordered) }
-    else { try await native.reorderMenuBarItems(ordered) }
+    do {
+      if let applyMenuBarOrder { try await applyMenuBarOrder(ordered) }
+      else { try await native.reorderMenuBarItems(ordered) }
+    } catch is CancellationError { throw CancellationError() }
+    catch {
+      recordOperationFailure(error, context: "menuBarOrder",
+        affectedBundles: ordered.compactMap { $0.observation.bundleIdentifier })
+      throw error
+    }
   }
 
   /// Mouse movement edits a local preview; persist one final drop and one Undo.
@@ -1432,7 +1521,9 @@ final class AppModel: ObservableObject {
     guard !recoveryRequired else { return false }
     do { try store?.save(layout); return true }
     catch {
-      reveal(); recoveryRequired = true
+      reveal(reason: .operationFailure)
+      recordReveal(.operationFailure, failure: "layoutSaveFailed")
+      recoveryRequired = true
       message = L("Could not save layout. Check available disk space and folder permissions.")
       return false
     }
@@ -1488,12 +1579,32 @@ final class AppModel: ObservableObject {
     }
   }
 
-  func copyDiagnostics() {
+  func diagnosticsReport() -> DiagnosticsReport {
     let info = Bundle.main.infoDictionary ?? [:]
-    let summary = "TrayNook \(info["CFBundleShortVersionString"] ?? "development") (\(info["CFBundleVersion"] ?? "0"))\nmacOS \(ProcessInfo.processInfo.operatingSystemVersionString)\nAccessibility: \(permissionGranted)\nInventory complete: \(scanComplete)\nLayout recovery: \(recoveryRequired)\nNative section concealed: \(concealed)\nPrivate APIs: none\nScreen Recording: \(screenRecordingGranted)\nProxy imagery: \(screenRecordingGranted ? "captured menu-bar items" : "app icons")"
+    return DiagnosticsReport(version: info["CFBundleShortVersionString"] as? String ?? "development",
+      build: info["CFBundleVersion"] as? String ?? "0",
+      macOS: ProcessInfo.processInfo.operatingSystemVersionString,
+      permissionGranted: permissionGranted, scanComplete: scanComplete, recoveryRequired: recoveryRequired,
+      concealed: concealed, screenRecordingGranted: screenRecordingGranted, lastReveal: lastReveal,
+      reapplyNotBefore: reapplyNotBefore, recoveringLayout: recoveringLayout, busy: busy, scanning: scanning,
+      nativeBusy: native.isBusy, incompleteScans: incompleteScans, unsafeScans: unsafeScans,
+      hasPendingActivation: native.hasPendingActivation,
+      pendingActivationBundle: native.pendingActivationBundleIdentifier,
+      panelWatch: panelWatch != nil, dropdownShown: dropdownShown,
+      pendingPlacementCount: pendingPlacementKeys.count, automaticPlacementCount: automaticPlacementKeys.count,
+      pendingPlacementBundles: pendingPlacementKeys.map(Self.bundle(ofKey:)),
+      automaticPlacementBundles: automaticPlacementKeys.map(Self.bundle(ofKey:)),
+      hiddenSourceRepairs: hiddenSourceRepairs.values.map {
+        DiagnosticsReport.Repair(bundleIdentifier: $0.source.observation.bundleIdentifier,
+          attempts: $0.attempts, notBefore: $0.notBefore)
+      })
+  }
+
+  func copyDiagnostics() {
+    let summary = diagnosticsReport().text
     NSPasteboard.general.clearContents()
     NSPasteboard.general.setString(summary, forType: .string)
-    message = L("Diagnostics copied. No app inventory or item labels included.")
+    message = L("Diagnostics copied. Includes affected-app bundle identifiers; no full app inventory, item labels, window titles, or images.")
   }
 
   /// Exercises launch failure handling without native moves or saved-state writes.
@@ -1584,20 +1695,41 @@ final class AppModel: ObservableObject {
       cancelled.reveal()
       throw NativeMenuActionError.inventoryUnavailable
     }
-    guard await finish(cancelled), cancelled.reapplyNotBefore == nil else {
+    guard await finish(cancelled), cancelled.reapplyNotBefore == nil,
+      cancelled.lastReveal?.reason == .userReveal else {
       fputs("TRAYNOOK_CANCELLED_LAUNCH_RECOVERY_RETRIED\n", stderr)
       return false
     }
 
     let failed = launchModel()
     var settingsOpened = false
+    var originalFailure: DiagnosticsReport.Event?
     failed.showSettings = { [weak failed] in
       settingsOpened = true
+      originalFailure = failed?.lastReveal
       if failed?.busy == true { failed?.reveal() }
     }
     failed.runLayoutOperation(recovering: false) { throw NativeMenuActionError.responseTimedOut }
-    guard await finish(failed), failed.reapplyNotBefore == nil, settingsOpened else {
+    guard await finish(failed), failed.reapplyNotBefore == nil, settingsOpened,
+      failed.lastReveal == originalFailure, originalFailure?.reason == .operationFailure,
+      originalFailure?.failure == "layout.responseTimedOut" else {
       fputs("TRAYNOOK_PERMANENT_LAUNCH_FAILURE_RETRIED\n", stderr)
+      return false
+    }
+    let revalidation = launchModel()
+    let original = DiagnosticsReport.Event(reason: .operationFailure,
+      timestamp: Date(timeIntervalSince1970: 1_794_000_000), failure: "placement.failed",
+      affectedBundles: ["example.refusing"])
+    revalidation.runOperation(deactivateApp: false) {
+      revalidation.lastReveal = original
+      _ = revalidation.acceptScanStatus(InventorySnapshot(capturedAt: Date(), permission: .granted,
+        completeness: .incomplete, items: [], warnings: [],
+        metrics: ScanMetrics(durationMilliseconds: 0, inspectedApplicationCount: 0, sourceItemCount: 0)))
+      throw AppError.message("Private item label must not enter diagnostics")
+    }
+    guard await finish(revalidation), revalidation.lastReveal == original,
+      !revalidation.diagnosticsReport().text.contains("Private item label") else {
+      fputs("TRAYNOOK_DIAGNOSTICS_LOST_ORIGINAL_FAILURE\n", stderr)
       return false
     }
     let feedbackCases: [(Error?, Bool, Bool)] = [

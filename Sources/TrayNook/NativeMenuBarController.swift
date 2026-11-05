@@ -551,6 +551,7 @@ final class NativeMenuBarController: NSObject {
   private var pendingReleasePID: Int32?
   private var activeEventRelay: TargetedMenuBarEventRelay?
   var hasPendingActivation: Bool { pendingActivation != nil }
+  var pendingActivationBundleIdentifier: String? { pendingActivation?.source.observation.bundleIdentifier }
 
   enum VisiblePlacement {
     case leftmost
