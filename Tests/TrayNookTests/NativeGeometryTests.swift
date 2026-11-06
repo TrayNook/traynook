@@ -11,6 +11,41 @@ struct NativeGeometryTests {
   private let boundary = ItemFrame(x: 1222, y: 0, width: 18, height: 24)
   private let launcher = ItemFrame(x: 1240, y: 0, width: 24, height: 24)
 
+  @Test("Display attachment grows concealment and removal never shrinks it")
+  func concealmentLengthRetainsDisplayCoverage() {
+    let initial = NativeMenuBarController.concealmentLength(current: 2, displayWidths: [1728])
+    #expect(initial == 1730)
+    let connected = NativeMenuBarController.concealmentLength(current: initial, displayWidths: [1728, 3008])
+    #expect(connected == 3010)
+    #expect(NativeMenuBarController.concealmentLength(current: connected, displayWidths: [1728]) == connected)
+    #expect(NativeMenuBarController.concealmentLength(current: connected, displayWidths: []) == connected)
+    #expect(NativeMenuBarController.concealmentLength(current: connected,
+      displayWidths: [.nan, .infinity, -1, 0]) == connected)
+  }
+
+  @Test("Only unambiguous onscreen AX source rows identify the inventory display")
+  func inventoryDisplayRejectsSyntheticAndMixedRows() {
+    let screens: [(id: UInt32, bounds: CGRect)] = [
+      (1, CGRect(x: 0, y: 0, width: 1728, height: 1117)),
+      (2, CGRect(x: -700, y: -1692, width: 3008, height: 1692)),
+    ]
+    func source(y: Double, role: String = "AXMenuBarItem", onscreen: Bool? = true) -> RawSourceItemObservation {
+      RawSourceItemObservation(runtimeID: "fixture:\(y)", processIdentifier: 100,
+        bundleIdentifier: "example.fixture", applicationName: "Fixture", role: role,
+        frame: ItemFrame(x: 1200, y: y, width: 24, height: 24), actions: ["AXPress"],
+        metadata: LiveAccessibilityMetadata(), observedOrder: 0, isOnscreen: onscreen)
+    }
+    #expect(NativeMenuBarController.inventoryDisplay(for: [source(y: 6.5)], screens: screens) == 1)
+    #expect(NativeMenuBarController.inventoryDisplay(for: [source(y: -1692)], screens: screens) == 2)
+    #expect(NativeMenuBarController.inventoryDisplay(for: [source(y: 6.5), source(y: -1692)], screens: screens) == nil)
+    #expect(NativeMenuBarController.inventoryDisplay(for: [source(y: 6.5),
+      source(y: -1692, role: "UnverifiedStatusWindow")], screens: screens) == 1)
+    for observations in [[], [source(y: 6.5, onscreen: false)], [source(y: 6.5, onscreen: nil)],
+      [source(y: 6.5, role: "UnverifiedStatusWindow")], [source(y: 2000)]] {
+      #expect(NativeMenuBarController.inventoryDisplay(for: observations, screens: screens) == nil)
+    }
+  }
+
   @Test("Physical camera clipping uses display coordinates without a boundary window")
   func cameraCutoutCoordinates() {
     let screen = CGRect(x: 0, y: 0, width: 1728, height: 1117)

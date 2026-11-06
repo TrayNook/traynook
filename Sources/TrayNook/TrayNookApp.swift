@@ -65,7 +65,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
     launcher.button?.action = #selector(launcherClicked)
     launcher.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
     let native = NativeMenuBarController(launcher: launcher)
-    if smokeTest && !AppModel.verifyRecoveryBehavior(native: native) {
+    if smokeTest && (!native.verifyDisplayChangeBehavior() || !AppModel.verifyRecoveryBehavior(native: native)) {
       native.remove()
       fputs("TRAYNOOK_MODEL_SMOKE_FAILED\n", stderr)
       exit(1)
@@ -142,8 +142,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
 
   @objc private func environmentChanged(_ notification: Notification) {
     dropdownRequest += 1
-    popover.performClose(nil)
     model.environmentChanged(notification.name.rawValue)
+    popover.performClose(nil)
   }
 
   @objc private func launcherClicked() {

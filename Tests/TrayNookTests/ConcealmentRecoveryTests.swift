@@ -8,6 +8,211 @@ import Testing
   .enabled(if: ProcessInfo.processInfo.environment["TRAYNOOK_APPKIT_TESTS"] == "1"))
 @MainActor
 struct ConcealmentRecoveryTests {
+  @Test("Display mirror replacement preserves ranked identities while confirmed unsafe placement still reveals")
+  func screenChangesPreserveRankedMirrorIdentities() {
+    let fixture = Fixture()
+    defer { fixture.close() }
+    #expect(AppModel.verifyRankedDisplayRecovery(native: fixture.model.native))
+  }
+
+  @Test("Display recovery keeps a newly expanded native boundary before the model catches up")
+  func screenChangesDuringNativeConcealment() {
+    let fixture = Fixture()
+    defer { fixture.close() }
+    let model = fixture.model
+    model.concealed = false
+    #expect(model.native.verifyDisplayChangeBehavior(afterScreenChange: {
+      model.environmentChanged(NSApplication.didChangeScreenParametersNotification.rawValue)
+      guard model.concealed, !model.canEdit else { return false }
+      for _ in 0..<6 {
+        guard !model.acceptScanStatus(fixture.snapshot(complete: false, windows: nil)),
+          model.concealed, model.reapplyNotBefore == nil else { return false }
+      }
+      return model.lastReveal == nil
+    }))
+  }
+
+  @Test("Display changes preserve concealment through incomplete scans with recreated mirror windows")
+  func screenChangesKeepConcealment() {
+    let fixture = Fixture()
+    defer { fixture.close() }
+    let model = fixture.model
+    let saved = model.layout
+    model.environmentChanged(NSApplication.didChangeScreenParametersNotification.rawValue)
+    #expect(model.concealed)
+    #expect(!model.scanComplete && !model.canEdit)
+    #expect(model.reapplyNotBefore == nil)
+    #expect(model.lastReveal == nil)
+    let mirrored = fixture.windows.map { window in
+      StatusWindowState(processIdentifier: window.processIdentifier,
+        windowIdentifier: window.windowIdentifier + 1000,
+        frame: ItemFrame(x: window.frame.x - 700, y: -1692,
+          width: window.frame.width, height: 24), isOnscreen: window.isOnscreen)
+    }
+    for _ in 0..<6 {
+      #expect(!model.acceptScanStatus(fixture.snapshot(complete: false, windows: mirrored)))
+      #expect(model.concealed)
+      #expect(!model.canEdit)
+      #expect(model.reapplyNotBefore == nil)
+    }
+    #expect(model.layout == saved)
+    #expect(model.acceptScanStatus(fixture.snapshot()))
+    #expect(!model.canEdit && !model.canEditPlacement(Fixture.hidden))
+    model.validateConcealment { $0.identity.persistentKey == Fixture.hidden }
+    #expect(model.concealed && model.canEdit)
+    #expect(model.lastReveal == nil)
+  }
+
+  @Test("Display changes retain concealment through unknown geometry and restore ordinary safety after recovery")
+  func screenChangesWaitForVerifiedGeometry() {
+    let fixture = Fixture()
+    defer { fixture.close() }
+    let model = fixture.model
+    model.environmentChanged(NSApplication.didChangeScreenParametersNotification.rawValue)
+    for _ in 0..<3 {
+      #expect(model.acceptScanStatus(fixture.snapshot()))
+      model.validateConcealment { _ in nil }
+      #expect(model.concealed && !model.canEdit)
+      #expect(model.reapplyNotBefore == nil)
+    }
+    #expect(model.acceptScanStatus(fixture.snapshot()))
+    model.validateConcealment { $0.identity.persistentKey == Fixture.hidden }
+    #expect(model.concealed && model.canEdit)
+    model.validateConcealment { _ in nil }
+    model.validateConcealment { _ in nil }
+    #expect(!model.concealed)
+    #expect(model.lastReveal?.reason == .geometryUnavailable)
+  }
+
+  @Test("Display revalidation still reveals confirmed unsafe placement or permission loss", arguments: [false, true])
+  func screenChangesKeepConfirmedSafety(permissionLost: Bool) {
+    let fixture = Fixture()
+    defer { fixture.close() }
+    let model = fixture.model
+    model.environmentChanged(NSApplication.didChangeScreenParametersNotification.rawValue)
+    if permissionLost {
+      #expect(!model.acceptScanStatus(fixture.snapshot(complete: false, windows: nil, permission: .denied)))
+      #expect(!model.concealed)
+      #expect(!model.permissionGranted)
+    } else {
+      #expect(model.acceptScanStatus(fixture.snapshot()))
+      model.validateConcealment { _ in true }
+      model.validateConcealment { _ in true }
+      #expect(!model.concealed)
+      #expect(model.lastReveal?.reason == .identityReview)
+    }
+  }
+
+  @Test("A later active-row switch pauses discovery again after monitor recovery completed")
+  func rowChangesKeepConcealmentAfterRecovery() throws {
+    let fixture = Fixture()
+    defer { fixture.close() }
+    let model = fixture.model
+    let saved = model.layout
+    model.environmentChanged(NSApplication.didChangeScreenParametersNotification.rawValue)
+    #expect(model.acceptScanStatus(fixture.snapshot()))
+    model.validateConcealment { $0.identity.persistentKey == Fixture.hidden }
+    #expect(model.canEdit)
+    let rowChanged = try #require(model.native.onMenuBarRowChange)
+    rowChanged()
+    let mirrored = fixture.windows.map { window in
+      StatusWindowState(processIdentifier: window.processIdentifier,
+        windowIdentifier: window.windowIdentifier + 1000,
+        frame: ItemFrame(x: window.frame.x - 700, y: -1692,
+          width: window.frame.width, height: 24), isOnscreen: window.isOnscreen)
+    }
+    for _ in 0..<6 {
+      #expect(!model.acceptScanStatus(fixture.snapshot(complete: false, windows: mirrored)))
+      #expect(model.concealed && !model.canEdit)
+      #expect(model.reapplyNotBefore == nil && model.lastReveal == nil)
+    }
+    #expect(model.layout == saved)
+  }
+
+  @Test("A complete row-switch scan cannot verify its older WindowServer snapshot",
+    .enabled(if: ProcessInfo.processInfo.environment["TRAYNOOK_MULTIDISPLAY_TESTS"] == "1"))
+  func completeRowChangeRequiresNewScan() throws {
+    let fixture = Fixture()
+    defer { fixture.close() }
+    let model = fixture.model
+    let saved = model.layout
+    let original = model.items
+    #expect(!model.native.noteInventory(fixture.snapshot()))
+    let secondScreen = try #require(NSScreen.screens.first { screen in
+      guard let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber else { return false }
+      return !CGDisplayBounds(number.uint32Value).contains(CGPoint(x: 1200, y: 6))
+    })
+    let display = try #require(secondScreen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)
+    let bounds = CGDisplayBounds(display.uint32Value)
+    let migrated = IdentityAssessor().classify(model.items.enumerated().map { index, item in
+      let old = item.observation
+      return RawSourceItemObservation(runtimeID: old.runtimeID, processIdentifier: old.processIdentifier,
+        bundleIdentifier: old.bundleIdentifier, applicationName: old.applicationName, role: old.role,
+        frame: ItemFrame(x: bounds.minX + 1200 + Double(index * 30), y: bounds.minY + 6,
+          width: 24, height: 24), actions: old.actions, metadata: old.metadata,
+        observedOrder: old.observedOrder, isOnscreen: old.isOnscreen,
+        statusWindowIdentifier: UInt32(old.processIdentifier) + 1000)
+    })
+    let oldWindows = fixture.windows
+    model.accept(InventorySnapshot(capturedAt: Date(), permission: .granted,
+      completeness: .complete, items: migrated, statusWindows: oldWindows, warnings: [],
+      metrics: ScanMetrics(durationMilliseconds: 0, inspectedApplicationCount: 2, sourceItemCount: migrated.count)))
+    #expect(model.items == original)
+    #expect(model.concealed && !model.canEdit)
+    let newWindows = migrated.map { item in
+      StatusWindowState(processIdentifier: item.observation.processIdentifier,
+        windowIdentifier: item.observation.statusWindowIdentifier!, frame: item.observation.frame!,
+        isOnscreen: item.observation.isOnscreen == true)
+    }
+    for _ in 0..<6 {
+      #expect(!model.acceptScanStatus(fixture.snapshot(complete: false, windows: newWindows)))
+      #expect(model.concealed && !model.canEdit)
+    }
+    #expect(model.acceptScanStatus(fixture.snapshot(complete: true, windows: newWindows)))
+    model.validateConcealment { $0.identity.persistentKey == Fixture.hidden }
+    #expect(model.concealed && model.canEdit)
+    #expect(model.layout == saved && model.lastReveal == nil)
+  }
+
+  @Test("A display-change watchdog retains hiding with no remaining old window baseline")
+  func screenChangesKeepSlowDiscoveryConcealed() async throws {
+    let scanner = HeldConcealmentScanner()
+    defer { scanner.release() }
+    let fixture = Fixture(scanner: scanner)
+    defer { fixture.close() }
+    let model = fixture.model
+    let saved = model.layout
+    scanner.set(fixture.snapshot(complete: false, windows: nil))
+    model.environmentChanged(NSApplication.didChangeScreenParametersNotification.rawValue)
+    model.refresh(showProgress: false)
+    try await waitUntil { scanner.calls == 1 }
+    await model.handleSlowInventory()
+    #expect(model.concealed && !model.canEdit)
+    #expect(model.reapplyNotBefore == nil && model.lastReveal == nil)
+    #expect(model.layout == saved)
+  }
+
+  @Test("Explicit Reveal ends display revalidation and a canceled background scan cannot rehide")
+  func screenChangesRespectRevealDuringDiscovery() async throws {
+    let scanner = HeldConcealmentScanner()
+    defer { scanner.release() }
+    let fixture = Fixture(scanner: scanner)
+    defer { fixture.close() }
+    let model = fixture.model
+    let original = model.items
+    scanner.set(fixture.snapshot())
+    model.refresh(showProgress: false)
+    try await waitUntil { scanner.calls == 1 }
+    model.environmentChanged(NSApplication.didChangeScreenParametersNotification.rawValue)
+    #expect(!model.scanning)
+    model.reveal()
+    await model.handleSlowInventory()
+    #expect(!model.concealed)
+    #expect(model.lastReveal?.reason == .userReveal)
+    #expect(model.reapplyNotBefore == nil)
+    #expect(model.items == original)
+  }
+
   @Test("Diagnostics snapshot preserves scheduled recovery and its original event")
   func diagnosticsPreservesRecovery() throws {
     let fixture = Fixture()

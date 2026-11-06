@@ -109,6 +109,7 @@ final class NativeMenuBarController: NSObject {
   }
   var onReveal: (() -> Void)?
   var onExternalReveal: (() -> Void)?
+  var onMenuBarRowChange: (() -> Void)?
 
   struct ItemInspection: Equatable {
     let behindBoundary: Bool?
@@ -241,6 +242,65 @@ final class NativeMenuBarController: NSObject {
     onReveal?()
   }
 
+  func screenParametersChanged() {
+    generation += 1
+    inspectionRevision += 1
+    metadataReader.cancelAll()
+    releasePointer()
+    showCursor()
+    activeDisplay = nil
+    guard isConcealed, let separator else { return }
+    let widths = NSScreen.screens.compactMap { Self.displayID(of: $0) }
+      .map { CGDisplayBounds($0).width }
+    // Keep the expanded length while mirrors are recreated, including on removal.
+    separator.length = Self.concealmentLength(current: separator.length, displayWidths: widths)
+  }
+
+  static func concealmentLength(current: CGFloat, displayWidths: [CGFloat]) -> CGFloat {
+    max(current, (displayWidths.filter { $0.isFinite && $0 > 0 }.max() ?? 0) + 2)
+  }
+
+  /// Packaged smoke uses only our controls and synthetic bindings, never native input.
+  func verifyDisplayChangeBehavior(afterScreenChange: () -> Bool = { true }) -> Bool {
+    guard !isBusy, !isConcealed, pendingActivation == nil, let separator else { return false }
+    let previousLength = separator.length
+    let previousVisibility = separator.isVisible
+    let previousDisplay = activeDisplay
+    let previousOwners = concealedSourcePIDs
+    let previousOnReveal = onReveal
+    defer {
+      isBusy = false
+      isConcealed = false
+      pendingActivation = nil
+      concealedSourcePIDs = previousOwners
+      activeDisplay = previousDisplay
+      separator.length = previousLength
+      Self.setVisiblePreservingPosition(separator, visible: previousVisibility)
+      onReveal = previousOnReveal
+    }
+    let pid = ProcessInfo.processInfo.processIdentifier
+    let source = IdentityAssessor().classify([RawSourceItemObservation(runtimeID: "display-change-fixture",
+      processIdentifier: pid, bundleIdentifier: "example.display-change", applicationName: "Display fixture",
+      role: kAXMenuBarItemRole as String, frame: ItemFrame(x: 0, y: 0, width: 24, height: 24),
+      actions: [kAXPressAction as String], metadata: LiveAccessibilityMetadata(), observedOrder: 0)])[0]
+    let binding = StatusWindowBinding(id: 1, pid: pid, bundle: source.observation.bundleIdentifier)
+    pendingActivation = PendingActivation(source: source, sourceWindow: binding, returnWindow: binding, originalGap: 0)
+    concealedSourcePIDs = ["example.display-change": pid]
+    separator.length = 6000
+    Self.setVisiblePreservingPosition(separator, visible: true)
+    isConcealed = true
+    isBusy = true
+    var revealed = false
+    onReveal = { revealed = true }
+    let token = generation
+    NotificationCenter.default.post(name: NSApplication.didChangeScreenParametersNotification, object: nil)
+    let preserved = !revealed && isConcealed && separator.isVisible && separator.length >= 6000
+      && concealedSourcePIDs == ["example.display-change": pid] && pendingActivation?.sourceWindow == binding
+      && pendingActivation?.returnWindow == binding && pendingActivation?.source == source && afterScreenChange()
+    do { try checkOperation(token); return false }
+    catch { return preserved && (error as? NativeMenuActionError) == .inventoryUnavailable }
+  }
+
   /// A concealed source restarted. Trust its new process for the same identity
   /// so its proxy keeps working without reopening the whole section.
   func adoptProcess(key: String, pid: Int32) {
@@ -370,7 +430,8 @@ final class NativeMenuBarController: NSObject {
         }
       }
     } catch {
-      if didReveal || !isConcealed || (error as? NativeMenuActionError) != .inputNotIdle { reveal() }
+      if (token == generation || !isConcealed),
+        didReveal || !isConcealed || (error as? NativeMenuActionError) != .inputNotIdle { reveal() }
       throw error
     }
   }
@@ -499,9 +560,10 @@ final class NativeMenuBarController: NSObject {
       }, uniquingKeysWith: { first, _ in first })
       // Hidden items must leave every menu bar, so grow to the widest display.
       let displayWidths = NSScreen.screens.compactMap { Self.displayID(of: $0) }
-        .map { Double(CGDisplayBounds($0).width) }.filter { $0.isFinite && $0 > 0 }
-      let widestDisplay = displayWidths.max() ?? before.displayWidth
-      separator?.length = max(before.displayWidth, widestDisplay) + compactWidth
+        .map { CGDisplayBounds($0).width }.filter { $0.isFinite && $0 > 0 }
+      let widestDisplay = displayWidths.max() ?? CGFloat(before.displayWidth)
+      separator?.length = Self.concealmentLength(current: CGFloat(before.displayWidth) + compactWidth,
+        displayWidths: displayWidths)
       nativeLog.notice("conceal allowed=\(allowedKeys.count) sources=\(self.concealedSourcePIDs.count) displayWidth=\(before.displayWidth, privacy: .public) widest=\(widestDisplay, privacy: .public) screens=\(displayWidths.description, privacy: .public) length=\(self.separator?.length ?? 0, privacy: .public)")
       isConcealed = true
       try await pause(0.25, token: token)
@@ -529,7 +591,7 @@ final class NativeMenuBarController: NSObject {
       }
       try requirePermission()
     } catch {
-      reveal()
+      if token == generation || !isConcealed { reveal() }
       throw error
     }
   }
@@ -1497,7 +1559,8 @@ final class NativeMenuBarController: NSObject {
         }
       }
     } catch {
-      if didReveal || !isConcealed || (error as? NativeMenuActionError) != .inputNotIdle { reveal() }
+      if (token == generation || !isConcealed),
+        didReveal || !isConcealed || (error as? NativeMenuActionError) != .inputNotIdle { reveal() }
       throw error
     }
   }
@@ -1805,7 +1868,7 @@ final class NativeMenuBarController: NSObject {
 
   private func checkOperation(_ token: Int) throws {
     try Task.checkCancellation()
-    guard token == generation, separator != nil else { throw MenuBarFailure(L("The menu-bar action was cancelled. All items remain revealed.")) }
+    guard token == generation, separator != nil else { throw NativeMenuActionError.inventoryUnavailable }
     try requirePermission()
   }
 
@@ -1827,18 +1890,34 @@ final class NativeMenuBarController: NSObject {
 
   /// Records which display the inventory's AX row is on. Items pushed behind
   /// the expanded separator lie outside every display, so onscreen items decide.
-  func noteInventory(_ snapshot: InventorySnapshot) {
-    let frames = snapshot.items.map(\.observation)
-      .sorted { ($0.isOnscreen == true ? 0 : 1) < ($1.isOnscreen == true ? 0 : 1) }
-      .compactMap(\.frame).filter(\.isUsable)
-    guard let sample = frames.first else { return }
-    let point = CGPoint(x: sample.midX, y: sample.midY)
-    for screen in NSScreen.screens {
-      guard let display = Self.displayID(of: screen), CGDisplayBounds(display).contains(point) else { continue }
-      if activeDisplay != display { nativeLog.notice("menu-bar row now on display \(display)") }
-      activeDisplay = display
-      return
+  @discardableResult
+  func noteInventory(_ snapshot: InventorySnapshot) -> Bool {
+    let screens = NSScreen.screens.compactMap { screen -> (id: UInt32, bounds: CGRect)? in
+      guard let id = Self.displayID(of: screen) else { return nil }
+      return (id, CGDisplayBounds(id))
     }
+    guard let display = Self.inventoryDisplay(for: snapshot.items.map(\.observation), screens: screens)
+    else { return false }
+    let changed = activeDisplay != nil && activeDisplay != display
+    if activeDisplay != display { nativeLog.notice("menu-bar row now on display \(display)") }
+    if changed { screenParametersChanged() }
+    activeDisplay = display
+    if changed { onMenuBarRowChange?() }
+    return changed
+  }
+
+  static func inventoryDisplay(for observations: [RawSourceItemObservation],
+    screens: [(id: UInt32, bounds: CGRect)]) -> UInt32? {
+    let frames = observations.filter { $0.role == kAXMenuBarItemRole as String && $0.isOnscreen == true }
+      .compactMap(\.frame).filter(\.isUsable)
+    let displays = frames.compactMap { frame -> UInt32? in
+      let point = CGPoint(x: frame.midX, y: frame.midY)
+      let matches = screens.filter { $0.bounds.contains(point) }
+      return matches.count == 1 ? matches[0].id : nil
+    }
+    guard displays.count == frames.count, let display = displays.first,
+      displays.allSatisfy({ $0 == display }) else { return nil }
+    return display
   }
 
   private static func displayID(of screen: NSScreen) -> CGDirectDisplayID? {
@@ -2076,7 +2155,11 @@ final class NativeMenuBarController: NSObject {
   }
 
   @objc private func separatorClicked() { reveal(); onExternalReveal?() }
-  @objc private func environmentChanged(_ notification: Notification) { reveal() }
+  @objc private func environmentChanged(_ notification: Notification) {
+    if notification.name == NSApplication.didChangeScreenParametersNotification {
+      screenParametersChanged()
+    } else { reveal() }
+  }
 }
 
 /// Short-lived public event taps route only our tagged move events. Unrelated
