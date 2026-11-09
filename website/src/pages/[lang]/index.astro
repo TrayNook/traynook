@@ -1,0 +1,9 @@
+---
+import Landing from '../../components/Landing.astro';
+
+export function getStaticPaths() {
+  return (['en', 'ru'] as const).map(locale => ({ params: { lang: locale }, props: { locale } }));
+}
+const { locale } = Astro.props;
+---
+<Landing locale={locale} />

@@ -1,0 +1,132 @@
+{
+  "meta": {
+    "title": "TrayNook · A calmer Mac menu bar",
+    "description": "A native macOS menu bar organizer. Keep essentials visible, move icons into a dropdown, and hide the rest. Free and open source.",
+    "socialDescription": "Keep essentials visible, move icons into a dropdown, and hide the rest. A native, free and open source Mac utility.",
+    "imageAlt": "TrayNook's red panda app icon beside the words Your menu bar. A little calmer."
+  },
+  "nav": {
+    "skip": "Skip to content",
+    "home": "TrayNook home",
+    "main": "Main navigation",
+    "how": "How it works",
+    "faq": "FAQ",
+    "language": "Language",
+    "appearance": "Appearance",
+    "themeAuto": "Auto",
+    "themeLight": "Light",
+    "themeDark": "Dark",
+    "footer": "Footer navigation",
+    "issue": "Report an issue",
+    "license": "MIT license",
+    "github": "View TrayNook on GitHub",
+    "stars": "Stars",
+    "forks": "Forks",
+    "repoStats": "GitHub repository statistics",
+    "statsUnavailable": "Repository counts are unavailable."
+  },
+  "hero": {
+    "line1": "Your menu bar.",
+    "line2": "A little calmer.",
+    "description": "A native macOS menu bar organizer. Keep essentials visible, move icons into a dropdown, and hide the rest.",
+    "cta": "View on GitHub",
+    "release": "Free & open source. MIT licensed."
+  },
+  "groups": {
+    "label": "Three ways to organize your icons",
+    "menu": "Your everyday essentials, always in view.",
+    "dropdown": "Other icons, one click away.",
+    "hidden": "Out of sight until you choose Show Items.",
+    "note": "Drag icons in <strong lang=\"en\">Settings → Layout</strong>. Your arrangement saves automatically."
+  },
+  "faq": {
+    "title": "Good to know.",
+    "items": [
+      {
+        "id": "download",
+        "question": "How do I install TrayNook?",
+        "paragraphs": [
+          "Install TrayNook with our <a href=\"https://github.com/TrayNook/homebrew-tap\">Homebrew tap</a>, or download it from <a href=\"https://github.com/TrayNook/traynook/releases\">GitHub Releases</a>.",
+          "Open the app, grant Accessibility permission, and arrange icons in <span lang=\"en\">Settings → Layout</span>.",
+          "Public builds default to ad-hoc signing; Apple notarization is optional. macOS may require <strong>System Settings → Privacy &amp; Security → Open Anyway</strong> after you first try opening the app. Follow <a href=\"https://support.apple.com/en-us/102445\">Apple’s instructions</a>."
+        ]
+      },
+      {
+        "id": "permissions",
+        "question": "What permissions does it need?",
+        "paragraphs": [
+          "<strong>Accessibility is required.</strong> Screen Recording is optional, for menu-bar icon previews. Updates may require Accessibility approval again.",
+          "Launch at Login is optional in <span lang=\"en\">Settings → General</span>. The app interface is in English."
+        ]
+      },
+      {
+        "id": "compatibility",
+        "question": "Will it work on my Mac?",
+        "paragraphs": [
+          "Packaged for Apple silicon and Intel. Support targets stable macOS majors receiving Apple security updates, on a best-effort basis.",
+          "The technical minimum is macOS 13.0, not a tested compatibility guarantee."
+        ]
+      },
+      {
+        "id": "items",
+        "question": "Can every menu-bar item be moved?",
+        "paragraphs": [
+          "Some items cannot be moved. Protected system items and items TrayNook cannot safely identify stay visible. Behavior can vary with the app and display setup.",
+          "<a href=\"https://github.com/TrayNook/traynook/issues/new\">Report an issue</a> if something does not behave as expected. Review diagnostics before sharing them."
+        ]
+      },
+      {
+        "id": "privacy",
+        "question": "What about privacy and updates?",
+        "paragraphs": [
+          "Layouts and preferences stay on your Mac. TrayNook sends no analytics, application inventory, or screenshots.",
+          "Update checks and downloads contact GitHub over HTTPS, exposing usual request metadata and your IP address. Automatic checks default on; automatic downloads default off. Disable <strong lang=\"en\">Check for updates automatically</strong> to stop background checks.",
+          "You approve installation with <strong lang=\"en\">Install &amp; Relaunch</strong>."
+        ]
+      }
+    ]
+  },
+  "demo": {
+    "file": "File",
+    "edit": "Edit",
+    "toggle": "Toggle TrayNook dropdown",
+    "openTray": "Open TrayNook",
+    "dropdownLabel": "Example TrayNook dropdown",
+    "empty": "Add items to Dropdown in Settings.",
+    "back": "Back to dropdown",
+    "closeSettings": "Close example settings",
+    "close": "Close",
+    "settings": "Settings",
+    "layout": "Layout",
+    "reset": "Reset demo",
+    "preview": "Saved layout preview",
+    "examples": "Example icons",
+    "menu": "Menu Bar",
+    "dropdown": "Dropdown",
+    "hidden": "Always Hidden",
+    "help": "Drag icons, or select one and choose a group.",
+    "caption": "Interactive demo.",
+    "tryLayout": "Drag icons in Settings → Layout",
+    "noScript": "Enable JavaScript to try the demo. The app itself is native Swift/AppKit.",
+    "openSettings": "Open Settings",
+    "itemNames": {
+      "sound": "Sound",
+      "timer": "Timer",
+      "clipboard": "Clipboard",
+      "display": "Display",
+      "cloud": "Cloud",
+      "focus": "Focus"
+    },
+    "selected": "{name} selected. Choose a group, or drag to reorder.",
+    "moved": "{name} moved to {group}. This example resets on reload.",
+    "resetAnnouncement": "Example layout reset.",
+    "handoff": "In TrayNook, {name} opens its own menu. Only that icon is temporarily revealed in the menu bar.",
+    "activated": "{name} selected. The real app opens its native menu.",
+    "cancelled": "Move cancelled."
+  },
+  "install": {
+    "copy": "Copy commands",
+    "copied": "Commands copied.",
+    "failed": "Commands selected. Press ⌘C or choose Copy."
+  }
+}

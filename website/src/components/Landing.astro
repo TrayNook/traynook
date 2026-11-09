@@ -1,0 +1,164 @@
+---
+import en from '../i18n/en.json';
+import ru from '../i18n/ru.json';
+import styles from '../styles/styles.css?url';
+import darkStyles from '../styles/dark.css?url';
+import themeScript from '../scripts/theme.js?raw';
+import HomebrewCommands from './HomebrewCommands.astro';
+
+interface Props { locale: 'en' | 'ru'; detectLanguage?: boolean }
+const { locale, detectLanguage = false } = Astro.props;
+const copy = locale === 'ru' ? ru : en;
+const base = import.meta.env.BASE_URL;
+const assets = `${base}assets/`;
+const home = `${base}${locale}/`;
+const socialImage = `${assets}social-card${locale === 'ru' ? '-ru' : ''}.png`;
+const demoJSON = JSON.stringify(copy.demo).replace(/</g, '\\u003c');
+---
+<!doctype html>
+<html lang={locale} data-detect-language={detectLanguage ? 'true' : undefined} data-base={base}>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{copy.meta.title}</title>
+  <meta name="description" content={copy.meta.description} />
+  <meta name="theme-color" data-theme-color="light" content="#faf8f5" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" data-theme-color="dark" content="#211e1b" media="(prefers-color-scheme: dark)" />
+  <meta name="color-scheme" content="light dark" />
+  <link rel="stylesheet" href={styles} />
+  <link rel="stylesheet" id="dark-theme" href={darkStyles} media="(prefers-color-scheme: dark)" />
+  <script is:inline set:html={themeScript}></script>
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="TrayNook" />
+  <meta property="og:locale" content={locale === 'ru' ? 'ru_RU' : 'en_US'} />
+  <meta property="og:locale:alternate" content={locale === 'ru' ? 'en_US' : 'ru_RU'} />
+  <meta property="og:title" content={copy.meta.title} />
+  <meta property="og:description" content={copy.meta.socialDescription} />
+  <meta property="og:image" content={socialImage} />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content={copy.meta.imageAlt} />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content={copy.meta.title} />
+  <meta name="twitter:description" content={copy.meta.description} />
+  <meta name="twitter:image" content={socialImage} />
+  <meta name="twitter:image:alt" content={copy.meta.imageAlt} />
+  <link rel="alternate" hreflang="en" href={`${base}en/`} />
+  <link rel="alternate" hreflang="ru" href={`${base}ru/`} />
+  <link rel="alternate" hreflang="x-default" href={base} />
+  <link rel="icon" type="image/png" sizes="32x32" href={`${assets}favicon.png`} />
+  <link rel="apple-touch-icon" sizes="180x180" href={`${assets}apple-touch-icon.png`} />
+  <script id="demo-copy" type="application/json" is:inline set:html={demoJSON}></script>
+  <script>
+    import '../scripts/language.mjs';
+    import '../scripts/demo.mjs';
+    import '../scripts/github.js';
+    import '../scripts/clipboard.js';
+  </script>
+</head>
+<body>
+  <a class="skip-link" href="#main">{copy.nav.skip}</a>
+  <header class="site-header wrap">
+    <a class="wordmark" href={home} aria-label={copy.nav.home}><img src={`${assets}app-icon-64.png`} srcset={`${assets}app-icon-128.png 2x`} width="38" height="38" alt="" /><span>TrayNook</span></a>
+    <div class="header-controls">
+      <nav aria-label={copy.nav.main}><a href="#how-it-works">{copy.nav.how}</a><a href="#questions">{copy.nav.faq}</a></nav>
+      <a class="header-github" href="https://github.com/TrayNook/traynook" aria-label={copy.nav.github} title={copy.nav.github}><img class="icon" src={`${assets}brand-github.svg`} width="20" height="20" alt="" /></a>
+      <div class="language-switch" role="group" aria-label={copy.nav.language}>
+        <a href={`${base}en/`} lang="en" hreflang="en" data-language="en" aria-label="English" aria-current={locale === 'en' ? 'page' : undefined}>EN</a>
+        <a href={`${base}ru/`} lang="ru" hreflang="ru" data-language="ru" aria-label="Русский" aria-current={locale === 'ru' ? 'page' : undefined}>RU</a>
+      </div>
+      <div class="theme-switch" id="theme-switch" hidden>
+        <label class="visually-hidden" for="theme-select">{copy.nav.appearance}</label>
+        <select id="theme-select" title={copy.nav.appearance}>
+          <option value="auto">{copy.nav.themeAuto}</option>
+          <option value="light">{copy.nav.themeLight}</option>
+          <option value="dark">{copy.nav.themeDark}</option>
+        </select>
+      </div>
+    </div>
+  </header>
+
+  <main id="main" tabindex="-1">
+    <section class="hero wrap" aria-labelledby="hero-title">
+      <div class="hero-copy">
+        <h1 id="hero-title">{copy.hero.line1}<br /><span>{copy.hero.line2}</span></h1>
+        <p class="hero-description">{copy.hero.description}</p>
+        <a class="button button-primary" href="https://github.com/TrayNook/traynook"><img class="icon" src={`${assets}brand-github.svg`} width="19" height="19" alt="" />{copy.hero.cta}<img class="icon" src={`${assets}arrow-up-right.svg`} width="17" height="17" alt="" /></a>
+        <p class="release-note">{copy.hero.release}</p>
+        <div class="repo-stats" data-repo-stats role="group" aria-label={copy.nav.repoStats}>
+          <a data-repo-link="stars" href="https://github.com/TrayNook/traynook"><img class="icon" src={`${assets}star.svg`} width="14" height="14" alt="" /><span>{copy.nav.stars}</span><span class="repo-count" data-repo-count="stars" hidden></span></a>
+          <a data-repo-link="forks" href="https://github.com/TrayNook/traynook/forks"><img class="icon" src={`${assets}git-fork.svg`} width="14" height="14" alt="" /><span>{copy.nav.forks}</span><span class="repo-count" data-repo-count="forks" hidden></span></a>
+          <span class="visually-hidden" data-stats-unavailable hidden>{copy.nav.statsUnavailable}</span>
+        </div>
+      </div>
+
+      <div class="demo-column">
+      <figure class="product-demo" aria-labelledby="demo-caption">
+        <div class="mac-desktop" id="interactive-demo" data-assets={assets}>
+          <div class="mac-menubar">
+            <span class="menu-app" aria-hidden="true" lang="en">Finder <span>{copy.demo.file}</span> <span>{copy.demo.edit}</span></span>
+            <div class="menu-status-items">
+              <div id="visible-items" class="visible-items"></div>
+              <img class="icon system-icon" src={`${assets}wifi.svg`} width="17" height="17" alt="" />
+              <img class="icon system-icon" src={`${assets}battery-3.svg`} width="21" height="21" alt="" />
+              <button type="button" class="tray-launcher" id="tray-launcher" aria-label={copy.demo.toggle} aria-expanded="true" aria-controls="native-dropdown" title={copy.demo.openTray}><img class="icon" src={`${assets}inbox.svg`} width="20" height="20" alt="" /></button>
+            </div>
+          </div>
+          <div class="native-dropdown" id="native-dropdown" role="group" aria-label={copy.demo.dropdownLabel}>
+            <div class="native-grid" id="dropdown-items"></div>
+            <p id="empty-guidance" lang="en" hidden>{copy.demo.empty}</p>
+          </div>
+          <div class="desktop-mascot" aria-hidden="true"><img src={`${assets}app-icon-256.png`} width="108" height="108" alt="" /></div>
+          <div class="handoff-note" id="handoff-note" hidden><p id="handoff-text"></p><button type="button" id="back-to-dropdown">{copy.demo.back}<img class="icon" src={`${assets}arrow-up-right.svg`} width="14" height="14" alt="" /></button></div>
+          <section class="native-settings" id="native-settings" role="dialog" aria-labelledby="layout-title" hidden>
+            <div class="settings-titlebar">
+              <div class="window-controls">
+                <button type="button" class="window-close" id="close-settings" aria-label={copy.demo.closeSettings} title={copy.demo.close}><span aria-hidden="true"></span></button>
+                <span class="window-light" aria-hidden="true"></span><span class="window-light" aria-hidden="true"></span>
+              </div>
+              <h2 id="layout-title" lang="en">{copy.demo.settings} <span>· {copy.demo.layout}</span></h2>
+              <button type="button" class="reset-demo" id="reset-demo">{copy.demo.reset}</button>
+            </div>
+            <div class="settings-body">
+              <div class="preview-heading"><h3 lang="en">{copy.demo.preview}</h3><span>{copy.demo.examples}</span></div>
+              <div class="layout-lane" data-group="menu"><button type="button" class="lane-label" data-destination="menu" lang="en" disabled>{copy.demo.menu}</button><div class="lane-items" data-items="menu"></div><img class="icon lane-tray" src={`${assets}inbox.svg`} width="20" height="20" alt="" /></div>
+              <div class="layout-lane dropdown-lane" data-group="dropdown"><button type="button" class="lane-label" data-destination="dropdown" lang="en" disabled>{copy.demo.dropdown}</button><div class="settings-dropdown"><img class="icon preview-gear" src={`${assets}settings.svg`} width="21" height="21" alt="" /><div class="lane-items" data-items="dropdown"></div></div></div>
+              <div class="layout-lane hidden-lane" data-group="hidden"><button type="button" class="lane-label" data-destination="hidden" lang="en" disabled><img class="icon" src={`${assets}eye-off.svg`} width="15" height="15" alt="" />{copy.demo.hidden}</button><div class="lane-items" data-items="hidden"></div></div>
+              <p class="layout-help" id="layout-help">{copy.demo.help}</p>
+            </div>
+          </section>
+        </div>
+        <figcaption id="demo-caption">{copy.demo.caption} <button type="button" id="try-layout">{copy.demo.tryLayout}</button></figcaption>
+        <p class="visually-hidden" id="demo-announcement" role="status" aria-live="polite"></p>
+        <noscript><p class="no-script">{copy.demo.noScript}</p></noscript>
+      </figure>
+      <HomebrewCommands id="demo-install" labels={copy.install} />
+      </div>
+    </section>
+
+    <section class="organization wrap" id="how-it-works" aria-label={copy.groups.label}>
+      <div class="group-explanations">
+        <article><h2 lang="en">{copy.demo.menu}</h2><p>{copy.groups.menu}</p></article>
+        <article><h2 lang="en">{copy.demo.dropdown}</h2><p>{copy.groups.dropdown}</p></article>
+        <article><h2 lang="en">{copy.demo.hidden}</h2><p>{copy.groups.hidden}</p></article>
+      </div>
+      <p class="layout-note" set:html={copy.groups.note}></p>
+    </section>
+    <section class="questions wrap" id="questions" aria-labelledby="questions-title">
+      <h2 id="questions-title">{copy.faq.title}</h2>
+      <div class="faq-list">
+        {copy.faq.items.map(item => <details>
+          <summary>{item.question}<img class="icon" src={`${assets}chevron-down.svg`} width="18" height="18" alt="" /></summary>
+          <div class="faq-answer">
+            {item.paragraphs.map((paragraph, index) => <Fragment>
+              <p set:html={paragraph}></p>
+              {item.id === 'download' && index === 0 && <HomebrewCommands id="faq-install" labels={copy.install} />}
+            </Fragment>)}
+          </div>
+        </details>)}
+      </div>
+    </section>
+  </main>
+  <footer class="site-footer wrap"><a class="wordmark" href={home} aria-label={copy.nav.home}><img src={`${assets}app-icon-64.png`} width="28" height="28" alt="" loading="lazy" /><span>TrayNook</span></a><nav aria-label={copy.nav.footer}><a href="https://github.com/TrayNook/traynook">GitHub</a><a href="https://github.com/TrayNook/traynook/issues/new">{copy.nav.issue}</a><a href="https://github.com/TrayNook/traynook/blob/master/LICENSE">{copy.nav.license}</a></nav></footer>
+</body>
+</html>

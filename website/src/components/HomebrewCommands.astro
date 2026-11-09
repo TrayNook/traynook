@@ -1,0 +1,17 @@
+---
+interface Props {
+  id: string;
+  labels: { copy: string; copied: string; failed: string };
+}
+const { id, labels } = Astro.props;
+const commands = 'brew tap traynook/tap\nbrew install traynook';
+const assets = `${import.meta.env.BASE_URL}assets/`;
+---
+<div class="install-command" data-install-command>
+  <div class="install-heading"><span lang="en">Homebrew</span><button type="button" class="copy-command" data-copy-command aria-label={labels.copy} title={labels.copy} aria-controls={`${id}-command`} data-copied={labels.copied} data-copy-failed={labels.failed} hidden>
+    <img class="icon copy-idle" src={`${assets}copy.svg`} width="16" height="16" alt="" />
+    <img class="icon copy-success" src={`${assets}check.svg`} width="16" height="16" alt="" />
+  </button></div>
+  <pre tabindex="0"><code id={`${id}-command`} lang="en">{commands}</code></pre>
+  <p class="visually-hidden" data-copy-feedback role="status"></p>
+</div>

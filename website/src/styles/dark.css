@@ -1,0 +1,33 @@
+:root {
+  --page: #211e1b;
+  --surface: #2b2723;
+  --soft: #37322d;
+  --ink: #f5ece1;
+  --muted: #c0ac98;
+  --line: #4e4034;
+  --accent: #e6aa79;
+  --accent-hover: #f4c296;
+  --accent-soft: #65432d;
+  --desktop: #6c5140;
+  --native: #35322e;
+  --native-material: #302d29e8;
+  --menubar-material: #332b26cc;
+  --native-ink: #f0e9df;
+  --native-line: #07060480;
+  --native-highlight: #ffffff17;
+  --control: #514b44;
+  --control-line: #100d0a80;
+  --control-shadow: 0 1px 2px #100d0a33;
+  --focus: #e6aa79;
+}
+.icon { filter: invert(1); }
+.button-primary { color: #302117; }
+.button-primary .icon { filter: none; }
+.mac-desktop { background: radial-gradient(ellipse at 80% 0%, #ab8260, transparent 70%), var(--desktop); border-color: #d3b59133; }
+.mac-desktop::before { background: linear-gradient(155deg, #a77952 5%, #7c5039 34%, #432d26 70%); box-shadow: inset 0 2px 2px #ddb28233, 0 -10px 35px #22170f33; }
+.mac-desktop::after { background: linear-gradient(125deg, #b37d57 4%, #754831 38%, #382620 85%); box-shadow: inset 1px 2px 2px #f1c08c40, -10px -8px 30px #27170e33; }
+.mac-menubar { border-color: #08060433; }
+.native-dropdown { box-shadow: 0 18px 32px -8px #100d0a80, 0 3px 8px #100d0a55, inset 0 0 0 1px var(--native-highlight); }
+.tray-launcher[aria-expanded="true"], .menu-icon:hover, .tray-launcher:hover, .native-button:hover { background: #e5ccb422; }
+.native-button:active, .menu-icon:active, .tray-launcher:active { background: #e5ccb43d; }
+.window-light { background: #66605a; }
