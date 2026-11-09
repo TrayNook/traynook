@@ -27,7 +27,7 @@ jobs:
       prerelease: ${{ steps.metadata.outputs.prerelease }}
       commit: ${{ steps.tag.outputs.commit }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -71,7 +71,7 @@ jobs:
       TRAYNOOK_NOTARY_PROFILE: TrayNook
       TRAYNOOK_UPDATE_PUBLIC_KEY: ${{ vars.TRAYNOOK_UPDATE_PUBLIC_KEY }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
         with:
           ref: ${{ needs.prepare.outputs.commit }}
           persist-credentials: false
