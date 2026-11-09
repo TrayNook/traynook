@@ -11,7 +11,10 @@ from urllib.parse import unquote, urlsplit
 
 
 ROOT = Path(__file__).resolve().parent / "dist"
+SITE = "https://traynook.mahenzon.ru"
 assert (ROOT / "index.html").is_file(), "Build missing: run npm run build inside website/ first"
+assert (ROOT / "CNAME").read_text(encoding="utf-8").strip() == urlsplit(SITE).hostname, "Incorrect Pages custom domain"
+assert (ROOT / ".nojekyll").is_file(), "Missing Pages marker for Astro assets"
 
 
 class Page(HTMLParser):
@@ -63,7 +66,7 @@ def read_page(path):
 
 def check_reference(value, source):
     url = urlsplit(value)
-    if url.scheme or url.netloc:
+    if (url.scheme or url.netloc) and f"{url.scheme}://{url.netloc}" != SITE:
         return None
     path = unquote(url.path)
     target = ((ROOT / path.lstrip("/")) if path.startswith("/")
@@ -89,12 +92,17 @@ def check_page(path, locale):
     assert page.title.strip(), f"{path}: missing page title"
     metadata = {attrs.get("name", attrs.get("property")): attrs.get("content", "")
                 for tag, attrs in page.elements if tag == "meta"}
-    for key in ("description", "og:type", "og:site_name", "og:title", "og:description",
+    for key in ("description", "og:type", "og:site_name", "og:url", "og:title", "og:description",
                 "og:locale", "og:image", "og:image:alt", "twitter:card", "twitter:title",
                 "twitter:description", "twitter:image", "twitter:image:alt"):
         assert metadata.get(key, "").strip(), f"{path}: missing metadata {key}"
     assert metadata["twitter:card"] == "summary_large_image", "Expected large social card"
     assert metadata["og:locale"].split("_")[0] == locale, "Wrong social card locale"
+    expected_url = f"{SITE}/{path.relative_to(ROOT).as_posix().removesuffix('index.html')}"
+    canonical = [attrs.get("href") for tag, attrs in page.elements
+                 if tag == "link" and "canonical" in attrs.get("rel", "").split()]
+    assert canonical == [expected_url], f"{path}: incorrect canonical URL"
+    assert metadata["og:url"] == expected_url, f"{path}: incorrect Open Graph URL"
     assert any(tag == "link" and "icon" in attrs.get("rel", "").split()
                and attrs.get("href") for tag, attrs in page.elements), f"{path}: missing favicon"
 
@@ -116,9 +124,12 @@ def check_page(path, locale):
             assert all(attrs.get(size, "").isdigit() and int(attrs[size]) > 0
                        for size in ("width", "height")), f"{path}: missing image dimensions {attrs.get('src')}"
 
-    alternates = {attrs.get("hreflang"): check_reference(attrs["href"], path)
-                  for tag, attrs in page.elements
-                  if tag == "link" and "alternate" in attrs.get("rel", "").split()}
+    alternate_urls = {attrs.get("hreflang"): attrs["href"]
+                      for tag, attrs in page.elements
+                      if tag == "link" and "alternate" in attrs.get("rel", "").split()}
+    assert alternate_urls == {"en": f"{SITE}/en/", "ru": f"{SITE}/ru/",
+                              "x-default": f"{SITE}/"}, f"{path}: incorrect absolute hreflang URLs"
+    alternates = {language: check_reference(url, path) for language, url in alternate_urls.items()}
     assert alternates == {"en": ROOT / "en/index.html", "ru": ROOT / "ru/index.html",
                           "x-default": ROOT / "index.html"}, f"{path}: incorrect hreflang routes"
     languages = {attrs.get("hreflang"): attrs for tag, attrs in page.elements
@@ -154,8 +165,10 @@ def check_page(path, locale):
     assert ids.index("demo-install-command") < ids.index("how-it-works"), "Keep Homebrew installation visible below the demo"
 
     assert metadata["twitter:image"] == metadata["og:image"], "Social images differ"
+    expected_image = f"{SITE}/assets/social-card{'-ru' if locale == 'ru' else ''}.png"
+    assert metadata["og:image"] == expected_image, f"{path}: incorrect absolute social image URL"
     image = check_reference(metadata["og:image"], path)
-    assert image is not None, "Use a local social image until a production URL is selected"
+    assert image is not None, "Social image must resolve to a bundled asset"
     png = image.read_bytes()
     assert png[:8] == b"\x89PNG\r\n\x1a\n" and png[12:16] == b"IHDR", "Social image must be PNG"
     dimensions = struct.unpack(">II", png[16:24])
@@ -178,4 +191,4 @@ for css in ROOT.rglob("*.css"):
     references += re.findall(r"@import\s+['\"]([^'\"]+)['\"]", content)
     for value in references:
         check_reference(value.strip(), css)
-print("Passed: 3 built pages, local links/assets, accessibility references, metadata, EN/RU routes, theme controls, GitHub widgets, and Homebrew commands.")
+print("Passed: 3 built pages, custom domain, local links/assets, accessibility references, canonical/social metadata, EN/RU routes, theme controls, GitHub widgets, and Homebrew commands.")

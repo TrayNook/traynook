@@ -26,9 +26,9 @@ python3 website/check.py
 
 Preview the build with `npm --prefix website run preview`. Astro's background
 preview can be stopped from `website/` with
-`ASTRO_TELEMETRY_DISABLED=1 npx astro preview stop`. Hosting is GitHub Pages with
-a custom domain; the domain and deployment are not configured yet. The npm
-scripts disable Astro telemetry.
+`ASTRO_TELEMETRY_DISABLED=1 npx astro preview stop`. The configured production URL
+for GitHub Pages is <https://traynook.mahenzon.ru>. Deployment and DNS
+setup are separate steps; the npm scripts disable Astro telemetry.
 
 ## Languages
 
@@ -150,13 +150,21 @@ untested. The demo opens no native apps or windows and changes no Mac preference
 ## Before publishing
 
 The site source stays in this repository's `website/` directory. Build and publish
-`website/dist/` to GitHub Pages at the custom domain's root; the source directory
+`website/dist/` to GitHub Pages at `https://traynook.mahenzon.ru/`; the source directory
 itself is not the publishable output. `public/.nojekyll` is copied into the build
 so branch-based Pages publishing preserves Astro's `_astro/` assets.
 
-Once the domain is chosen, set Astro's `site` URL, add the canonical link and
-`og:url`, and replace relative `og:image` / `twitter:image` paths with the absolute
-HTTPS URL of the bundled social card. Configure that domain in Pages and its DNS,
-then recheck release/tap availability and page links before publishing.
+Astro's `site`, canonical links, `og:url`, language alternates, and social image
+URLs use that HTTPS domain. `public/CNAME` also copies it into the build for
+branch-based Pages publishing. The offline validator checks these URLs and
+resolves same-domain references against the built files.
+
+1. In the repository's **Settings → Pages**, configure the custom domain as
+   `traynook.mahenzon.ru`.
+2. In DNS for `mahenzon.ru`, point the `traynook` CNAME record to
+   `traynook.github.io` (the GitHub organization, without a repository path).
+3. Enable **Enforce HTTPS** once Pages has issued its certificate. Recheck
+   release/tap availability and live page links before publishing.
+
 No Pages workflow, deployment, version tags, app releases, or application-source
 edits are included.
