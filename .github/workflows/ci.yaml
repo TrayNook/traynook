@@ -22,6 +22,8 @@ jobs:
           persist-credentials: false
       - run: Scripts/test-development-signing.sh
       - run: Scripts/test-release-metadata.sh
+      - run: Scripts/test-update-feed.sh
+      - run: Scripts/test-homebrew-cask.sh
       - run: Scripts/test.sh
       - run: Scripts/build-app.sh
       - run: Scripts/smoke-test.sh

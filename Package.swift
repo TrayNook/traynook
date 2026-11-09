@@ -4,8 +4,11 @@ import PackageDescription
 let package = Package(
     name: "TrayNook",
     defaultLocalization: "en",
-    platforms: [.macOS(.v14)],
+    platforms: [.macOS(.v13)],
     products: [.executable(name: "TrayNook", targets: ["TrayNook"])],
+    dependencies: [
+        .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.10.0"),
+    ],
     targets: [
         .target(
             name: "InventoryIdentityCore",
@@ -13,8 +16,9 @@ let package = Package(
         ),
         .executableTarget(
             name: "TrayNook",
-            dependencies: ["InventoryIdentityCore"],
-            resources: [.process("Resources")]
+            dependencies: ["InventoryIdentityCore", .product(name: "Sparkle", package: "Sparkle")],
+            resources: [.process("Resources")],
+            linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])]
         ),
         .testTarget(
             name: "TrayNookTests",

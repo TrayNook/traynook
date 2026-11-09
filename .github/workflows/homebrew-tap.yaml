@@ -1,0 +1,197 @@
+name: Homebrew tap
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Published stable release tag (for example v1.0.0)
+        required: true
+        type: string
+      publish:
+        description: Update TrayNook/homebrew-tap after checks pass
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: homebrew-tap
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Verify release and cask
+    if: >-
+      github.repository == 'TrayNook/traynook' &&
+      (github.event_name == 'workflow_dispatch' || !github.event.release.prerelease)
+    runs-on: macos-15
+    timeout-minutes: 20
+    outputs:
+      version: ${{ steps.release.outputs.release_version }}
+      source_commit: ${{ steps.source.outputs.commit }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Record the checked automation commit
+        id: source
+        run: printf 'commit=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Require a public stable release from a verified tag
+        id: release
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          metadata=$(Scripts/release-metadata.sh "$RELEASE_TAG")
+          if [[ "$RELEASE_TAG" == *-* ]]; then
+            echo '::error::The Homebrew cask accepts stable releases only.'
+            exit 1
+          fi
+          if [[ "$(gh api "repos/$GITHUB_REPOSITORY" --jq .private)" != false ]]; then
+            echo '::error::Homebrew requires publicly downloadable release assets.'
+            exit 1
+          fi
+          published_tag=$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+            --json tagName,isDraft,isPrerelease \
+            --jq 'select(.isDraft == false and .isPrerelease == false) | .tagName')
+          if [[ "$published_tag" != "$RELEASE_TAG" ]]; then
+            echo '::error::The tag must have a published stable GitHub release.'
+            exit 1
+          fi
+          tag_object=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" \
+            --jq '.object | select(.type == "tag") | .sha')
+          if [[ -z "$tag_object" ]]; then
+            echo '::error::Release tags must be signed annotated tags.'
+            exit 1
+          fi
+          tag_commit=$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$tag_object" \
+            --jq 'select(.verification.verified == true and .object.type == "commit") | .object.sha')
+          if [[ ! "$tag_commit" =~ ^[a-f0-9]{40}$ ]]; then
+            echo '::error::GitHub must verify the release tag signature and commit.'
+            exit 1
+          fi
+          git merge-base --is-ancestor "$tag_commit" "origin/$DEFAULT_BRANCH"
+          printf '%s\n' "$metadata" >> "$GITHUB_OUTPUT"
+      - name: Download release assets and generate cask
+        env:
+          VERSION: ${{ steps.release.outputs.release_version }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/release" "$RUNNER_TEMP/cask"
+          archive="TrayNook-$VERSION.zip"
+          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern "$archive" --pattern "$archive.sha256" --dir "$RUNNER_TEMP/release"
+          python3 Scripts/homebrew-cask.py --version "$VERSION" \
+            --archive "$RUNNER_TEMP/release/$archive" \
+            --checksum "$RUNNER_TEMP/release/$archive.sha256" \
+            --output "$RUNNER_TEMP/cask/traynook.rb"
+      - name: Check Homebrew style, audit, installation, and app signature
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: 1
+          HOMEBREW_NO_INSTALL_CLEANUP: 1
+        run: |
+          brew tap-new --no-git traynook/ci
+          tap_path=$(brew --repository traynook/ci)
+          mkdir -p "$tap_path/Casks"
+          cp "$RUNNER_TEMP/cask/traynook.rb" "$tap_path/Casks/traynook.rb"
+          brew trust --tap traynook/ci
+          brew style --cask traynook/ci/traynook
+          # The built-in conflict audit clones all of homebrew/core.
+          status=$(curl --silent --show-error --location --retry 3 \
+            --connect-timeout 10 --max-time 30 --output /dev/null --write-out '%{http_code}' \
+            https://formulae.brew.sh/api/formula/traynook.json)
+          case "$status" in
+            404) ;;
+            200) echo '::error::The traynook token conflicts with a core formula.'; exit 1 ;;
+            *) echo "::error::Formula conflict check failed with HTTP $status."; exit 1 ;;
+          esac
+          brew audit --cask --strict --except token_conflicts traynook/ci/traynook
+          brew install --cask traynook/ci/traynook
+          codesign --verify --deep --strict "/Applications/TrayNook.app"
+          distribution=$(plutil -extract TrayNookDistribution raw "/Applications/TrayNook.app/Contents/Info.plist")
+          case "$distribution" in
+            adhoc)
+              codesign --display --verbose=2 "/Applications/TrayNook.app" 2>&1 | grep -qx 'Signature=adhoc'
+              ;;
+            notarized)
+              spctl --assess --type execute "/Applications/TrayNook.app"
+              xcrun stapler validate "/Applications/TrayNook.app"
+              ;;
+            *) echo '::error::Unknown distribution mode in the release app.'; exit 1 ;;
+          esac
+          brew uninstall --cask traynook/ci/traynook
+      - uses: actions/upload-artifact@v4
+        with:
+          name: homebrew-release
+          path: |
+            ${{ runner.temp }}/cask/
+            ${{ runner.temp }}/release/
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Update tap repository
+    needs: check
+    if: >-
+      github.event_name == 'release' ||
+      (inputs.publish && github.ref_name == github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: homebrew
+    env:
+      VERSION: ${{ needs.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.check.outputs.source_commit }}
+          path: source
+          persist-credentials: false
+      - name: Require the tap credential
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          if [[ -z "$HOMEBREW_TAP_TOKEN" ]]; then
+            echo '::error::Set HOMEBREW_TAP_TOKEN in the homebrew environment.'
+            exit 1
+          fi
+      - uses: actions/checkout@v4
+        with:
+          repository: TrayNook/homebrew-tap
+          ref: main
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: tap
+      - uses: actions/download-artifact@v4
+        with:
+          name: homebrew-release
+          path: generated
+      - name: Prevent downgrades and changed release checksums
+        run: |
+          python3 source/Scripts/homebrew-cask.py --version "$VERSION" \
+            --archive "generated/release/TrayNook-$VERSION.zip" \
+            --checksum "generated/release/TrayNook-$VERSION.zip.sha256" \
+            --output candidate/traynook.rb --current-cask tap/Casks/traynook.rb
+          cmp candidate/traynook.rb generated/cask/traynook.rb
+      - name: Commit the verified cask
+        working-directory: tap
+        run: |
+          mkdir -p Casks
+          cp ../candidate/traynook.rb Casks/traynook.rb
+          git add Casks/traynook.rb
+          if git diff --cached --quiet; then
+            echo 'The Homebrew tap already has this cask.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m "Update TrayNook to $VERSION"
+          git push origin HEAD:main

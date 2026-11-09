@@ -29,11 +29,11 @@ Preliminary screening used each candidate as an exact quoted string on general w
 
 **TrayNook** is the selected name. It is friendly, short, and evokes a small reserved place for items. Its use of “tray” is less Mac-specific than “menu bar,” but the distinctiveness and warmer identity were preferred over the more technical **IconAnnex**.
 
-The canonical GitHub owner is **mahenzon**, with `github.com/mahenzon/TrayNook` as the intended public repository. Reservation and final release-surface clearance remain future release tasks.
+The canonical GitHub organization is **TrayNook**, with `github.com/TrayNook/traynook` as the intended public repository. Reservation and final release-surface clearance remain future release tasks.
 
 The permanent reverse-DNS bundle identifier is **`io.github.mahenzon.TrayNook`**. It must not change after permission-bearing preview builds are distributed.
 
-The initial Homebrew surface is `github.com/mahenzon/homebrew-tap` with cask token `traynook`, yielding `brew install --cask mahenzon/tap/traynook`.
+The initial Homebrew surface is `github.com/TrayNook/homebrew-tap` with cask token `traynook`, yielding `brew install --cask traynook/tap/traynook`.
 
 The selected visual metaphor is a simple open tray or pocket containing three dots. It serves as a monochrome template mark in the Menu Bar and as the basis for a later colored Finder/Settings app icon.
 

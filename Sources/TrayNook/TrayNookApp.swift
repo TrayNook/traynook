@@ -49,8 +49,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
   private var launcher: NSStatusItem!
   private var model: AppModel!
   private var settingsWindow: NSWindow?
+  private let updates = UpdateController()
+  private lazy var updateInstaller = UpdateInstaller()
   private let popover = NSPopover()
   private var dropdownRequest = 0
+  private var dropdownPreviousApplication: NSRunningApplication?
+  private var dropdownEscapeMonitor: Any?
+  private var dropdownEscapeSession = DropdownEscapeSession()
   private let smokeTest = CommandLine.arguments.contains("--smoke-test")
 
   func applicationDidFinishLaunching(_ notification: Notification) {
@@ -76,6 +81,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
     model = AppModel(native: native, store: smokeTest ? nil : store)
     model.closeDropdown = { [weak self] in self?.popover.performClose(nil) }
     model.showSettings = { [weak self] in self?.openSettings() }
+    updates.installRelease = { [weak self] release, archive in
+      guard let self else { return }
+      Task { @MainActor in
+        do { try await self.updateInstaller.install(release, archive: archive) }
+        catch {
+          let alert = NSAlert()
+          alert.messageText = L("The update could not be installed.")
+          alert.informativeText = error.localizedDescription
+          alert.runModal()
+        }
+      }
+    }
     installMainMenu()
     popover.behavior = .transient
     popover.delegate = self
@@ -97,8 +114,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
           self.model.selectedTab == 0
         else { fputs("TRAYNOOK_SMOKE_FAILED\n", stderr); exit(1) }
         self.launcherClicked()
-        guard self.popover.isShown, !self.model.canEdit else {
-          fputs("TRAYNOOK_PERMISSION_BLOCKED_DROPDOWN\n", stderr); exit(1)
+        try? await Task.sleep(for: .milliseconds(300))
+        guard self.popover.isShown, !self.model.canEdit, NSApp.isActive,
+          self.popover.contentViewController?.view.window?.isKeyWindow == true else {
+          fputs("TRAYNOOK_PERMISSION_BLOCKED_DROPDOWN shown=\(self.popover.isShown) editable=\(self.model.canEdit) active=\(NSApp.isActive) key=\(self.popover.contentViewController?.view.window?.isKeyWindow == true)\n", stderr); exit(1)
+        }
+        self.popover.performClose(nil)
+        NSApp.deactivate()
+        try? await Task.sleep(for: .milliseconds(100))
+        let button = self.launcher.button!
+        let ownsKeyboard = await self.popover.showDropdown(content: DropdownView(model: self.model, maximumWidth: 700),
+          relativeTo: button, activating: true)
+        guard ownsKeyboard, self.popover.isShown,
+          self.popover.contentViewController?.view.window?.isKeyWindow == true else {
+          fputs("TRAYNOOK_POINTER_DROPDOWN_FOCUS_FAILED\n", stderr); exit(1)
         }
         self.popover.performClose(nil)
         if let index = CommandLine.arguments.firstIndex(of: "--snapshot"),
@@ -114,10 +143,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
       // Settings opens only when something needs the user: a missing
       // permission, nothing hidden yet, or a failed launch restore (AppModel).
       model.start()
+      updates.start()
     }
   }
 
   func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+    stopDropdownEscapeMonitoring()
+    updates.stop()
     model?.stop()
     if let launcher { NativeMenuBarController.removePreservingPosition(launcher) }
     return .terminateNow
@@ -129,7 +161,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
     model.invalidateApplicationIcons()
     if model.selectedTab == 2 { model.refreshLoginStatus() }
   }
-  func popoverDidClose(_ notification: Notification) { model.dropdownClosed() }
+  func popoverDidClose(_ notification: Notification) {
+    stopDropdownEscapeMonitoring()
+    dropdownPreviousApplication = nil
+    model.dropdownClosed()
+  }
   func windowWillClose(_ notification: Notification) {
     guard (notification.object as? NSWindow) === settingsWindow else { return }
     NSApp.setActivationPolicy(.accessory)
@@ -154,6 +190,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
       let menu = NSMenu()
       menu.autoenablesItems = false
       addMenuItem(menu, L("Open Settings"), #selector(openSettings), key: ",")
+      addMenuItem(menu, updates.release == nil ? L("Check for Updates…") : L("Update Available…"), #selector(checkForUpdates))
+      menu.items.last?.isEnabled = updates.isAvailable
       addMenuItem(menu, model.concealed ? L("Show Items") : L("Hide Items"), #selector(toggleItems))
       menu.items.last?.isEnabled = model.concealed || model.canEdit
       menu.addItem(.separator())
@@ -164,14 +202,68 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
       launcher.menu = nil
       return
     }
-    if popover.isShown { popover.performClose(nil); return }
+    if popover.isShown { dismissDropdown(restoringFocus: true); return }
+    let keyboardEntry = Self.focusesDropdownSettings(for: NSApp.currentEvent?.type,
+      voiceOver: NSWorkspace.shared.isVoiceOverEnabled)
+    let previousApplication = NSWorkspace.shared.frontmostApplication
     model.openDropdown { [weak self] in
-      guard let self, self.dropdownRequest == request, let button = self.launcher.button else { return }
-      let width = min(700, (button.window?.screen?.visibleFrame.width ?? 700) - 40)
-      self.popover.showDropdown(content: DropdownView(model: self.model, maximumWidth: width), relativeTo: button)
-      NSApp.activate(ignoringOtherApps: true)
-      self.popover.contentViewController?.view.window?.makeKey()
+      Task { @MainActor [weak self] in
+        guard let self, self.dropdownRequest == request, let button = self.launcher.button else { return }
+        let foreground = NSWorkspace.shared.frontmostApplication?.processIdentifier
+        guard foreground == previousApplication?.processIdentifier || foreground == getpid() else {
+          self.model.dropdownClosed()
+          return
+        }
+        self.dropdownPreviousApplication = NSWorkspace.shared.frontmostApplication
+        let width = min(700, (button.window?.screen?.visibleFrame.width ?? 700) - 40)
+        self.startDropdownEscapeMonitoring()
+        let ownsKeyboard = await self.popover.showDropdown(content: DropdownView(model: self.model, maximumWidth: width,
+          focusesSettings: keyboardEntry, onDismiss: { [weak self] in self?.dismissDropdown(restoringFocus: true) }),
+          relativeTo: button, activating: true, shouldPresent: { [weak self] in self?.dropdownRequest == request })
+        guard self.dropdownRequest == request else { return }
+        if !ownsKeyboard { self.dismissDropdown(restoringFocus: true) }
+      }
     }
+  }
+
+  static func focusesDropdownSettings(for eventType: NSEvent.EventType?, voiceOver: Bool) -> Bool {
+    if voiceOver { return true }
+    switch eventType {
+    case .leftMouseDown?, .leftMouseUp?: return false
+    default: return true
+    }
+  }
+
+  private func dismissDropdown(restoringFocus: Bool) {
+    let previous = restoringFocus && NSApp.isActive ? dropdownPreviousApplication : nil
+    dropdownPreviousApplication = nil
+    popover.performClose(nil)
+    if let previous, previous.processIdentifier != getpid() { previous.activate(options: []) }
+  }
+
+  private func startDropdownEscapeMonitoring() {
+    stopDropdownEscapeMonitoring()
+    dropdownEscapeMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { [weak self] event in
+      let consumed = MainActor.assumeIsolated {
+        guard let self else { return false }
+        let ownsKeyboard = self.popover.isShown
+          && self.popover.contentViewController?.view.window?.isKeyWindow == true
+        switch self.dropdownEscapeSession.handle(event, ownsKeyboard: ownsKeyboard) {
+        case .pass: return false
+        case .consume: return true
+        case .dismiss:
+          self.dismissDropdown(restoringFocus: true)
+          return true
+        }
+      }
+      return consumed ? nil : event
+    }
+  }
+
+  private func stopDropdownEscapeMonitoring() {
+    if let dropdownEscapeMonitor { NSEvent.removeMonitor(dropdownEscapeMonitor) }
+    dropdownEscapeMonitor = nil
+    dropdownEscapeSession.reset()
   }
 
   @objc func openSettings() {
@@ -184,7 +276,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
       let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 820, height: 650),
         styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
       window.title = L("TrayNook Settings")
-      window.contentViewController = NSHostingController(rootView: SettingsView(model: model))
+      window.contentViewController = NSHostingController(rootView: SettingsView(model: model, updates: updates))
       window.isReleasedWhenClosed = false
       window.delegate = self
       window.center()
@@ -202,11 +294,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
   @objc private func toggleItems() { model.toggleConcealment() }
   @objc private func revealItems() { model.reveal() }
   @objc private func quit() { NSApp.terminate(nil) }
+  @objc private func checkForUpdates() {
+    openSettings()
+    model.selectedTab = 2
+    updates.checkNow()
+  }
 
   private func installMainMenu() {
     let menu = NSMenu()
     let application = NSMenu()
     addMenuItem(application, L("Open Settings"), #selector(openSettings), key: ",")
+    addMenuItem(application, L("Check for Updates…"), #selector(checkForUpdates))
+    application.items.last?.isEnabled = updates.isAvailable
     application.addItem(.separator())
     addMenuItem(application, L("Quit TrayNook"), #selector(quit), key: "q")
     let appItem = NSMenuItem(); appItem.submenu = application; menu.addItem(appItem)
@@ -230,11 +329,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
 }
 
 extension NSPopover {
-  func showDropdown<Content: View>(content: Content, relativeTo view: NSView) {
+  @discardableResult
+  func showDropdown<Content: View>(content: Content, relativeTo view: NSView, activating: Bool = false,
+    shouldPresent: () -> Bool = { true }) async -> Bool {
+    if activating {
+      NSApp.activate(ignoringOtherApps: true)
+      for _ in 0..<40 where !NSApp.isActive {
+        guard shouldPresent(), !Task.isCancelled else { return false }
+        try? await Task.sleep(for: .milliseconds(5))
+      }
+      guard NSApp.isActive else { return false }
+    }
+    guard shouldPresent(), !Task.isCancelled else { return false }
     let host = NSHostingController(rootView: content)
     contentViewController = host
     // AppKit must position the final size before SwiftUI can grow it offscreen.
     contentSize = host.view.fittingSize
     show(relativeTo: view.bounds, of: view, preferredEdge: .minY)
+    guard let window = contentViewController?.view.window else { return false }
+    window.makeKey()
+    return window.isKeyWindow
   }
 }

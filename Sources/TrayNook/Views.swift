@@ -4,6 +4,7 @@ import InventoryIdentityCore
 
 struct SettingsView: View {
   @ObservedObject var model: AppModel
+  @ObservedObject var updates = UpdateController()
   @State private var confirmReset = false
   @AppStorage("dropdownGlyphs") private var showGlyphs = false
   @State private var showItemDetails = true
@@ -52,7 +53,7 @@ struct SettingsView: View {
       Button(L("Cancel"), role: .cancel) {}
       Button(L("Reset Layout"), role: .destructive) { model.resetLayout() }
     } message: {
-      Text(L("This deletes saved placements and order. All items will be revealed. Privacy permissions and Launch at Login are unchanged."))
+      Text(L("This deletes saved placements and order. All items will be revealed. Privacy permissions, Launch at Login, update settings, and downloaded updates are unchanged."))
     }
   }
 
@@ -146,6 +147,7 @@ struct SettingsView: View {
           Toggle(L("Launch at Login"), isOn: Binding(get: { model.loginEnabled }, set: { model.setLoginEnabled($0) }))
             .frame(maxWidth: .infinity, alignment: .leading).padding(8)
         }
+        UpdateSettingsView(updates: updates)
         GroupBox(L("Dropdown appearance")) {
           VStack(alignment: .leading, spacing: 10) {
             Toggle(L("Show menu-bar glyphs instead of app icons in the dropdown"), isOn: $showGlyphs)
@@ -163,9 +165,12 @@ struct SettingsView: View {
         }
         GroupBox(L("Diagnostics")) {
           VStack(alignment: .leading, spacing: 10) {
-            Text(L("Copy a compatibility summary without app names or your item inventory."))
+            Text(L("Copies compatibility and recovery details, including affected-app bundle identifiers. No full app inventory, item labels, window titles, or images. Nothing is uploaded automatically."))
               .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             Button(L("Copy Diagnostics")) { model.copyDiagnostics() }
+            Link(L("Report a Problem…"), destination: URL(string: "https://github.com/TrayNook/traynook/issues/new")!)
+            Text(L("Opens GitHub in your browser. Review any diagnostics before pasting them into a public issue."))
+              .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
           }.frame(maxWidth: .infinity, alignment: .leading).padding(8)
         }
         GroupBox(L("About TrayNook")) {
@@ -175,10 +180,10 @@ struct SettingsView: View {
             Text("TrayNook \(version) (\(build))")
               .font(.headline)
             Text("© 2026 Suren Khorenyan · MIT License").font(.caption).foregroundStyle(.secondary)
-            Text(L("TrayNook stores bundle identities, sibling discriminators, placements, order, and row capacity locally. It makes no network requests and includes no analytics or updater."))
+            Text(L("TrayNook stores your layout, preferences, and verified update downloads locally. Update checks and downloads contact GitHub. No app inventory, item labels, or images are sent. TrayNook includes no analytics."))
               .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             Divider()
-            Text(L("To uninstall, turn off Launch at Login, quit TrayNook, and move the app to Trash. Quit removes TrayNook’s separator and reveals items. You can remove its Accessibility entry in System Settings."))
+            Text(L("To uninstall, turn off Launch at Login, quit TrayNook, and move the app to Trash. Quitting stops TrayNook from hiding menu-bar items. You can remove its Accessibility entry in System Settings."))
               .font(.callout).fixedSize(horizontal: false, vertical: true)
           }.frame(maxWidth: .infinity, alignment: .leading).padding(8)
         }
@@ -224,11 +229,11 @@ private struct ItemDetailsView: View {
         rowSpacing: rowSpacing, commit: { model.setOrder($0, undoable: true) }) else { return }
     }
     guard reorder.key == key else { return }
-    withAnimation(reduceMotion ? nil : .snappy(duration: 0.2)) { reorder.update(translation: translation) }
+    withAnimation(reduceMotion ? nil : .spring(response: 0.2, dampingFraction: 0.85)) { reorder.update(translation: translation) }
   }
 
   private func dragEnded() {
-    withAnimation(reduceMotion ? nil : .snappy(duration: 0.2)) {
+    withAnimation(reduceMotion ? nil : .spring(response: 0.2, dampingFraction: 0.85)) {
       if model.canEdit { reorder.finish(currentLayout: model.layout) }
       else { reorder.cancel() }
     }
@@ -275,8 +280,8 @@ private struct ItemDetailsView: View {
         .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 10))
       }
     }
-    .onChange(of: model.layout) { _, _ in reorder.cancel() }
-    .onChange(of: model.canEdit) { _, editable in if !editable { reorder.cancel() } }
+    .onChange(of: model.layout) { _ in reorder.cancel() }
+    .onChange(of: model.canEdit) { editable in if !editable { reorder.cancel() } }
     .onDisappear { reorder.cancel() }
   }
 
@@ -331,6 +336,8 @@ private struct ItemDetailsContent: View, @preconcurrency Equatable {
 struct DropdownView: View {
   @ObservedObject var model: AppModel
   let maximumWidth: CGFloat
+  var focusesSettings = false
+  var onDismiss: () -> Void = {}
   static func columnCount(rowCapacity: Int, controlCount: Int, maximumWidth: CGFloat) -> Int {
     max(1, min(rowCapacity, controlCount, Int((maximumWidth - 24) / 44)))
   }
@@ -352,7 +359,7 @@ struct DropdownView: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 10) {
       ScrollView {
-        DropdownIcons(model: model, columns: columns)
+        DropdownIcons(model: model, columns: columns, focusesSettings: focusesSettings)
       }.frame(height: min(300, gridHeight))
       if showsEmptyGuidance {
         Text(L("Add items to Dropdown in Settings.")).font(.caption).foregroundStyle(.secondary)
@@ -360,14 +367,18 @@ struct DropdownView: View {
     }
     .padding(12)
     .frame(width: Self.contentWidth(columns: columns, hasFooter: showsEmptyGuidance))
+    .onExitCommand(perform: onDismiss)
   }
 }
 
 struct DropdownIcons: View {
   @ObservedObject var model: AppModel
   @AppStorage("dropdownGlyphs") private var showGlyphs = false
+  @FocusState private var settingsFocused: Bool
+  @AccessibilityFocusState private var settingsAccessibilityFocused: Bool
   let columns: Int
   var interactive = true
+  var focusesSettings = false
 
   var body: some View {
     LazyVGrid(columns: Array(repeating: GridItem(.fixed(36), spacing: 8), count: columns), alignment: .center, spacing: 8) {
@@ -375,6 +386,13 @@ struct DropdownIcons: View {
         Button { model.showSettings?() } label: {
           Image(systemName: "gearshape").font(.system(size: 21)).frame(width: 34, height: 34)
         }.help(L("Open Settings")).accessibilityLabel(L("Open Settings"))
+          .focused($settingsFocused)
+          .accessibilityFocused($settingsAccessibilityFocused)
+          .task {
+            guard focusesSettings else { return }
+            settingsFocused = true
+            settingsAccessibilityFocused = true
+          }
       } else {
         Image(systemName: "gearshape").font(.system(size: 21)).frame(width: 34, height: 34)
           .accessibilityLabel(L("Settings preview"))
@@ -429,4 +447,3 @@ struct DropdownIcons: View {
     }
   }
 }
-

@@ -14,8 +14,23 @@ if [[ "$(/usr/bin/plutil -extract CFBundleExecutable raw "$app/Contents/Info.pli
 fi
 if [[ "$(/usr/bin/plutil -extract LSUIElement raw "$app/Contents/Info.plist")" != true ||
     ! -s "$app/Contents/Resources/AppIcon.icns" ||
+    ! -s "$app/Contents/Resources/LICENSE" ||
     ! -s "$app/Contents/Resources/TrayNook_TrayNook.bundle/en.lproj/Localizable.strings" ]]; then
     echo "Menu bar app configuration or bundled resources are missing." >&2
+    exit 1
+fi
+cmp "$root/LICENSE" "$app/Contents/Resources/LICENSE"
+framework="$app/Contents/Frameworks/Sparkle.framework"
+for executable in Sparkle Autoupdate Updater.app/Contents/MacOS/Updater \
+    XPCServices/Downloader.xpc/Contents/MacOS/Downloader XPCServices/Installer.xpc/Contents/MacOS/Installer; do
+    if [[ ! -x "$framework/$executable" ]]; then
+        echo "Missing Sparkle executable: $executable" >&2
+        exit 1
+    fi
+done
+if [[ ! -L "$framework/Versions/Current" || ! -s "$app/Contents/Resources/Sparkle-LICENSE" ||
+    "$(/usr/bin/plutil -extract LSMinimumSystemVersion raw "$app/Contents/Info.plist")" != 13.0 ]]; then
+    echo "Sparkle framework layout, license, or minimum macOS version is invalid." >&2
     exit 1
 fi
 log=$(mktemp "${TMPDIR:-/tmp}/traynook-smoke.XXXXXX")

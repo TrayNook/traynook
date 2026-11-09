@@ -34,7 +34,7 @@ The v1 product remains distinct only if it keeps all of these constraints:
 - one global layout, not modes or per-display profiles;
 - system appearance, not a theme editor;
 - recovery and permission transparency as core behavior;
-- no accounts, sync, analytics, update framework, or network dependency.
+- no accounts, sync, analytics, or network dependency for core layout management; signed updates use the narrowly scoped [update policy](DECISIONS.md#networking-and-updates).
 
 ## UX patterns worth retaining
 

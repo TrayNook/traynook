@@ -70,11 +70,11 @@ struct LayoutPreviewView: View {
       }
     }
     .accessibilityIdentifier("layout-preview")
-    .animation(reduceMotion ? nil : .snappy(duration: 0.18), value: drag.draft)
+    .animation(reduceMotion ? nil : .spring(response: 0.2, dampingFraction: 0.85), value: drag.draft)
     .onPreferenceChange(PreviewIconFrames.self) { iconFrames = $0 }
     .onPreferenceChange(PreviewZoneFrames.self) { zoneFrames = $0 }
-    .onChange(of: model.layout) { _, _ in drag.cancel() }
-    .onChange(of: model.canEdit) { _, editable in if !editable { drag.cancel() } }
+    .onChange(of: model.layout) { _ in drag.cancel() }
+    .onChange(of: model.canEdit) { editable in if !editable { drag.cancel() } }
     .onDisappear { drag.cancel() }
   }
 
@@ -130,7 +130,7 @@ struct LayoutPreviewView: View {
       }
       .modifier(PreviewDropZone(placement: .dropdown, drag: drag, outlineAtRest: false))
       .onAppear { availableWidth = geometry.size.width }
-      .onChange(of: geometry.size.width) { _, width in availableWidth = width }
+      .onChange(of: geometry.size.width) { width in availableWidth = width }
     }
     .frame(height: height)
   }

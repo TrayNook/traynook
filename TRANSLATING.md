@@ -11,7 +11,7 @@ the same localization helper. Community translations are welcome.
 - Preserve placeholders and their types. Use the translator comments beside each entry to understand where and how the string appears.
 - Use the target language's plural, grammatical, punctuation, capitalization, and menu conventions rather than translating word-for-word.
 - Do not translate technical identifiers, bundle identifiers, file names, keyboard symbols, or code.
-- Keep permission explanations precise: translations must not promise access or behavior beyond the English source text.
+- Keep permission and update explanations precise: distinguish checking, downloading, and explicit **Install & Relaunch** consent; never imply that quitting approves installation or that GitHub update requests are offline. Translations must not promise access or behavior beyond the English source text.
 
 ## Adding or updating a language
 

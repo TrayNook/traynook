@@ -917,7 +917,8 @@ final class AppModel: ObservableObject {
       return
     }
     guard !concealed, canEdit else { dropdownShown = true; show(); return }
-    runOperation(restoreSettingsFocus: false, completion: { self.dropdownShown = true; show() }) {
+    runOperation(restoreSettingsFocus: false, deactivateApp: false,
+      completion: { self.dropdownShown = true; show() }) {
       try await self.applyAndConceal(restoringToMenuBar: [])
     }
   }

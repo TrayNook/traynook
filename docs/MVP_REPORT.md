@@ -193,9 +193,21 @@ would change physical pointer behavior and was not adopted.
    Accessibility approval for normal Finder launch; Developer ID signing, notarization, public
    identity/destination, and a supported-environment acceptance matrix.
 
-Disk availability was 28 GiB at the start, so the previous disk-space blocker did
-not prevent this build. The app adds no network client, analytics, helper daemon,
-third-party dependency, or updater. No login registration or permission database
+Release-policy update, 9 November 2026: the environment observations above remain
+historical measurements. The full OS/hardware acceptance matrix is no longer a
+launch gate. The target is stable macOS majors receiving current Apple security
+updates; older installations are allowed down to the technical minimum of 13.0
+without guarantees. Compatibility is best effort, and release notes record only
+actual test coverage. Developer ID and notarization are also now optional: the
+default public release uses free ad-hoc signing, while update signing remains
+required. See [ADR 0002](adr/0002-support-current-stable-macos-releases.md) and
+[the updated distribution decision](adr/0004-sign-releases-with-maintainer-developer-id.md).
+
+Historical build observation: disk availability was 28 GiB at the start, so the
+previous disk-space blocker did not prevent this build. That build added no
+network client, analytics, helper daemon, third-party dependency, or updater.
+The current target includes signed updates through Sparkle; see
+[Networking and updates](DECISIONS.md#networking-and-updates). No login registration or permission database
 was changed. Finder launch of this ad-hoc rebuild needs renewed Accessibility approval.
 
 Executable: `dist/TrayNook Dev.app/Contents/MacOS/TrayNook`.

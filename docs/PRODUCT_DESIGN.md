@@ -8,16 +8,16 @@ Status: research draft for discussion
 Target first public version: **1.0.0**  
 Product name: **TrayNook** (selected, pending final clearance)
 
-Canonical GitHub owner: **mahenzon**  
-Intended repository: `github.com/mahenzon/TrayNook`
+Canonical GitHub organization is **TrayNook**.
+Intended repository: `github.com/TrayNook/traynook`
 Permanent bundle identifier: `io.github.mahenzon.TrayNook`
-Initial Homebrew tap: `github.com/mahenzon/homebrew-tap`, cask token `traynook`
+Initial Homebrew tap: `github.com/TrayNook/homebrew-tap`, cask token `traynook`
 
 Preview artifacts use GitHub prerelease tags `v1.0.0-alpha.N`, `v1.0.0-beta.N`, and `v1.0.0-rc.N`, while the macOS marketing version stays `1.0.0` and numeric build numbers increase monotonically. Stable Homebrew distribution begins with final `v1.0.0`.
 
-Alpha and beta release notes list the exact OS/hardware subset tested and make no complete compatibility claim. Every release candidate must pass the full Supported Baseline on every currently maintained stable macOS major before stable 1.0.0. Unverified prerelease environments still use fail-visible capability gates.
+Every public prerelease and stable release lists the exact environments tested and known limitations. The support target is every stable macOS major receiving current Apple security updates; compatibility is best effort and macOS 13.0 remains the technical minimum for older installations without guarantees; a full maintained-macOS acceptance matrix is not a release gate. Unverified private behavior still uses fail-visible capability gates.
 
-Every public preview is signed and notarized with the same Developer ID identity and permanent bundle identifier as the stable release. Public previews and stable builds form one installation/data lane rather than side-by-side apps. Local development uses the separate display name **TrayNook Dev** and bundle identifier `io.github.mahenzon.TrayNook.dev`, with separate preferences and privacy grants. Pull-request CI may remain unsigned and never publishes a downloadable `.app`; only trusted signed tags produce user-installable builds.
+Public previews and stable releases default to free ad-hoc signing with the same permanent bundle identifier; no paid Apple membership is required. Explicit `notarized` mode adds Developer ID signing and notarization. Ad-hoc releases can require manual Open Anyway approval and renewed Accessibility permission after updates. Public previews and stable builds form one installation/data lane rather than side-by-side apps. Local development uses the separate display name **TrayNook Dev** and bundle identifier `io.github.mahenzon.TrayNook.dev`, with separate preferences and privacy grants. Pull-request CI may remain unsigned and never publishes a downloadable `.app`; only trusted signed tags produce user-installable builds.
 
 Upgrading from any public prerelease to a later prerelease or stable 1.0.0 preserves Desired Layout and settings through versioned forward migrations. Downgrades are unsupported. A build that cannot safely read stored state returns managed items to native Menu Bar layout, removes TrayNook-created concealment, and offers recovery instead of guessing or applying a partial layout. It preserves the unreadable data for diagnosis until the user explicitly chooses **Reset Layout**. One concise confirmation states that saved item identities, Placements, and order will be deleted and cannot be undone; it requires no typed phrase. Permissions, Launch at Login, and unrelated preferences remain unchanged. Persisted identity is limited to bundle identity and non-content stable discriminators—never dynamic Accessibility titles or labels, geometry, process/window IDs, or hashes of content-bearing strings.
 
@@ -32,8 +32,8 @@ The app has one job: organize items among three explicit homes—visible in the 
 1. **Nothing gets lost.** The policy is to keep new, unknown, or uncertain items in the real menu bar and prefer visible recovery over a perfectly restored layout. Because macOS can initially insert a new item on either side of an internal boundary, the prototype must prove how quickly the app can detect and correct a concealed insertion.
 2. **The source app stays in control.** Menus, popovers, windows, and accessibility semantics come from the app that owns the Source Item whenever macOS permits it.
 3. **Explicit placement.** Every Managed Item has exactly one Placement: Menu Bar Zone, Dropdown Zone, or Always Hidden Zone. The Launcher is the sole exception whose Placement is permanently Menu Bar Zone while its order remains user-controlled.
-4. **Quiet while idle.** No continuous background capture, networking, analytics, accounts, or cloud state.
-5. **Minimal persistence.** Store only the item identity, Placement, and order needed for Desired Layout plus explicit app preferences, onboarding acknowledgements, state-schema version, and the clean-Quit baseline. Never persist captured pixels, native-interface contents, interaction history, usage frequency, or analytics identifiers.
+4. **Quiet while idle.** No continuous background capture, analytics, accounts, or cloud state. Optional update checks run at launch and daily; archive downloads require their separate preference.
+5. **Minimal persistence.** Store only the item identity, Placement, and order needed for Desired Layout plus explicit app preferences, onboarding acknowledgements, state-schema version, and the clean-Quit baseline. The updater may also keep disposable downloaded release archives locally. Never persist captured pixels, native-interface contents, interaction history, usage frequency, or analytics identifiers.
 6. **Mac-native, not customizable.** Use current system materials, spacing, motion, focus, and accessibility behavior. There are no themes.
 7. **Permission use is explicit.** The app explains each permission before macOS asks for it and requests only permissions needed by the chosen technical mechanism.
 8. **Unsupported behavior fails safely.** A private API is used only after public approaches fail, behind capability checks. Missing or changed behavior disables the affected path, preserves visible recovery, and never crashes TrayNook.
@@ -84,9 +84,9 @@ Barbee's editor validates the selected interaction: drag within a Placement Lane
 3. A primary click on the Launcher toggles the Dropdown on the display containing the Launcher regardless of permission state. Without Accessibility, the gear remains usable while native Proxy Item actions and layout editing are disabled. Without Screen Recording, the Dropdown uses fallback proxies.
 4. The Dropdown opens directly below the menu bar, stays within that display's usable bounds, and starts with a fixed gear-icon Settings Button followed by Running Proxy Items. Not Running and App Missing placeholders exist only in Settings. Items flow in semantic leading-to-trailing order before wrapping downward, mirroring in right-to-left interfaces.
    Background status and recovery actions live in Settings. A failed Proxy Item action opens Settings with its error, while ordinary scan notices leave the Dropdown compact.
-5. Pressing Escape, clicking the Launcher again, or clicking outside closes the Dropdown. An outside click continues to its intended application or control; TrayNook observes dismissal without consuming the click or replaying a synthetic duplicate. Clicking a Proxy Item begins the separately defined Interaction Handoff: TrayNook first tries to keep the Dropdown visible and uses the accepted temporary-hide fallback only when no reliable workaround exists.
+5. The Dropdown consumes physical Escape down, repeats, and up locally and closes on key-up. Clicking the Launcher again or clicking outside also closes the Dropdown. An outside click continues to its intended application or control; TrayNook observes dismissal without consuming the click or replaying a synthetic duplicate. Clicking a Proxy Item begins the separately defined Interaction Handoff: TrayNook first tries to keep the Dropdown visible and uses the accepted temporary-hide fallback only when no reliable workaround exists.
 6. Clicking the Settings Button closes the transient Dropdown and opens or raises Settings on Layout. Neither the Dropdown nor its Settings Button requires Accessibility or Screen Recording; native source management remains gated by Accessibility.
-7. Opening by pointer avoids activating TrayNook or stealing focus from the current application. Keyboard or VoiceOver activation focuses the first control, the gear. Passive Escape or Launcher-toggle dismissal restores the previously active application and focus when macOS permits. An outside-click target, Settings command, or source app intentionally receiving focus wins instead. The prototype verifies this contract across every supported release.
+7. For pointer and keyboard opening alike, TrayNook activates and waits until active before showing the Dropdown. The Dropdown must own keyboard input or close safely. It uses no global keyboard tap or synthesized foreign key events. Keyboard or VoiceOver opening focuses the first control, the gear; pointer opening does not automatically focus it. Passive Escape or Launcher-toggle dismissal restores the previously active application and focus when macOS permits. An outside-click target, Settings command, or source app intentionally receiving focus wins instead. The prototype checks this contract in the recorded test environments.
 
 ### Explicit application launch
 
@@ -137,7 +137,7 @@ The intended interaction is an Interaction Handoff:
 6. For a transient menu or popover, the Source Item remains promoted for the duration of that interface.
 7. When the menu or popover closes, the app restores Desired Layout. Opening or raising an ordinary window, toggling state, launching an app, or producing no interface completes handoff after a short measured grace period, restores Desired Layout, and leaves the Dropdown closed rather than tracking a long-lived window indefinitely.
 
-TrayNook first attempts to keep the Dropdown visibly open throughout step 4. If the initial mechanism fails, the prototype must explore reliable focus, window-level, and interaction-tracking workarounds. If none succeeds across the supported matrix, the accepted fallback is **yield and resume**: temporarily hide the Dropdown while the source application's native menu or popover is active. A selected source command or a source interface that closes itself may resume the Dropdown unless that action opens/raises an ordinary window or intentionally transfers focus to the source app; the ordinary-window rule wins and leaves Dropdown closed. Escape, an outside click, Launcher toggle, Open Settings, Restore, or Quit ends the Dropdown session and suppresses reopening.
+TrayNook first attempts to keep the Dropdown visibly open throughout step 4. If the initial mechanism fails, the prototype must explore reliable focus, window-level, and interaction-tracking workarounds. If none succeeds in the tested environments, the accepted fallback is **yield and resume**: temporarily hide the Dropdown while the source application's native menu or popover is active. A selected source command or a source interface that closes itself may resume the Dropdown unless that action opens/raises an ordinary window or intentionally transfers focus to the source app; the ordinary-window rule wins and leaves Dropdown closed. Escape, an outside click, Launcher toggle, Open Settings, Restore, or Quit ends the Dropdown session and suppresses reopening.
 
 TrayNook does not reimplement or imitate a foreign app's menu or popover to change that anchor. See [ADR 0007](adr/0007-use-proxies-and-native-interaction-handoff.md).
 
@@ -193,14 +193,18 @@ Settings is one small window with three toolbar tabs: **Layout**, **Permissions*
 
 **General**
 
+The full reset and uninstall flows below remain target designs. The current app
+implements Reset Layout and preserves update preferences and downloaded archives;
+it has no full-data erase command.
+
 - Launch at Login
 - Version, licenses, source-code link, and Quit
 - Public author credit: Suren Khorenyan
-- Copy Diagnostics: place a locally generated, privacy-preserving compatibility summary on the clipboard only after explicit user action
-- Report a Problem…: after explicit user action, open TrayNook's GitHub issue form in the browser. Never attach or transmit diagnostics automatically; the user reviews and pastes them deliberately
+- Copy Diagnostics: before copying, explain that the local summary includes permission/recovery state and affected, pending, or repair application bundle identifiers; copy only after explicit user action
+- Report a Problem…: after explicit user action, open `https://github.com/TrayNook/traynook/issues/new` in the browser. The source repository must have GitHub Issues enabled. Never attach or transmit diagnostics automatically; the user reviews and pastes them deliberately
 - Prepare for Uninstall: show removal instructions, then Restore, Disable Login, and Quit; never claim to delete the app itself. Explain the optional final cleanup of removing TrayNook from Accessibility and Screen Recording in System Settings because TrayNook cannot revoke those grants itself
 - Reset TrayNook: after confirmation, restore all items, disable Launch at Login, clear every TrayNook-owned setting, identity, onboarding acknowledgement, and Undo history, remain running, and return to first-launch Permissions. Permissions reads and displays any still-granted macOS authorization without requesting it again. An explicit Continue precedes reconciliation and layout management; afterward Layout opens and the reset one-time Launch at Login recommendation appears again. Running again may create fresh identity data, so this is accurately named Reset rather than Erase
-- Erase Data and Quit: after confirmation in the uninstall flow, restore native Menu Bar layout, disable Launch at Login, remove TrayNook controls, clear TrayNook-owned local data, and terminate. Advertise `brew uninstall --cask --zap mahenzon/tap/traynook` as self-contained only after testing proves equivalent safe stop, restoration, login unregistration, app removal, and data cleanup; otherwise require Erase Data and Quit first. Neither path can revoke system-owned privacy grants
+- Erase Data and Quit: after confirmation in the uninstall flow, restore native Menu Bar layout, disable Launch at Login, remove TrayNook controls, clear TrayNook-owned local data, and terminate. Advertise `brew uninstall --cask --zap traynook/tap/traynook` as self-contained only after testing proves equivalent safe stop, restoration, login unregistration, app removal, and data cleanup; otherwise require Erase Data and Quit first. Neither path can revoke system-owned privacy grants
 
 **Permissions**
 
@@ -243,19 +247,19 @@ The Launcher secondary-click menu contains only **Open Settings**, **Restore All
 - Runtime capability gates and visible fallbacks for every deprecated or private macOS dependency
 - Notch and non-notch geometry, multiple displays, full-screen Spaces, and auto-hidden-menu-bar handling
 - VoiceOver labels, focus indication, keyboard activation for ordinary controls, Reduce Motion, and increased-contrast support; complete keyboard-only layout editing is not claimed in 1.0.0
-- Nonactivating pointer-open behavior, gear-first keyboard/VoiceOver focus, and best-effort prior-focus restoration only for passive dismissal; intentional outside-click, Settings, and source-app focus transfers win
+- Activation before showing the Dropdown for pointer and keyboard entry, required keyboard ownership with safe close on failure, local Escape consumption through key-up, gear-first keyboard/VoiceOver focus without pointer autofocus, and best-effort prior-focus restoration only for passive dismissal; intentional outside-click, Settings, and source-app focus transfers win
 - US English in 1.0.0, with all strings localization-ready and layouts tested for expansion, bidirectional text, and right-to-left mirroring
 - Launch at Login using the system service, default off, with one explicit onboarding recommendation
-- Local-only preferences; no telemetry or network dependency
-- Persist only bundle identity, non-content stable discriminators, Placement, and order plus explicit app preferences, onboarding acknowledgements, state-schema version, and the clean-Quit baseline. Never persist dynamic Accessibility titles or labels, geometry, process/window IDs, hashes of content-bearing strings, captured pixels, or behavioral history. Copy Diagnostics may include TrayNook/macOS versions, architecture, permission and capability states, and non-identifying failure codes, but never item titles, application inventory, Desired Layout, pixels, or interaction history
-- No network requests, update checker, updater, telemetry upload, crash upload, or background release polling; external links open only after explicit user action
+- Local-only preferences and Desired Layout; no telemetry; core layout management works offline
+- Persist only bundle identity, non-content stable discriminators, Placement, and order plus explicit app preferences, onboarding acknowledgements, state-schema version, and the clean-Quit baseline. Never persist dynamic Accessibility titles or labels, geometry, process/window IDs, hashes of content-bearing strings, captured pixels, or behavioral history. Copy Diagnostics includes TrayNook/macOS versions, permission and recovery state, failure details, and affected/pending/repair application bundle identifiers, disclosed before copying. It excludes item/window titles, a complete application inventory, Desired Layout, saved item identities, pixels, and interaction history; users review it before posting
+- Check for Updates in General and the Launcher context menu, changelog in General, automatic checks at launch and daily (default on), and separate automatic downloads (default off). Signed archives stay in a local cache; Sparkle 2.10 installation and relaunch start only after explicit Install & Relaunch approval, without a second Sparkle confirmation; macOS authorization may still be required. Before that approval, Quit or crash cannot install a downloaded update. GitHub receives ordinary HTTPS request metadata; no system profile, application inventory, screenshots, layout, telemetry, or crash report is uploaded. Disabling automatic checks stops background update activity; development and diagnostic modes do not start it
 - Free use with no subscription, purchase, account, or entitlement; complete public source under the MIT License
 - Universal application for Intel and Apple silicon
-- Signed and notarized GitHub Release containing one `TrayNook.app` ZIP and its SHA-256 checksum, with no DMG or installer. The same ZIP feeds the `traynook` cask in `github.com/mahenzon/homebrew-tap`; official Homebrew Cask submission is later and does not block 1.0.0
+- GitHub Release containing one `TrayNook.app` ZIP and its SHA-256 checksum, ad-hoc signed by default with an optional paid notarized mode, with no DMG or installer package. Stable releases also publish `appcast.xml` with an Ed25519 payload signature for the final ZIP. The same ZIP feeds the `traynook` cask in `github.com/TrayNook/homebrew-tap`; official Homebrew Cask submission is optional, requires meeting its acceptance rules, and does not block 1.0.0
 
 ### Conditional features
 
-These belong to 1.0.0 only if the feasibility prototype proves them reliable across the supported matrix:
+These belong to 1.0.0 only if the feasibility prototype proves them reliable in the recorded test environments:
 
 - Real-time Proxy Item animation or changing text while the Dropdown is open
 - Stable restoration of multiple indistinguishable Source Items from one application
@@ -271,7 +275,6 @@ These belong to 1.0.0 only if the feasibility prototype proves them reliable acr
 - Themes, tinting, custom icons, sounds, or animation settings
 - Scripts, plugins, widgets, shortcuts actions, or URL schemes
 - Cloud sync, accounts, collaboration, backups, or import/export in 1.0.0
-- Built-in updater; releases come through GitHub and Homebrew
 - Mac App Store distribution
 - Full Disk Access, an administrator helper, or root privileges
 - Notification Center alerts or notification permission
@@ -285,20 +288,11 @@ These belong to 1.0.0 only if the feasibility prototype proves them reliable acr
 
 ## Compatibility promise
 
-For a release made in July 2026, the proposed baseline is:
+TrayNook targets every stable macOS major receiving current Apple security updates, using [Apple security releases](https://support.apple.com/en-us/100100) at release time. It ships a Universal 2 app for Intel and Apple silicon with a technical minimum of macOS 13.0. Older systems outside the support target may install and run without compatibility guarantees. Compatibility is best effort. Release notes list exact OS builds, architectures, hardware, display configurations, results, and known limitations actually tested. A deployment target and bundled architecture do not certify untested environments. See [ADR 0002](adr/0002-support-current-stable-macos-releases.md).
 
-- macOS Sonoma 14, Sequoia 15, and Tahoe 26
-- Apple silicon and Intel hardware still supported by those systems
-- Built as Universal 2 with a macOS 14.0 deployment target
-- Notch and non-notch displays, plus external displays
+The former full maintained-macOS acceptance matrix is no longer a release gate. Untested OS/hardware combinations do not block 1.0.0. Compatibility bugs are investigated from user reports through GitHub Issues; beta macOS versions carry no compatibility guarantee.
 
-Apple does not publish a permanent “three supported versions” contract. TrayNook defines “currently supported” operationally as stable macOS major versions still receiving current Apple security updates, reviews and tests that matrix for every release, and states exact versions in every release. See [ADR 0002](adr/0002-support-current-stable-macos-releases.md).
-
-Within each claimed major, the compatibility guarantee targets the latest security-patched point release available at TrayNook's release date, and release notes list the exact tested builds. Older point releases within that major are best-effort rather than implicitly certified; the application deployment target remains macOS 14.0.
-
-This compatibility promise applies to the application and Managed Items. It cannot honestly promise that every Source Item from every application is manageable because macOS protects some system items and third-party implementations vary.
-
-Every currently maintained stable macOS major must pass the **Supported Baseline**: TrayNook can discover Managed Items, move them among all three Placement Lanes through Settings, show usable Dropdown proxies with an app-icon fallback, activate primary and secondary click through native handoff, and restore safely. Direct cross-surface drag, simultaneous Dropdown visibility, exact or live imagery, and stable handling of indistinguishable duplicates may degrade visibly when capabilities are unavailable; the Supported Baseline may not. A failure on any maintained stable major blocks the release instead of shrinking the promised matrix.
+Checks on available environments cover discovery of Managed Items, all three Settings Placement Lanes, usable Dropdown proxies with an app-icon fallback, primary and secondary native handoff, and safe restoration. Runtime capability checks and visible recovery remain required. Some system items are protected by macOS and third-party implementations vary, so TrayNook cannot promise that every Source Item is manageable.
 
 ## Release criteria for 1.0.0
 
@@ -307,13 +301,14 @@ The 1.0.0 tag is appropriate only after:
 1. Every feasibility gate in [Technical feasibility](FEASIBILITY.md) passes or its fallback is explicitly accepted.
 2. No tested failure can assign the Launcher to Dropdown Zone or Always Hidden Zone; its user-selected Menu Bar order survives reconciliation, and explicit application launch still recovers Settings if macOS physically conceals it.
 3. Quit, crash recovery, permission revocation, reset, and uninstall paths are documented and manually verified.
-4. The supported OS/hardware/display matrix passes the critical interaction suite.
-5. The app is signed, hardened, notarized, stapled, and verified by Gatekeeper.
+4. The critical interaction suite passes on the available test environments, with exact coverage and known limitations recorded in release notes.
+5. The Universal 2 app passes strict signature-integrity checks and records its actual distribution mode. Ad-hoc signing is the default; only explicit notarized mode requires Developer ID, Hardened Runtime, notarization, stapling, and Gatekeeper acceptance. Release instructions explain manual macOS approval for ad-hoc artifacts.
 6. Accessibility and Screen Recording explanations match actual behavior and no captured pixels are written to disk.
 7. The name, permanent bundle identifier `io.github.mahenzon.TrayNook`, GitHub repository, owner-tap cask token, and license have been locked.
 8. The public repository contains the complete corresponding source under the MIT License, with no paid feature gate and no copied GPL implementation code.
 9. Explicit launch and every ordinary Settings open or raise select Layout without requiring Accessibility or Screen Recording. Launcher primary-click still opens the Dropdown without either permission; its Settings Button remains usable while native source actions require Accessibility. Silent login launch plus every supported `SMAppService` state has been verified.
-10. Every private-API-dependent path passes the supported OS matrix; missing, changed, and deliberately disabled capabilities have also been tested for crash-free visible fallback.
-11. Every currently maintained stable macOS major passes the complete Supported Baseline; any baseline failure blocks the release.
-12. Stable release signing uses the maintainer's personal Developer ID identity through protected trusted-tag secrets; no signing credential is present in the repository or untrusted contribution workflow.
-13. US English, pseudolocalized, and RTL-pseudolanguage builds pass the critical UI suite; translation contribution instructions are current.
+10. Any private-API-dependent path is checked in the recorded test environments; missing, changed, and deliberately disabled capabilities have also been tested for crash-free visible fallback.
+11. Release notes describe compatibility as best effort and do not claim untested OS/hardware combinations are certified.
+12. Stable update signing uses protected Ed25519 secrets in trusted GitHub-verified signed-tag workflows, with manual draft review before publication. Apple credentials are required only for optional notarized releases; no signing credential is present in the repository or untrusted contribution workflow.
+13. Update signing is configured before public 1.0.0, signed-archive rejection and explicit install consent are verified, and disabling background checks prevents background update activity.
+14. US English, pseudolocalized, and RTL-pseudolanguage builds pass the critical UI suite; translation contribution instructions are current.

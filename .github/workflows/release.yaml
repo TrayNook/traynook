@@ -18,6 +18,7 @@ concurrency:
 jobs:
   prepare:
     name: Validate release tag
+    if: github.repository == 'TrayNook/traynook'
     runs-on: macos-15
     timeout-minutes: 5
     outputs:
@@ -55,7 +56,7 @@ jobs:
           printf 'commit=%s\n' "$tag_commit" >> "$GITHUB_OUTPUT"
 
   release:
-    name: Sign, notarize, and create draft
+    name: Build and create release draft
     needs: prepare
     runs-on: macos-15
     timeout-minutes: 45
@@ -66,7 +67,9 @@ jobs:
       TRAYNOOK_VERSION: ${{ needs.prepare.outputs.version }}
       TRAYNOOK_RELEASE_VERSION: ${{ needs.prepare.outputs.release_version }}
       TRAYNOOK_BUILD: ${{ github.run_number }}
+      TRAYNOOK_DISTRIBUTION: ${{ vars.TRAYNOOK_DISTRIBUTION || 'adhoc' }}
       TRAYNOOK_NOTARY_PROFILE: TrayNook
+      TRAYNOOK_UPDATE_PUBLIC_KEY: ${{ vars.TRAYNOOK_UPDATE_PUBLIC_KEY }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -82,7 +85,26 @@ jobs:
               exit 1
             fi
           fi
-      - name: Install signing and notarization credentials
+      - name: Configure distribution and update signing
+        env:
+          TRAYNOOK_UPDATE_PRIVATE_KEY_FILE: ${{ runner.temp }}/traynook-update-key
+          TRAYNOOK_UPDATE_PRIVATE_KEY: ${{ secrets.TRAYNOOK_UPDATE_PRIVATE_KEY }}
+        run: |
+          case "$TRAYNOOK_DISTRIBUTION" in
+            adhoc|notarized) ;;
+            *) echo '::error::TRAYNOOK_DISTRIBUTION must be adhoc or notarized.'; exit 1 ;;
+          esac
+          if [[ -z "$TRAYNOOK_UPDATE_PUBLIC_KEY" || -z "$TRAYNOOK_UPDATE_PRIVATE_KEY" ]]; then
+            echo '::error::Set the update public key variable and protected private key secret.'
+            exit 1
+          fi
+          umask 077
+          # Sparkle's exported private key is already base64 text, as required by sign_update.
+          printf '%s' "$TRAYNOOK_UPDATE_PRIVATE_KEY" > "$TRAYNOOK_UPDATE_PRIVATE_KEY_FILE"
+          chmod 600 "$TRAYNOOK_UPDATE_PRIVATE_KEY_FILE"
+          printf 'TRAYNOOK_UPDATE_PRIVATE_KEY_FILE=%s\n' "$TRAYNOOK_UPDATE_PRIVATE_KEY_FILE" >> "$GITHUB_ENV"
+      - name: Install optional Apple signing and notarization credentials
+        if: env.TRAYNOOK_DISTRIBUTION == 'notarized'
         env:
           TRAYNOOK_NOTARY_KEYCHAIN: ${{ runner.temp }}/traynook-release.keychain-db
           DEVELOPER_ID_CERTIFICATE_BASE64: ${{ secrets.DEVELOPER_ID_CERTIFICATE_BASE64 }}
@@ -125,7 +147,7 @@ jobs:
           xcrun notarytool store-credentials "$TRAYNOOK_NOTARY_PROFILE" \
             --key "$api_key" --key-id "$APP_STORE_CONNECT_KEY_ID" --issuer "$APP_STORE_CONNECT_ISSUER_ID" \
             --keychain "$TRAYNOOK_NOTARY_KEYCHAIN"
-      - name: Test, build Universal 2, sign, notarize, and verify
+      - name: Test, build Universal 2, package, and verify
         run: Scripts/release.sh
       - name: Create or update GitHub draft
         env:
@@ -133,17 +155,32 @@ jobs:
           PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
         run: |
           archive="dist/TrayNook-$TRAYNOOK_RELEASE_VERSION.zip"
+          assets=("$archive" "$archive.sha256")
+          if [[ "$PRERELEASE" == false ]]; then
+            assets+=(dist/appcast.xml)
+          fi
           (cd dist && shasum -a 256 -c "TrayNook-$TRAYNOOK_RELEASE_VERSION.zip.sha256")
           if is_draft=$(gh release view "$GITHUB_REF_NAME" --json isDraft --jq .isDraft); then
             if [[ "$is_draft" != true ]]; then
               echo '::error::This release was published during the build. Assets will not be replaced.'
               exit 1
             fi
+            draft_body=$(gh release view "$GITHUB_REF_NAME" --json body --jq .body)
+            if [[ "$TRAYNOOK_DISTRIBUTION" == adhoc && "$draft_body" == *'Universal 2 app, signed with Developer ID, notarized, and stapled.'* ]] ||
+              [[ "$TRAYNOOK_DISTRIBUTION" == notarized && "$draft_body" == *'Universal 2 app with ad-hoc integrity signing; not notarized by Apple.'* ]]; then
+              echo '::error::The draft describes a different distribution mode. Review its notes before replacing its assets.'
+              exit 1
+            fi
             gh release edit "$GITHUB_REF_NAME" --prerelease="$PRERELEASE"
-            gh release upload "$GITHUB_REF_NAME" "$archive" "$archive.sha256" --clobber
+            gh release upload "$GITHUB_REF_NAME" "${assets[@]}" --clobber
           else
+            if [[ "$TRAYNOOK_DISTRIBUTION" == notarized ]]; then
+              distribution_note='Universal 2 app, signed with Developer ID, notarized, and stapled.'
+            else
+              distribution_note='Universal 2 app with ad-hoc integrity signing; not notarized by Apple. macOS may require explicit approval to open it. Accessibility permissions may need reapproval after updates.'
+            fi
             cat > "$RUNNER_TEMP/traynook-release-notes.md" <<EOF
-          Universal 2 app, signed with Developer ID, notarized, and stapled.
+          $distribution_note
           Marketing version: $TRAYNOOK_VERSION. Build: $TRAYNOOK_BUILD.
 
           Before publishing, record the exact macOS versions and hardware tested,
@@ -154,7 +191,7 @@ jobs:
             if [[ "$PRERELEASE" == true ]]; then
               options+=(--prerelease)
             fi
-            gh release create "$GITHUB_REF_NAME" "$archive" "$archive.sha256" "${options[@]}"
+            gh release create "$GITHUB_REF_NAME" "${assets[@]}" "${options[@]}"
           fi
           release_url=$(gh release view "$GITHUB_REF_NAME" --json url --jq .url)
           printf '### Release draft ready\n\n[Review %s](%s) — build %s.\n' \
@@ -163,8 +200,9 @@ jobs:
         if: always()
         env:
           TRAYNOOK_NOTARY_KEYCHAIN: ${{ runner.temp }}/traynook-release.keychain-db
+          TRAYNOOK_UPDATE_PRIVATE_KEY_FILE: ${{ runner.temp }}/traynook-update-key
         run: |
-          rm -f "$RUNNER_TEMP/traynook-developer-id.p12" "$RUNNER_TEMP/traynook-notary-key.p8"
-          if [[ -f "$TRAYNOOK_NOTARY_KEYCHAIN" ]]; then
+          rm -f "$RUNNER_TEMP/traynook-developer-id.p12" "$RUNNER_TEMP/traynook-notary-key.p8" "$TRAYNOOK_UPDATE_PRIVATE_KEY_FILE"
+          if [[ "$TRAYNOOK_DISTRIBUTION" == notarized && -f "$TRAYNOOK_NOTARY_KEYCHAIN" ]]; then
             security delete-keychain "$TRAYNOOK_NOTARY_KEYCHAIN"
           fi
