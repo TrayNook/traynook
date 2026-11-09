@@ -11,7 +11,7 @@ After the first stable release is published, run
 
 ```sh
 brew tap traynook/tap
-brew install traynook/tap/traynook
+brew install traynook
 ```
 
 If macOS blocks opening an ad-hoc build, use **System Settings → Privacy &
@@ -27,7 +27,7 @@ guarantee. Release notes list exact tested environments.
 
 ```sh
 brew update
-brew upgrade --cask --greedy traynook/tap/traynook
+brew upgrade --greedy traynook
 ```
 
 The app also offers **Check for Updates…** in General and the tray context menu.
@@ -39,13 +39,13 @@ Automatic checks default on; automatic downloads default off. Only an explicit
 Turn off **Launch at Login** in TrayNook Settings and quit TrayNook before running
 
 ```sh
-brew uninstall --cask traynook/tap/traynook
+brew uninstall traynook
 ```
 
 To also erase saved layout and preferences, use
 
 ```sh
-brew uninstall --cask --zap traynook/tap/traynook
+brew uninstall --zap traynook
 ```
 
 The optional cleanup removes the saved layout and preferences belonging to
@@ -65,8 +65,8 @@ To switch to a historical version, quit TrayNook, uninstall the currently
 installed cask without `--zap`, and install the desired version, for example:
 
 ```sh
-brew uninstall --cask traynook/tap/traynook
-brew install --cask traynook/tap/traynook@1.0.0
+brew uninstall traynook
+brew install traynook@1.0.0
 ```
 
 Only one version can be installed at a time because every cask installs

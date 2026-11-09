@@ -309,19 +309,20 @@ Use a new dispatch after changing the workflow so the new run uses the fix.
 After the first successful stable publication, users can install and upgrade.
 
 ```sh
-brew install --cask traynook/tap/traynook
-brew upgrade --cask --greedy traynook/tap/traynook
+brew tap traynook/tap
+brew install traynook
+brew upgrade --greedy traynook
 ```
 
 To switch to a historical version, quit TrayNook and uninstall the installed
 cask without `--zap` before installing, for example,
-`brew install --cask traynook/tap/traynook@1.0.0`. Both casks install the same
+`brew install traynook@1.0.0`. Both casks install the same
 `TrayNook.app`, so they cannot coexist. Turn off the app's automatic update checks
 and downloads when intentionally remaining on an older version. Homebrew
 uninstallation without `--zap` preserves saved layout and preferences.
 
 Before uninstalling, turn off Launch at Login in TrayNook Settings and quit the
-app. Then run `brew uninstall --cask traynook/tap/traynook`. Adding `--zap`
+app. Then run `brew uninstall traynook`. Adding `--zap`
 erases the production layout and preferences; it currently leaves downloaded
 update caches in `~/Library/Caches/io.github.mahenzon.TrayNook/Updates`. Reset
 Layout also preserves updater preferences and caches; the app has no full-data

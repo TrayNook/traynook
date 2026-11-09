@@ -9,7 +9,7 @@ Homebrew installation will be available after the first stable release.
 
 ```sh
 brew tap traynook/tap
-brew install traynook/tap/traynook
+brew install traynook
 ```
 
 Public releases are ad-hoc signed by default and distributed free through GitHub
