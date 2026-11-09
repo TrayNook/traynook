@@ -27,16 +27,22 @@ with tempfile.TemporaryDirectory(prefix="traynook-cask-") as temporary:
 
     archive, sidecar, checksum = assets()
 
-    def run(version="1.0.0", archive=archive, sidecar=sidecar, current=None, succeeds=False):
-        previous = output.read_bytes() if output.exists() else None
+    def run(version="1.0.0", archive=archive, sidecar=sidecar, current=None, succeeds=False,
+            versioned=False, destination=None):
+        destination = destination or (output.with_name(f"traynook@{version}.rb") if versioned else output)
+        previous = {path: path.read_bytes() for path in root.glob("Casks/*.rb")}
+        previous_output = destination.read_bytes() if destination.exists() else None
         arguments = [sys.executable, str(generator), "--version", version, "--archive", str(archive),
-                     "--checksum", str(sidecar), "--output", str(output)]
+                     "--checksum", str(sidecar), "--output", str(destination)]
         if current is not None:
             arguments.extend(["--current-cask", str(current)])
+        if versioned:
+            arguments.append("--versioned")
         result = subprocess.run(arguments, capture_output=True, text=True)
         assert result.returncode == (0 if succeeds else 2), (arguments, result.stderr)
         if not succeeds:
-            assert (output.read_bytes() if output.exists() else None) == previous, "Error replaced the existing cask"
+            assert {path: path.read_bytes() for path in root.glob("Casks/*.rb")} == previous, "Error changed cask history"
+            assert (destination.read_bytes() if destination.exists() else None) == previous_output, "Error replaced the output"
         return result
 
     run(succeeds=True)
@@ -46,11 +52,33 @@ with tempfile.TemporaryDirectory(prefix="traynook-cask-") as temporary:
     assert 'https://github.com/TrayNook/traynook/releases/download/v#{version}/TrayNook-#{version}.zip' in content
     assert 'depends_on macos: :ventura' in content
     assert 'auto_updates true' in content
+    assert 'conflicts_with cask: "traynook@1.0.0"' in content
     assert 'app "TrayNook.app"' in content
     assert 'uninstall quit: "io.github.mahenzon.TrayNook"' in content
     assert 'io.github.mahenzon.TrayNook.dev' not in content
     if shutil.which("ruby"):
         subprocess.run(["ruby", "-c", str(output)], check=True, capture_output=True)
+
+    run(versioned=True, succeeds=True)
+    historical = output.with_name("traynook@1.0.0.rb")
+    historical_content = historical.read_bytes()
+    assert historical_content.startswith(b'cask "traynook@1.0.0" do\n')
+    assert b'conflicts_with cask: "traynook"' in historical_content
+    assert b'turn off update checks and downloads' in historical_content
+    run(versioned=True, current=historical, succeeds=True)
+    assert historical.read_bytes() == historical_content, "Retry changed the historical cask"
+    if shutil.which("ruby"):
+        subprocess.run(["ruby", "-c", str(historical)], check=True, capture_output=True)
+
+    # Existing versioned files cannot change even when metadata, rather than the archive, differs.
+    historical.write_bytes(historical_content.replace(b'Menu bar organizer', b'Changed description'))
+    run(versioned=True)
+    historical.write_bytes(historical_content)
+    wrong_token = root / "wrong-token.rb"
+    wrong_token.write_text(content.replace('cask "traynook"', 'cask "another-app"'))
+    run(current=wrong_token)
+    run(versioned=True, current=output)
+    run(current=historical)
 
     for version in ["", "v1.0.0", "1.0", "01.0.0", "1.00.0", "1.0.01", "1.0.0-alpha.1",
                     "1.0.0+metadata", "1.0.0\n", "1.0.0/../../escape"]:
@@ -78,9 +106,17 @@ with tempfile.TemporaryDirectory(prefix="traynook-cask-") as temporary:
     run(current=root / "not-created.rb", succeeds=True)
     newer_archive, newer_sidecar, _ = assets("1.1.0")
     run(version="1.1.0", archive=newer_archive, sidecar=newer_sidecar, current=output, succeeds=True)
+    run(version="1.1.0", archive=newer_archive, sidecar=newer_sidecar, versioned=True, succeeds=True)
+    assert historical.read_bytes() == historical_content, "An upgrade changed an older cask"
+    assert sorted(path.name for path in output.parent.glob("*.rb")) == [
+        "traynook.rb", "traynook@1.0.0.rb", "traynook@1.1.0.rb",
+    ]
     run(current=output)
     equal_archive, equal_sidecar, _ = assets("1.1.0", contents="changed archive")
     run(version="1.1.0", archive=equal_archive, sidecar=equal_sidecar, current=output)
+    run(version="1.1.0", archive=equal_archive, sidecar=equal_sidecar, versioned=True)
+    run(version="1.1.0", archive=equal_archive, sidecar=equal_sidecar, versioned=True,
+        destination=root / "candidate.rb", current=output.with_name("traynook@1.1.0.rb"))
 
     malformed_cask = root / "invalid.rb"
     malformed_cask.write_text('cask "traynook" do\n  version :latest\nend\n')
@@ -91,5 +127,5 @@ with tempfile.TemporaryDirectory(prefix="traynook-cask-") as temporary:
         next_archive, next_sidecar, _ = assets(version)
         run(version=version, archive=next_archive, sidecar=next_sidecar, current=output, succeeds=True)
 
-print("Homebrew cask passed: verified assets, stable versions, Ruby syntax, upgrades, and error preservation.")
+print("Homebrew casks passed: verified assets, stable versions, Ruby syntax, upgrades, immutable history, tokens, and error preservation.")
 PY

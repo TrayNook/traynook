@@ -54,6 +54,26 @@ The optional cleanup removes the saved layout and preferences belonging to
 
 ## Maintenance
 
-The source repository's Homebrew workflow generates `Casks/traynook.rb` when a
-stable release is published. Changes to cask generation belong in the
+The source repository's Homebrew workflow generates `Casks/traynook.rb` for the
+latest stable release and preserves every stable version as
+`Casks/traynook@VERSION.rb`, following
+[BroGlow's tap](https://github.com/BroGlow/homebrew-tap). App ZIPs and checksums
+remain attached to their versioned releases in the source repository; the tap
+stores installation definitions and their Git history.
+
+To switch to a historical version, quit TrayNook, uninstall the currently
+installed cask without `--zap`, and install the desired version, for example:
+
+```sh
+brew uninstall --cask traynook/tap/traynook
+brew install --cask traynook/tap/traynook@1.0.0
+```
+
+Only one version can be installed at a time because every cask installs
+`TrayNook.app`. To stay on an older version, turn off **Check automatically**
+and **Automatically download updates** in TrayNook. Saved layout and preferences
+are retained when uninstalling without `--zap`.
+
+The first stable release creates the first versioned cask. Changes to generation
+belong in the
 [TrayNook source repository](https://github.com/TrayNook/traynook).

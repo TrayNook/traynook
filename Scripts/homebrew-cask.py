@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate TrayNook's stable Homebrew cask from verified release assets."""
+"""Generate TrayNook's latest or versioned Homebrew cask from verified release assets."""
 
 import argparse
 import hashlib
@@ -11,8 +11,11 @@ import tempfile
 STABLE_VERSION = r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)"
 
 
-def render_cask(version: str, checksum: str) -> str:
-    return f'''cask "traynook" do
+def render_cask(version: str, checksum: str, *, versioned: bool = False) -> str:
+    token = f"traynook@{version}" if versioned else "traynook"
+    conflict = "traynook" if versioned else f"traynook@{version}"
+    pinned_caveat = "\n    To keep this release, turn off update checks and downloads in TrayNook settings." if versioned else ""
+    return f'''cask "{token}" do
   version "{version}"
   sha256 "{checksum}"
 
@@ -22,6 +25,7 @@ def render_cask(version: str, checksum: str) -> str:
   homepage "https://github.com/TrayNook/traynook"
 
   auto_updates true
+  conflicts_with cask: "{conflict}"
   depends_on macos: :ventura
 
   app "TrayNook.app"
@@ -36,6 +40,7 @@ def render_cask(version: str, checksum: str) -> str:
   caveats <<~EOS
     macOS may require approval in Privacy & Security before the first launch.
     Turn off Launch at Login in TrayNook settings before uninstalling.
+    To switch releases, uninstall the installed TrayNook cask first.{pinned_caveat}
   EOS
 end
 '''
@@ -59,8 +64,17 @@ def generate(args: argparse.Namespace) -> None:
     if digest.hexdigest() != checksum:
         raise ValueError("Archive SHA-256 does not match the checksum file.")
 
-    if args.current_cask is not None and args.current_cask.exists():
-        current = args.current_cask.read_text(encoding="utf-8")
+    rendered = render_cask(args.version, checksum, versioned=args.versioned)
+    token = f"traynook@{args.version}" if args.versioned else "traynook"
+    existing = [args.current_cask] if args.current_cask is not None else []
+    if args.versioned:
+        existing.append(args.output)
+    for path in existing:
+        if not path.exists():
+            continue
+        current = path.read_bytes().decode("utf-8")
+        if not current.startswith(f'cask "{token}" do\n'):
+            raise ValueError(f"Existing cask must have the token {token}.")
         current_version = re.search(r'^  version "(' + STABLE_VERSION + r')"$', current, re.MULTILINE)
         current_checksum = re.search(r'^  sha256 "([0-9a-f]{64})"$', current, re.MULTILINE)
         if current_version is None or current_checksum is None:
@@ -71,12 +85,14 @@ def generate(args: argparse.Namespace) -> None:
             raise ValueError("Refusing to downgrade the Homebrew cask.")
         if version == previous and checksum != current_checksum.group(1):
             raise ValueError("Refusing to change the archive checksum for an existing version.")
+        if args.versioned and current != rendered:
+            raise ValueError("Refusing to change an existing versioned cask.")
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=args.output.parent, delete=False) as temporary:
         temporary_path = Path(temporary.name)
         try:
-            temporary.write(render_cask(args.version, checksum))
+            temporary.write(rendered)
             temporary.close()
             temporary_path.replace(args.output)
         finally:
@@ -90,6 +106,7 @@ def main() -> None:
     parser.add_argument("--checksum", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--current-cask", type=Path)
+    parser.add_argument("--versioned", action="store_true", help="Generate the immutable traynook@VERSION cask.")
     args = parser.parse_args()
     try:
         generate(args)

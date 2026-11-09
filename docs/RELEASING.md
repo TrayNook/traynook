@@ -13,8 +13,8 @@ The prepared layout uses the GitHub organization `TrayNook`, source repository
 `TrayNook/traynook`, and tap repository `TrayNook/homebrew-tap`. The macOS bundle
 identifier is `io.github.mahenzon.TrayNook`.
 
-1. Create the organization and both public repositories. Initialize the tap
-   with a README and use `main` as its default branch.
+1. Create the organization and both public repositories. Use `master` as the
+   default branch in both repositories.
 2. Push this project to `TrayNook/traynook`. Enable GitHub Actions and GitHub
    Issues. Verify `https://github.com/TrayNook/traynook/issues/new` opens the
    issue composer used by **Settings → General → Report a Problem…**. The app
@@ -29,11 +29,16 @@ identifier is `io.github.mahenzon.TrayNook`.
    cp -R homebrew-tap/. "$tap_dir/"
    git -C "$tap_dir" add .github README.md LICENSE
    git -C "$tap_dir" commit -m "Prepare TrayNook Homebrew tap"
-   git -C "$tap_dir" push origin main
+   git -C "$tap_dir" push origin HEAD:master
    ```
 
 The seed contains the tap README, license, and CI. The Homebrew workflow creates
-`Casks/traynook.rb` from the first stable release's verified ZIP and checksum.
+`Casks/traynook.rb` and `Casks/traynook@VERSION.rb` from each stable release's
+verified ZIP and checksum. The current cask follows the latest stable version;
+versioned casks are retained permanently, as in
+[BroGlow's tap](https://github.com/BroGlow/homebrew-tap). App archives and checksums
+stay in the source repository's GitHub Releases; the tap stores cask definitions
+and their Git history.
 
 ## Distribution modes
 
@@ -263,7 +268,7 @@ distributed build. Local development builds use a separate bundle identity.
    token there as the secret **`HOMEBREW_TAP_TOKEN`**. Allow this environment
    from the default branch and protected `v*` release tags. Add a maintainer
    reviewer if tap publication should require approval.
-3. Ensure the token's account can push to the tap's `main` branch. If a tap
+3. Ensure the token's account can push to the tap's `master` branch. If a tap
    ruleset requires pull requests, allow this automation account to bypass it
    for generated cask updates.
 
@@ -271,7 +276,8 @@ The [Homebrew workflow](../.github/workflows/homebrew-tap.yaml) runs when a
 stable GitHub release is published. It checks that the source repository is
 public, the release is published, and its signed annotated tag is verified by
 GitHub and points into the default branch history. It downloads the ZIP and
-checksum, verifies their SHA-256, and generates the cask.
+checksum, verifies their SHA-256, and generates both the latest cask and a
+versioned `traynook@VERSION` cask.
 
 A macOS runner creates a temporary tap, trusts it with
 `brew trust --tap traynook/ci`, and runs the custom cask checks. Both modes verify
@@ -287,7 +293,9 @@ strict audit runs with `--except token_conflicts` to avoid downloading the full
 `homebrew/core` Git history for that same lookup. API failures stop the check.
 
 Published alpha, beta, and RC releases stay on GitHub. The stable cask advances
-by numeric version. An older version or a changed checksum for the same version
+by numeric version. Each stable version also remains installable through its
+own versioned cask. Existing versioned files are never removed or replaced with
+different content. An older version or a changed checksum for the same version
 fails publication. Identical cask content finishes without a new commit.
 Concurrent tap updates cause a rejected push that can be retried with a fresh run.
 
@@ -304,6 +312,13 @@ After the first successful stable publication, users can install and upgrade.
 brew install --cask traynook/tap/traynook
 brew upgrade --cask --greedy traynook/tap/traynook
 ```
+
+To switch to a historical version, quit TrayNook and uninstall the installed
+cask without `--zap` before installing, for example,
+`brew install --cask traynook/tap/traynook@1.0.0`. Both casks install the same
+`TrayNook.app`, so they cannot coexist. Turn off the app's automatic update checks
+and downloads when intentionally remaining on an older version. Homebrew
+uninstallation without `--zap` preserves saved layout and preferences.
 
 Before uninstalling, turn off Launch at Login in TrayNook Settings and quit the
 app. Then run `brew uninstall --cask traynook/tap/traynook`. Adding `--zap`
@@ -322,11 +337,17 @@ python3 Scripts/homebrew-cask.py --version 1.0.0 \
   --checksum dist/TrayNook-1.0.0.zip.sha256 \
   --output homebrew-tap/Casks/traynook.rb \
   --current-cask homebrew-tap/Casks/traynook.rb
+python3 Scripts/homebrew-cask.py --version 1.0.0 --versioned \
+  --archive dist/TrayNook-1.0.0.zip \
+  --checksum dist/TrayNook-1.0.0.zip.sha256 \
+  --output homebrew-tap/Casks/traynook@1.0.0.rb \
+  --current-cask homebrew-tap/Casks/traynook@1.0.0.rb
 Scripts/test-homebrew-cask.sh
 ```
 
-This verifies the archive and writes an exact SHA-256 into the installable cask.
-The current-cask check protects an existing local version during generation.
+This verifies the archive and writes an exact SHA-256 into both installable casks.
+The current-cask checks protect existing versions during generation. Keep all
+previous `traynook@VERSION.rb` files when committing the new pair.
 
 ## Local release equivalent
 
