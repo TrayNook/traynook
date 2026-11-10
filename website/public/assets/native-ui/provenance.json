@@ -1,62 +1,17 @@
 {
-  "baseCommit" : "568b9b7d0f7e4655e16d98e6fcae5f493b1e3aad",
-  "build" : "1",
-  "data" : "Fixed example.* observations only; synthetic Timer, Weather, Notes, Calendar, Music, Cloud names. Fixed macOS bundled application icons are illustrative fixture artwork, not a claim that those apps expose these menu-bar items.",
-  "images" : [
+  "product": "TrayNook",
+  "source": "User-provided screenshot of the real TrayNook menu bar and open dropdown.",
+  "view": "Menu bar launcher and native dropdown with Settings and three application icons.",
+  "version": null,
+  "build": null,
+  "versionNote": "App version and build are not encoded in the supplied screenshot and have not been independently verified.",
+  "processing": "Copied byte-for-byte from the user attachment. No fabricated items, recoloring, theme variants, compositing, or upscaling.",
+  "images": [
     {
-      "file" : "settings-light.png",
-      "logicalHeight" : 678,
-      "logicalWidth" : 820,
-      "nativeView" : "SettingsView · Layout",
-      "pixelHeight" : 1356,
-      "pixelWidth" : 1640,
-      "scale" : 2,
-      "sha256" : "bb558326bac29b7da129ff0d155d79cbef92f0267b0dbd8b7cbce553e8c27746"
-    },
-    {
-      "file" : "dropdown-light.png",
-      "logicalHeight" : 62,
-      "logicalWidth" : 196,
-      "nativeView" : "DropdownView · native NSPopover content, without external chrome",
-      "pixelHeight" : 248,
-      "pixelWidth" : 784,
-      "scale" : 4,
-      "sha256" : "74f486cc50dbec44a5cad25f931a87ad9a082f64456be2b17d8828f595c9e1e7"
-    },
-    {
-      "file" : "settings-dark.png",
-      "logicalHeight" : 678,
-      "logicalWidth" : 820,
-      "nativeView" : "SettingsView · Layout",
-      "pixelHeight" : 1356,
-      "pixelWidth" : 1640,
-      "scale" : 2,
-      "sha256" : "74dfb53525e9e6ccf8ff06dc91f7969fc70b8ef96e86e658f63dfb8308b04d35"
-    },
-    {
-      "file" : "dropdown-dark.png",
-      "logicalHeight" : 62,
-      "logicalWidth" : 196,
-      "nativeView" : "DropdownView · native NSPopover content, without external chrome",
-      "pixelHeight" : 248,
-      "pixelWidth" : 784,
-      "scale" : 4,
-      "sha256" : "28026033018f676a3964a7a63d13f7e785861f49410d2b3ea29b357e8dc25957"
+      "file": "dropdown.png",
+      "pixelWidth": 438,
+      "pixelHeight": 242,
+      "sha256": "9a0e2f9f03ff312ee143d7bcc02326c0bc3d83975ad5472dc44bea0e1c440d39"
     }
-  ],
-  "language" : "English (the app's current localization)",
-  "operatingSystem" : "Version 15.7.1 (Build 24G231)",
-  "privacy" : "No running-application discovery, desktop capture, native movement, real app inventory, persisted layouts, or update requests. Item observations are offscreen and have no window identifiers.",
-  "product" : "TrayNook",
-  "renderer" : "Unmodified production SwiftUI views in real AppKit NSWindow and NSPopover, rendered via NSView.cacheDisplay. Settings includes native window chrome; Dropdown exports native popover content only because cached drawing omits the WindowServer arrow mask and shadow. No desktop screenshot or compositing.",
-  "sourceSHA256" : {
-    "Scripts/snapshot-website.sh" : "8bf94f3f2e9efe65f5682e835d57929bf473b3283e61c1372833bd8aa6ba9f31",
-    "Sources/TrayNook/ApplicationIconCache.swift" : "003743dd01e4ccc9779dc3f665e7d14e1edd0e60d38497c566688d15622f1ac2",
-    "Sources/TrayNook/AppModel.swift" : "ced97e0f3f6334042715711be6ca91d3c82b9f2322992c9f16b68b56656023c5",
-    "Sources/TrayNook/LayoutPreviewView.swift" : "fa639b08e8f45fc6e51cf1aae7d547463a01384fca0e4f7b37609155cc14430d",
-    "Sources/TrayNook/NativeMenuBarController.swift" : "43e04a64a6bbba66eef7448e352e6978baef15a9127e8e1528785a354f8d498c",
-    "Sources/TrayNook/Views.swift" : "bcc814adbb767cd13ca1c9ecccdcf8e91134e644ddc71b926531b2ce6251ecd4",
-    "Tests/TrayNookTests/WebsiteSnapshotTests.swift" : "fcf0fc4d8472b292dab25912de67459e9207e8c96bc265b9f879daa115bd08bc"
-  },
-  "version" : "1.0.0"
+  ]
 }

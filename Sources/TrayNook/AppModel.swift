@@ -70,7 +70,7 @@ final class AppModel: ObservableObject {
   var showSettings: (() -> Void)?
   private let store: LayoutStore?
   private let loginItemStatus: LoginItemStatus
-  private let applicationIcons: ApplicationIconCache
+  private let applicationIcons = ApplicationIconCache()
   private var applicationObservers: [NSObjectProtocol] = []
   private let applyMenuBarOrder: (@MainActor ([ClassifiedSourceItem]) async throws -> Void)?
   private var scanTask: Task<Void, Never>?
@@ -112,14 +112,12 @@ final class AppModel: ObservableObject {
     loginItemStatus: LoginItemStatus? = nil,
     currentAccessibilityPermission: @escaping @MainActor () -> Bool = { AXIsProcessTrusted() },
     inventoryScanner: any InventoryScanning = AccessibilityInventoryScanner(),
-    sourceStatusSnapshot: @escaping @Sendable () -> [StatusWindowState]? = AccessibilityInventoryScanner.sourceStatusSnapshot,
-    applicationIcons: ApplicationIconCache = ApplicationIconCache()) {
+    sourceStatusSnapshot: @escaping @Sendable () -> [StatusWindowState]? = AccessibilityInventoryScanner.sourceStatusSnapshot) {
     self.native = native
     self.store = store
     self.applyMenuBarOrder = applyMenuBarOrder
     self.currentAccessibilityPermission = currentAccessibilityPermission
     self.inventoryScanner = inventoryScanner
-    self.applicationIcons = applicationIcons
     sourceStatusReader = WindowMetadataReader(load: { _ in
       // Enumerate every source window; known IDs alone cannot detect newly hidden items.
       (sourceStatusSnapshot() ?? []).map { window in

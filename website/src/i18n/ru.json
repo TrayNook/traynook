@@ -95,11 +95,9 @@
     "failed": "Команды выделены. Нажмите ⌘C или выберите «Копировать»."
   },
   "interface": {
-    "caption": "Настоящий интерфейс TrayNook с демонстрационными данными.",
-    "settingsAlt": "Настройки TrayNook, вкладка Layout: нативные элементы управления и группы Menu Bar, Dropdown и Always Hidden.",
-    "dropdownAlt": "Содержимое нативной панели TrayNook: кнопка Settings и три демонстрационных значка приложений.",
-    "openSettings": "Открыть изображение Settings → Layout в полном размере",
-    "openDropdown": "Открыть изображение Dropdown в полном размере",
+    "caption": "Настоящий интерфейс TrayNook.",
+    "dropdownAlt": "Панель TrayNook под строкой меню macOS: кнопка Settings и три значка приложений.",
+    "openDropdown": "Открыть оригинальный снимок TrayNook в полном размере",
     "fullSize": "В полном размере"
   }
 }

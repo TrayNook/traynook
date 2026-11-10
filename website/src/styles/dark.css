@@ -15,6 +15,3 @@
 .icon { filter: invert(1); }
 .button-primary { color: #302117; }
 .button-primary .icon { filter: none; }
-.native-light { display: none; }
-.native-dark { display: block; }
-.native-image > img { box-shadow: 0 16px 38px -16px #100d0a80, 0 2px 7px #100d0a55; }

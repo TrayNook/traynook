@@ -37,10 +37,12 @@ test('native app group names stay accurate while image descriptions and links ar
   for (const key of ['meta.title', 'hero.line1', 'hero.description', 'nav.skip', ...Object.keys(en.interface).map(key => `interface.${key}`)]) {
     assert.match(russian[`.${key}`], /[А-Яа-яЁё]/, key);
   }
-  assert.match(en.interface.caption, /rendered natively with sample data/);
-  assert.match(ru.interface.caption, /демонстрационными данными/);
-  for (const key of ['openSettings', 'openDropdown']) {
-    assert.match(en.interface[key], /full size/);
-    assert.match(ru.interface[key], /полном размере/);
+  assert.deepEqual(Object.keys(en.interface).sort(), ['caption', 'dropdownAlt', 'fullSize', 'openDropdown']);
+  assert.match(en.interface.caption, /Real TrayNook interface/);
+  assert.match(ru.interface.caption, /Настоящий интерфейс TrayNook/);
+  assert.match(en.interface.openDropdown, /original.+full size/);
+  assert.match(ru.interface.openDropdown, /оригинальный.+полном размере/);
+  for (const copy of [en.interface, ru.interface]) {
+    assert.doesNotMatch(Object.values(copy).join(' '), /Notes|Calendar|Music|sample|демонстрационн|Settings → Layout/);
   }
 });

@@ -146,24 +146,23 @@ def check_page(path, locale):
     assert any(tag == "label" and attrs.get("for") == "theme-select" for tag, attrs in page.elements), "Theme selector needs a label"
     assert {attrs.get("value") for tag, attrs in page.elements if tag == "option"} == {"auto", "light", "dark"}, "Incorrect theme choices"
 
-    expected_native = {f"/assets/native-ui/{view}-{theme}.png": (view, theme, dimensions)
-                       for view, dimensions in (("settings", (1640, 1356)), ("dropdown", (784, 248)))
-                       for theme in ("light", "dark")}
-    native_links = {attrs["href"]: attrs for tag, attrs in page.elements
-                    if tag == "a" and "data-native-capture" in attrs}
-    assert native_links.keys() == expected_native.keys(), "Missing full-size native UI links"
-    native_images = {attrs["src"]: attrs for tag, attrs in page.elements
-                     if tag == "img" and "/assets/native-ui/" in attrs.get("src", "")}
-    assert native_images.keys() == expected_native.keys(), "Missing paired native UI images"
-    for url, (view, theme, dimensions) in expected_native.items():
-        link, image = native_links[url], native_images[url]
-        assert link.get("data-native-capture") == view and link.get("aria-label"), "Native image links need accessible view labels"
-        assert f"native-{theme}" in link.get("class", "").split(), "Native image is missing its theme class"
-        assert png_dimensions(check_reference(url, path)) == dimensions, f"Incorrect native PNG dimensions: {url}"
-        assert tuple(int(image[size]) for size in ("width", "height")) == dimensions, f"Native image dimensions do not match: {url}"
-        assert image.get("alt", "").strip(), f"Native image needs descriptive alt text: {url}"
+    native_links = [attrs for tag, attrs in page.elements
+                    if tag == "a" and "data-native-capture" in attrs]
+    native_images = [attrs for tag, attrs in page.elements
+                     if tag == "img" and "/assets/native-ui/" in attrs.get("src", "")]
+    assert len(native_links) == len(native_images) == 1, "Use only the original native screenshot and one full-size link"
+    link, image = native_links[0], native_images[0]
+    original_url = "/assets/native-ui/dropdown.png"
+    assert link.get("href") == image.get("src") == original_url, "Native screenshot and full-size link must use the original asset"
+    assert link.get("data-native-capture") == "dropdown" and link.get("aria-label"), "Native image link needs an accessible label"
+    assert png_dimensions(check_reference(original_url, path)) == (438, 242), "Incorrect original screenshot dimensions"
+    assert tuple(int(image[size]) for size in ("width", "height")) == (438, 242), "Native image dimensions do not match the original"
+    assert image.get("alt", "").strip() and "icon" not in image.get("class", "").split(), "Native image needs descriptive alt text and must not receive icon filters"
     assert not {"interactive-demo", "demo-copy", "native-settings", "try-layout"}.intersection(ids), "Remove the recreated interface"
-    assert "native-caption" in ids, "Describe the native images and sample data"
+    assert "native-caption" in ids, "Describe the real screenshot"
+    assert not any(old in path.read_text(encoding="utf-8") for old in
+                   ("settings-light.png", "settings-dark.png", "dropdown-light.png", "dropdown-dark.png",
+                    "sample data", "демонстрационными данными", "Notes", "Calendar", "Music")), "Do not include invented app examples or generated native assets"
 
     github = next(attrs for tag, attrs in page.elements if "header-github" in attrs.get("class", "").split())
     assert github.get("href") == "https://github.com/TrayNook/traynook" and github.get("aria-label"), "Missing accessible header GitHub link"
@@ -180,7 +179,7 @@ def check_page(path, locale):
                if "data-copy-command" in attrs), "Copy icons need accessible labels"
     assert sum("data-copy-feedback" in attrs and attrs.get("role") == "status" and "visually-hidden" in attrs.get("class", "").split()
                for _, attrs in page.elements) == 2, "Missing copy feedback"
-    assert ids.index("native-caption") < ids.index("demo-install-command") < ids.index("how-it-works"), "Keep Homebrew installation immediately below native images"
+    assert ids.index("native-caption") < ids.index("demo-install-command") < ids.index("how-it-works"), "Keep Homebrew installation immediately below the screenshot"
 
     assert metadata["twitter:image"] == metadata["og:image"], "Social images differ"
     expected_image = f"{SITE}/assets/social-card{'-ru' if locale == 'ru' else ''}.png"
@@ -198,12 +197,11 @@ results = {locale: check_page(ROOT / route, locale)
 assert results["en"] != results["ru"], "Use separate localized social cards"
 native_dir = ROOT / "assets/native-ui"
 provenance = json.loads((native_dir / "provenance.json").read_text(encoding="utf-8"))
-assert {entry["file"] for entry in provenance["images"]} == {
-    f"{view}-{theme}.png" for view in ("settings", "dropdown") for theme in ("light", "dark")
-}, "Native provenance must cover all four rendered images"
+assert len(provenance["images"]) == 1 and provenance["images"][0]["file"] == "dropdown.png", "Native provenance must describe only the original screenshot"
+assert {image.name for image in native_dir.glob("*.png")} == {"dropdown.png"}, "Remove synthetic native images from the build"
 for entry in provenance["images"]:
     image = native_dir / entry["file"]
-    assert hashlib.sha256(image.read_bytes()).hexdigest() == entry["sha256"], f"Native image differs from render provenance: {image.name}"
+    assert hashlib.sha256(image.read_bytes()).hexdigest() == entry["sha256"], f"Native image differs from original provenance: {image.name}"
     assert png_dimensions(image) == (entry["pixelWidth"], entry["pixelHeight"]), "Native provenance dimensions differ"
 for script in ROOT.rglob("*.js"):
     assert not any(selector in script.read_text(encoding="utf-8") for selector in
@@ -214,4 +212,4 @@ for css in ROOT.rglob("*.css"):
     references += re.findall(r"@import\s+['\"]([^'\"]+)['\"]", content)
     for value in references:
         check_reference(value.strip(), css)
-print("Passed: 3 built pages, 4 native PNGs and full-size links, no recreated interface, custom domain, local links/assets, accessibility references, canonical/social metadata, EN/RU routes, theme controls, GitHub widgets, and Homebrew commands.")
+print("Passed: 3 built pages, original native PNG/hash/full-size link, no synthetic interface, custom domain, local links/assets, accessibility references, canonical/social metadata, EN/RU routes, theme controls, GitHub widgets, and Homebrew commands.")

@@ -1,7 +1,7 @@
 # TrayNook landing page
 
 A static Astro page with system fonts, a warm palette drawn from the canonical
-icon, and real native images of TrayNook’s Settings → Layout and dropdown.
+icon, and a real user-provided screenshot of TrayNook’s dropdown.
 Astro is the only direct build dependency; the page uses plain browser JavaScript.
 No analytics, external fonts, or backend.
 
@@ -71,45 +71,27 @@ valid counts for the page language. There is no polling, token, or new dependenc
 If the request fails or GitHub rate-limits it, both links remain usable and the
 numeric counts stay hidden. Values are never fabricated or seeded with zero.
 
-## Native interface visuals
+## Real interface screenshot
 
-The landing page shows actual production `SettingsView` (Layout tab) and
-`DropdownView`, rendered through SwiftUI/AppKit on macOS with deterministic
-sample data. These are native view snapshots, not desktop screenshots or an
-HTML/CSS recreation. No personal desktop, application inventory, or user
-preferences are included. The page itself does not simulate app interactions.
+`public/assets/native-ui/dropdown.png` is the original screenshot supplied by
+the user: 438 × 242 pixels. It shows the real TrayNook dropdown, native arrow,
+and menu bar. The image is unchanged; the page does not recreate its controls,
+replace its app icons, recolor it, or invent a dark variant. It displays at no
+more than 438 CSS pixels wide and links to the original PNG in both page themes.
+The full-size link and descriptive alt text are localized in English and Russian.
 
-Four reusable full-resolution PNGs live in `public/assets/native-ui/`:
+`public/assets/native-ui/provenance.json` records the source, original dimensions,
+and SHA-256 hash. The captured app version and build are unknown. No larger
+original or separate Settings screenshot was supplied, and no exporter is used
+to generate replacements. The page does not simulate app interactions or identify
+the three applications shown in the screenshot.
 
-- `settings-light.png` and `settings-dark.png`: 1640 × 1356, the actual Settings
-  window and native titlebar at 2× scale.
-- `dropdown-light.png` and `dropdown-dark.png`: 784 × 248, the actual DropdownView
-  content at 4× scale, without fabricated popover chrome.
-
-Each image links to its full-resolution PNG, with a localized full-size label
-and descriptive alt text. Light/dark pairs follow the page’s system or manual
-theme through the existing stylesheets, including without JavaScript. The app
-interface remains English on both language pages.
-
-Regenerate from the repository root on macOS:
-
-```sh
-Scripts/snapshot-website.sh
-```
-
-The assets show version 1.0.0, build 1, rendered on macOS 15.7.1.
-`public/assets/native-ui/provenance.json` records view source hashes, dimensions,
-scale, and fixture details. The exporter uses the app’s current production views
-and isolated synthetic fixtures. It does not discover or move real menu-bar items, capture the desktop,
-or request Screen Recording or Accessibility permission. Native rendering and
-system controls can vary between macOS versions; regenerate all four files
-together. Keep logs and capture notes under ignored `.build/` or outside the
-repository.
+Keep capture notes and reports under ignored `.build/` or outside the repository.
 
 ## Installation commands
 
-The documented two-line Homebrew command appears directly beneath the native
-images and in the installation FAQ, using `src/components/HomebrewCommands.astro`.
+The documented two-line Homebrew command appears directly beneath the screenshot
+and in the installation FAQ, using `src/components/HomebrewCommands.astro`.
 Each instance has its own copy icon with a localized accessible label. Successful
 copying briefly shows a checkmark and resets after 2.5 seconds. Icon feedback
 crossfades without changing layout and respects reduced motion.
@@ -125,9 +107,7 @@ App artwork and favicon derivatives use [Support/AppIcon.png](../Support/AppIcon
 The English and Russian 1200 × 630 social cards use the same artwork and warm palette.
 Website navigation icons use Tabler Icons v3.35.0 under the
 [bundled MIT notice](public/assets/tabler-LICENSE.txt).
-Native interface visuals come from [Views.swift](../Sources/TrayNook/Views.swift)
-and [LayoutPreviewView.swift](../Sources/TrayNook/LayoutPreviewView.swift), with
-sanitized fixtures supplied by the native snapshot exporter.
+The real interface screenshot is supplied by the user and preserved as received.
 
 Copy was checked against README, CHANGELOG, RELEASING, and current app code.
 Visible copy describes the product in the present tense and contains no release
@@ -141,23 +121,19 @@ Reverify public assets and cask installation before publishing the website.
 
 - `npm --prefix website run build` produces the three static language routes.
 - `npm --prefix website test` covers language detection, translation consistency,
-  native image descriptions, theme preferences, GitHub counts, and clipboard
+  screenshot descriptions, theme preferences, GitHub counts, and clipboard
   feedback, including failures and independent copy controls.
-- `python3 website/check.py` validates all four PNG headers and dimensions,
-  render-provenance hashes, full-size asset links, both themes, removal of the
-  recreated interface, local
-  links/assets, ARIA references, language routes, canonical/social metadata,
-  GitHub controls, and both Homebrew command blocks.
-- EN/RU browser checks at 320, 390, 768, and 1440 CSS pixels passed: images fit,
-  full-size links receive visible keyboard focus, system/manual themes select
-  the matching native PNGs, and installation copying still works. Without
-  product JavaScript, native images follow the system theme and remain linked.
-  Surrounding text passes contrast checks; reduced-motion CSS disables transitions
-  and smooth scrolling. Repeat these checks after changing the presentation.
+- `python3 website/check.py` checks the original PNG header, 438 × 242 dimensions,
+  provenance hash, full-size link, removal of synthetic interface assets and
+  scripts, local links/assets, ARIA references, language routes, canonical/social
+  metadata, GitHub controls, and both Homebrew command blocks.
+- Repeat browser layout, focus, theme, and reduced-motion checks after changing
+  the screenshot or presentation. Both page themes must keep the same original
+  image without filters, enlargement, or hidden alternatives.
 
 Safari, Firefox, VoiceOver, physical touch devices, and live social unfurls have
-not been manually verified. Image links work without JavaScript; viewing a PNG
-never opens the native app or changes Mac preferences.
+not been manually verified. The screenshot and its full-size link work without
+JavaScript and never open the native app or change Mac preferences.
 
 ## Before publishing
 
@@ -178,6 +154,4 @@ resolves same-domain references against the built files.
 3. Enable **Enforce HTTPS** once Pages has issued its certificate. Recheck
    release/tap availability and live page links before publishing.
 
-The native exporter uses injected icon data and disables saved status-item
-positions for its fixture; the application's default behavior is unchanged.
 No Pages workflow, deployment, version tags, or app releases are included.

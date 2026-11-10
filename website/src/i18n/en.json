@@ -95,11 +95,9 @@
     "failed": "Commands selected. Press ⌘C or choose Copy."
   },
   "interface": {
-    "caption": "Actual app views, rendered natively with sample data.",
-    "settingsAlt": "TrayNook Settings, Layout tab: native controls and the Menu Bar, Dropdown, and Always Hidden groups.",
-    "dropdownAlt": "TrayNook’s native dropdown controls: the Settings button and three sample app icons.",
-    "openSettings": "Open Settings → Layout image at full size",
-    "openDropdown": "Open Dropdown image at full size",
+    "caption": "Real TrayNook interface.",
+    "dropdownAlt": "TrayNook’s dropdown open beneath the macOS menu bar, with a Settings button and three app icons.",
+    "openDropdown": "Open the original TrayNook screenshot at full size",
     "fullSize": "Full size"
   }
 }

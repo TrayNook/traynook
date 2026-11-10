@@ -14,12 +14,6 @@ const assets = `${base}assets/`;
 const home = `${base}${locale}/`;
 const canonicalURL = new URL(Astro.url.pathname, Astro.site).href;
 const socialImage = new URL(`${assets}social-card${locale === 'ru' ? '-ru' : ''}.png`, Astro.site).href;
-const nativeViews = [
-  { name: 'settings', title: 'Settings → Layout', width: 1640, height: 1356,
-    alt: copy.interface.settingsAlt, open: copy.interface.openSettings },
-  { name: 'dropdown', title: 'Dropdown', width: 784, height: 248,
-    alt: copy.interface.dropdownAlt, open: copy.interface.openDropdown },
-];
 ---
 <!doctype html>
 <html lang={locale} data-detect-language={detectLanguage ? 'true' : undefined} data-base={base}>
@@ -100,17 +94,14 @@ const nativeViews = [
 
       <div class="product-column">
       <div class="native-gallery" aria-describedby="native-caption">
-        {nativeViews.map(view => <figure class={`native-view native-view-${view.name}`}>
-          {(['light', 'dark'] as const).map(theme => <a
-            class={`native-image native-${theme}`} data-native-capture={view.name}
-            href={`${assets}native-ui/${view.name}-${theme}.png`}
-            aria-label={view.open}>
-            <img src={`${assets}native-ui/${view.name}-${theme}.png`}
-              width={view.width} height={view.height} alt={view.alt}
-              fetchpriority={view.name === 'settings' ? 'high' : undefined} />
-            <span class="native-image-label"><span lang="en">{view.title}</span><span>{copy.interface.fullSize}<img class="icon" src={`${assets}arrow-up-right.svg`} width="13" height="13" alt="" /></span></span>
-          </a>)}
-        </figure>)}
+        <figure class="native-view">
+          <a class="native-image" data-native-capture="dropdown"
+            href={`${assets}native-ui/dropdown.png`} aria-label={copy.interface.openDropdown}>
+            <img src={`${assets}native-ui/dropdown.png`} width="438" height="242"
+              alt={copy.interface.dropdownAlt} fetchpriority="high" />
+            <span class="native-image-label"><span lang="en">Dropdown</span><span>{copy.interface.fullSize}<img class="icon" src={`${assets}arrow-up-right.svg`} width="13" height="13" alt="" /></span></span>
+          </a>
+        </figure>
         <p class="native-caption" id="native-caption">{copy.interface.caption}</p>
       </div>
       <HomebrewCommands id="demo-install" labels={copy.install} />
