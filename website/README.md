@@ -1,8 +1,8 @@
 # TrayNook landing page
 
 A static Astro page with system fonts, a warm palette drawn from the canonical
-icon, and an interactive browser recreation of the native dropdown. Astro is
-the only direct build dependency; the page uses plain browser JavaScript.
+icon, and real native images of TrayNook’s Settings → Layout and dropdown.
+Astro is the only direct build dependency; the page uses plain browser JavaScript.
 No analytics, external fonts, or backend.
 
 ## Preview and checks
@@ -40,9 +40,9 @@ setup are separate steps; the npm scripts disable Astro telemetry.
 - If storage is blocked, language links and browser detection still work. If
   JavaScript is disabled, `/` stays English and both language links still work.
 - Copy lives in `src/i18n/en.json` and `src/i18n/ru.json`; the shared layout is
-  `src/components/Landing.astro`. Metadata, demo messages, accessibility labels,
+  `src/components/Landing.astro`. Metadata, image descriptions, accessibility labels,
   and social images are localized. The native app currently uses English, so
-  its interface labels stay English in the demonstration and instructions.
+  its interface labels stay English in the native images and instructions.
 
 The Russian draft received an editorial pass with the requested
 [Humanizer RU skill](https://github.com/Vladimir-Human/humanizer-ru/blob/main/skills/humanizer-ru/SKILL.md).
@@ -71,50 +71,63 @@ valid counts for the page language. There is no polling, token, or new dependenc
 If the request fails or GitHub rate-limits it, both links remain usable and the
 numeric counts stay hidden. Values are never fabricated or seeded with zero.
 
-## Try the demo
+## Native interface visuals
 
-The documented two-line Homebrew command appears directly beneath the demo and
-in the installation FAQ, using `src/components/HomebrewCommands.astro`. Each
-instance has its own copy icon with a localized accessible label. Successful
+The landing page shows actual production `SettingsView` (Layout tab) and
+`DropdownView`, rendered through SwiftUI/AppKit on macOS with deterministic
+sample data. These are native view snapshots, not desktop screenshots or an
+HTML/CSS recreation. No personal desktop, application inventory, or user
+preferences are included. The page itself does not simulate app interactions.
+
+Four reusable full-resolution PNGs live in `public/assets/native-ui/`:
+
+- `settings-light.png` and `settings-dark.png`: 1640 × 1356, the actual Settings
+  window and native titlebar at 2× scale.
+- `dropdown-light.png` and `dropdown-dark.png`: 784 × 248, the actual DropdownView
+  content at 4× scale, without fabricated popover chrome.
+
+Each image links to its full-resolution PNG, with a localized full-size label
+and descriptive alt text. Light/dark pairs follow the page’s system or manual
+theme through the existing stylesheets, including without JavaScript. The app
+interface remains English on both language pages.
+
+Regenerate from the repository root on macOS:
+
+```sh
+Scripts/snapshot-website.sh
+```
+
+The assets show version 1.0.0, build 1, rendered on macOS 15.7.1.
+`public/assets/native-ui/provenance.json` records view source hashes, dimensions,
+scale, and fixture details. The exporter uses the app’s current production views
+and isolated synthetic fixtures. It does not discover or move real menu-bar items, capture the desktop,
+or request Screen Recording or Accessibility permission. Native rendering and
+system controls can vary between macOS versions; regenerate all four files
+together. Keep logs and capture notes under ignored `.build/` or outside the
+repository.
+
+## Installation commands
+
+The documented two-line Homebrew command appears directly beneath the native
+images and in the installation FAQ, using `src/components/HomebrewCommands.astro`.
+Each instance has its own copy icon with a localized accessible label. Successful
 copying briefly shows a checkmark and resets after 2.5 seconds. Icon feedback
-crossfades without changing layout, and respects reduced motion.
-`src/scripts/clipboard.js` copies the code as displayed;
-if clipboard access is blocked, it selects the code for manual copying.
-Localized results are announced to screen readers without adding visible text.
-Without JavaScript, the commands remain selectable and the
-copy button stays hidden. The website never executes Homebrew commands.
-
-- Click the monochrome tray to toggle the dropdown. Keyboard opening focuses
-  Settings; Escape and clicking elsewhere inside the demo dismiss it. Clicks
-  outside the demo leave it open.
-- The first gear opens the separate **Settings → Layout** example. Drag icons
-  between groups or onto another icon to reorder. Alternatively, select an icon
-  and choose a group; this works with touch and keyboard.
-- Clicking a dropdown icon demonstrates the temporary menu-bar reveal and
-  explains the app's native-menu handoff. It does not invent a source-app menu.
-- **Reset demo** restores the example. Changes stay in memory and reset on reload;
-  the real Mac app saves layouts automatically.
-
-The compact 240 × 62 initial popover follows `DropdownView` / `DropdownIcons` in
-[Views.swift](../Sources/TrayNook/Views.swift): 36-point columns, 8-point gaps,
-26-point app icons, borderless controls, gear first, no title or normal footer.
-The menu-bar launcher and dismissal behavior follow
-[TrayNookApp.swift](../Sources/TrayNook/TrayNookApp.swift). Dragging belongs in
-[LayoutPreviewView](../Sources/TrayNook/LayoutPreviewView.swift).
+crossfades without changing layout and respects reduced motion.
+`src/scripts/clipboard.js` copies the code as displayed; if clipboard access is
+blocked, it selects the code for manual copying. Localized results are announced
+to screen readers without adding visible text. Without JavaScript, the commands
+remain selectable and the copy button stays hidden. The website never executes
+Homebrew commands.
 
 ## Assets and copy
 
 App artwork and favicon derivatives use [Support/AppIcon.png](../Support/AppIcon.png).
 The English and Russian 1200 × 630 social cards use the same artwork and warm palette.
-Generic sample icons use Tabler Icons v3.35.0 under the
+Website navigation icons use Tabler Icons v3.35.0 under the
 [bundled MIT notice](public/assets/tabler-LICENSE.txt).
-The visible caption identifies the interactive demo and explains where to drag icons.
-AppKit material and exact appearance vary by macOS; this is not a screenshot.
-The original CSS wallpaper keeps the icon's warm palette. Popovers and window
-chrome approximate native materials with blur, fine borders, and inset highlights;
-solid surfaces remain available without blur support or with reduced transparency.
-The red window control closes the example; the other two lights are decorative
-disabled controls, hidden from assistive technology.
+Native interface visuals come from [Views.swift](../Sources/TrayNook/Views.swift)
+and [LayoutPreviewView.swift](../Sources/TrayNook/LayoutPreviewView.swift), with
+sanitized fixtures supplied by the native snapshot exporter.
 
 Copy was checked against README, CHANGELOG, RELEASING, and current app code.
 Visible copy describes the product in the present tense and contains no release
@@ -126,26 +139,25 @@ Reverify public assets and cask installation before publishing the website.
 
 ## Verification
 
-- Layouts at 320, 375, 390, 768, 1024, and 1440 CSS pixels: no horizontal overflow;
-  the Settings example fits its container. Desktop/mobile visuals inspected.
-- Actual browser clicks, keyboard opening/focus, Escape, temporary reveal/return,
-  drag/drop, click-to-move, selection cancellation, empty state, and reset passed.
-- Thirty-six Node tests cover demo state, language fallback/preference order,
-  regional tags, translation consistency, theme preferences, and repository
-  counts, formatting, response validation, request failures, and clipboard copying.
-  The offline validator checks all three built pages, local assets/links, ARIA
-  references, locale routes, social metadata, and theme controls.
-- Browser checks passed for automatic language selection, saved preference,
-  blocked storage, and keyboard language switching. Russian layouts at 320,
-  390, 768, and 1440 CSS pixels fit without horizontal overflow.
-- axe-core 4.10.3 (WCAG 2 A/AA, 2.1 AA, 2.2 AA, best practices): zero violations
-  or incomplete checks in light/dark styling, including Settings and expanded FAQ.
-  Reduced-motion styles compute to no transitions and no smooth scrolling.
-- Preference-rule bodies were activated through CSSOM for browser checks. Visual
-  rendering also covered light/dark appearance. Audit tooling is not shipped.
+- `npm --prefix website run build` produces the three static language routes.
+- `npm --prefix website test` covers language detection, translation consistency,
+  native image descriptions, theme preferences, GitHub counts, and clipboard
+  feedback, including failures and independent copy controls.
+- `python3 website/check.py` validates all four PNG headers and dimensions,
+  render-provenance hashes, full-size asset links, both themes, removal of the
+  recreated interface, local
+  links/assets, ARIA references, language routes, canonical/social metadata,
+  GitHub controls, and both Homebrew command blocks.
+- EN/RU browser checks at 320, 390, 768, and 1440 CSS pixels passed: images fit,
+  full-size links receive visible keyboard focus, system/manual themes select
+  the matching native PNGs, and installation copying still works. Without
+  product JavaScript, native images follow the system theme and remain linked.
+  Surrounding text passes contrast checks; reduced-motion CSS disables transitions
+  and smooth scrolling. Repeat these checks after changing the presentation.
 
-Safari, Firefox, VoiceOver, physical touch devices, and live social unfurls remain
-untested. The demo opens no native apps or windows and changes no Mac preferences.
+Safari, Firefox, VoiceOver, physical touch devices, and live social unfurls have
+not been manually verified. Image links work without JavaScript; viewing a PNG
+never opens the native app or changes Mac preferences.
 
 ## Before publishing
 
@@ -166,5 +178,6 @@ resolves same-domain references against the built files.
 3. Enable **Enforce HTTPS** once Pages has issued its certificate. Recheck
    release/tap availability and live page links before publishing.
 
-No Pages workflow, deployment, version tags, app releases, or application-source
-edits are included.
+The native exporter uses injected icon data and disables saved status-item
+positions for its fixture; the application's default behavior is unchanged.
+No Pages workflow, deployment, version tags, or app releases are included.

@@ -3,6 +3,7 @@
 
 from functools import cache
 from html.parser import HTMLParser
+import hashlib
 import json
 from pathlib import Path
 import re
@@ -23,9 +24,7 @@ class Page(HTMLParser):
         self.path = path
         self.elements = []
         self.title = ""
-        self.scripts = {}
         self.in_title = False
-        self.script_id = None
         self.install_commands = {}
         self.install_code_id = None
         self.feed(path.read_text(encoding="utf-8"))
@@ -36,8 +35,6 @@ class Page(HTMLParser):
         self.elements.append((tag, attrs))
         if tag == "title":
             self.in_title = True
-        if tag == "script":
-            self.script_id = attrs.get("id")
         if tag == "code" and attrs.get("id") in ("demo-install-command", "faq-install-command"):
             self.install_code_id = attrs["id"]
             self.install_commands[self.install_code_id] = ""
@@ -45,16 +42,12 @@ class Page(HTMLParser):
     def handle_endtag(self, tag):
         if tag == "title":
             self.in_title = False
-        if tag == "script":
-            self.script_id = None
         if tag == "code":
             self.install_code_id = None
 
     def handle_data(self, data):
         if self.in_title:
             self.title += data
-        if self.script_id:
-            self.scripts[self.script_id] = self.scripts.get(self.script_id, "") + data
         if self.install_code_id:
             self.install_commands[self.install_code_id] += data
 
@@ -78,6 +71,12 @@ def check_reference(value, source):
     if url.fragment:
         assert unquote(url.fragment) in read_page(target).ids, f"Missing anchor: {value}"
     return target
+
+
+def png_dimensions(path):
+    png = path.read_bytes()
+    assert png[:8] == b"\x89PNG\r\n\x1a\n" and png[12:16] == b"IHDR", f"Not a PNG: {path}"
+    return struct.unpack(">II", png[16:24])
 
 
 def check_page(path, locale):
@@ -147,6 +146,25 @@ def check_page(path, locale):
     assert any(tag == "label" and attrs.get("for") == "theme-select" for tag, attrs in page.elements), "Theme selector needs a label"
     assert {attrs.get("value") for tag, attrs in page.elements if tag == "option"} == {"auto", "light", "dark"}, "Incorrect theme choices"
 
+    expected_native = {f"/assets/native-ui/{view}-{theme}.png": (view, theme, dimensions)
+                       for view, dimensions in (("settings", (1640, 1356)), ("dropdown", (784, 248)))
+                       for theme in ("light", "dark")}
+    native_links = {attrs["href"]: attrs for tag, attrs in page.elements
+                    if tag == "a" and "data-native-capture" in attrs}
+    assert native_links.keys() == expected_native.keys(), "Missing full-size native UI links"
+    native_images = {attrs["src"]: attrs for tag, attrs in page.elements
+                     if tag == "img" and "/assets/native-ui/" in attrs.get("src", "")}
+    assert native_images.keys() == expected_native.keys(), "Missing paired native UI images"
+    for url, (view, theme, dimensions) in expected_native.items():
+        link, image = native_links[url], native_images[url]
+        assert link.get("data-native-capture") == view and link.get("aria-label"), "Native image links need accessible view labels"
+        assert f"native-{theme}" in link.get("class", "").split(), "Native image is missing its theme class"
+        assert png_dimensions(check_reference(url, path)) == dimensions, f"Incorrect native PNG dimensions: {url}"
+        assert tuple(int(image[size]) for size in ("width", "height")) == dimensions, f"Native image dimensions do not match: {url}"
+        assert image.get("alt", "").strip(), f"Native image needs descriptive alt text: {url}"
+    assert not {"interactive-demo", "demo-copy", "native-settings", "try-layout"}.intersection(ids), "Remove the recreated interface"
+    assert "native-caption" in ids, "Describe the native images and sample data"
+
     github = next(attrs for tag, attrs in page.elements if "header-github" in attrs.get("class", "").split())
     assert github.get("href") == "https://github.com/TrayNook/traynook" and github.get("aria-label"), "Missing accessible header GitHub link"
     assert {attrs["data-repo-count"] for _, attrs in page.elements if "data-repo-count" in attrs} == {"stars", "forks"}, "Missing repository counters"
@@ -162,33 +180,38 @@ def check_page(path, locale):
                if "data-copy-command" in attrs), "Copy icons need accessible labels"
     assert sum("data-copy-feedback" in attrs and attrs.get("role") == "status" and "visually-hidden" in attrs.get("class", "").split()
                for _, attrs in page.elements) == 2, "Missing copy feedback"
-    assert ids.index("demo-install-command") < ids.index("how-it-works"), "Keep Homebrew installation visible below the demo"
+    assert ids.index("native-caption") < ids.index("demo-install-command") < ids.index("how-it-works"), "Keep Homebrew installation immediately below native images"
 
     assert metadata["twitter:image"] == metadata["og:image"], "Social images differ"
     expected_image = f"{SITE}/assets/social-card{'-ru' if locale == 'ru' else ''}.png"
     assert metadata["og:image"] == expected_image, f"{path}: incorrect absolute social image URL"
     image = check_reference(metadata["og:image"], path)
     assert image is not None, "Social image must resolve to a bundled asset"
-    png = image.read_bytes()
-    assert png[:8] == b"\x89PNG\r\n\x1a\n" and png[12:16] == b"IHDR", "Social image must be PNG"
-    dimensions = struct.unpack(">II", png[16:24])
+    dimensions = png_dimensions(image)
     assert dimensions == (1200, 630), f"Unexpected social image dimensions: {dimensions}"
     assert dimensions == tuple(int(metadata[f"og:image:{size}"]) for size in ("width", "height")), "OG dimensions do not match image"
-    demo = json.loads(page.scripts["demo-copy"])
-    names = demo.get("itemNames", {})
-    assert names and all(isinstance(name, str) and name.strip() for name in names.values()), "Missing demo item names"
-    return image, names
+    return image
 
 
 results = {locale: check_page(ROOT / route, locale)
            for route, locale in (("index.html", "en"), ("en/index.html", "en"), ("ru/index.html", "ru"))}
-assert results["en"][0] != results["ru"][0], "Use separate localized social cards"
-assert results["en"][1].keys() == results["ru"][1].keys(), "Demo items differ between locales"
-assert results["en"][1] != results["ru"][1], "Demo item names were not localized"
+assert results["en"] != results["ru"], "Use separate localized social cards"
+native_dir = ROOT / "assets/native-ui"
+provenance = json.loads((native_dir / "provenance.json").read_text(encoding="utf-8"))
+assert {entry["file"] for entry in provenance["images"]} == {
+    f"{view}-{theme}.png" for view in ("settings", "dropdown") for theme in ("light", "dark")
+}, "Native provenance must cover all four rendered images"
+for entry in provenance["images"]:
+    image = native_dir / entry["file"]
+    assert hashlib.sha256(image.read_bytes()).hexdigest() == entry["sha256"], f"Native image differs from render provenance: {image.name}"
+    assert png_dimensions(image) == (entry["pixelWidth"], entry["pixelHeight"]), "Native provenance dimensions differ"
+for script in ROOT.rglob("*.js"):
+    assert not any(selector in script.read_text(encoding="utf-8") for selector in
+                   ("interactive-demo", "demo-copy", "try-layout", "demo-announcement")), "Remove recreated UI scripts from the build"
 for css in ROOT.rglob("*.css"):
     content = css.read_text(encoding="utf-8")
     references = re.findall(r"url\(\s*['\"]?([^'\")]+)['\"]?\s*\)", content)
     references += re.findall(r"@import\s+['\"]([^'\"]+)['\"]", content)
     for value in references:
         check_reference(value.strip(), css)
-print("Passed: 3 built pages, custom domain, local links/assets, accessibility references, canonical/social metadata, EN/RU routes, theme controls, GitHub widgets, and Homebrew commands.")
+print("Passed: 3 built pages, 4 native PNGs and full-size links, no recreated interface, custom domain, local links/assets, accessibility references, canonical/social metadata, EN/RU routes, theme controls, GitHub widgets, and Homebrew commands.")

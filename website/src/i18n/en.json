@@ -37,7 +37,10 @@
     "menu": "Your everyday essentials, always in view.",
     "dropdown": "Other icons, one click away.",
     "hidden": "Out of sight until you choose Show Items.",
-    "note": "Drag icons in <strong lang=\"en\">Settings → Layout</strong>. Your arrangement saves automatically."
+    "note": "Drag icons in <strong lang=\"en\">Settings → Layout</strong>. Your arrangement saves automatically.",
+    "menuLabel": "Menu Bar",
+    "dropdownLabel": "Dropdown",
+    "hiddenLabel": "Always Hidden"
   },
   "faq": {
     "title": "Good to know.",
@@ -86,47 +89,17 @@
       }
     ]
   },
-  "demo": {
-    "file": "File",
-    "edit": "Edit",
-    "toggle": "Toggle TrayNook dropdown",
-    "openTray": "Open TrayNook",
-    "dropdownLabel": "Example TrayNook dropdown",
-    "empty": "Add items to Dropdown in Settings.",
-    "back": "Back to dropdown",
-    "closeSettings": "Close example settings",
-    "close": "Close",
-    "settings": "Settings",
-    "layout": "Layout",
-    "reset": "Reset demo",
-    "preview": "Saved layout preview",
-    "examples": "Example icons",
-    "menu": "Menu Bar",
-    "dropdown": "Dropdown",
-    "hidden": "Always Hidden",
-    "help": "Drag icons, or select one and choose a group.",
-    "caption": "Interactive demo.",
-    "tryLayout": "Drag icons in Settings → Layout",
-    "noScript": "Enable JavaScript to try the demo. The app itself is native Swift/AppKit.",
-    "openSettings": "Open Settings",
-    "itemNames": {
-      "sound": "Sound",
-      "timer": "Timer",
-      "clipboard": "Clipboard",
-      "display": "Display",
-      "cloud": "Cloud",
-      "focus": "Focus"
-    },
-    "selected": "{name} selected. Choose a group, or drag to reorder.",
-    "moved": "{name} moved to {group}. This example resets on reload.",
-    "resetAnnouncement": "Example layout reset.",
-    "handoff": "In TrayNook, {name} opens its own menu. Only that icon is temporarily revealed in the menu bar.",
-    "activated": "{name} selected. The real app opens its native menu.",
-    "cancelled": "Move cancelled."
-  },
   "install": {
     "copy": "Copy commands",
     "copied": "Commands copied.",
     "failed": "Commands selected. Press ⌘C or choose Copy."
+  },
+  "interface": {
+    "caption": "Actual app views, rendered natively with sample data.",
+    "settingsAlt": "TrayNook Settings, Layout tab: native controls and the Menu Bar, Dropdown, and Always Hidden groups.",
+    "dropdownAlt": "TrayNook’s native dropdown controls: the Settings button and three sample app icons.",
+    "openSettings": "Open Settings → Layout image at full size",
+    "openDropdown": "Open Dropdown image at full size",
+    "fullSize": "Full size"
   }
 }

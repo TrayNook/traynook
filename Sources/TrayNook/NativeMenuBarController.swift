@@ -176,17 +176,18 @@ final class NativeMenuBarController: NSObject {
     CGDisplayShowCursor(CGMainDisplayID())
   }
 
-  init(launcher: NSStatusItem, metadataReader: WindowMetadataReader = WindowMetadataReader()) {
+  init(launcher: NSStatusItem, metadataReader: WindowMetadataReader = WindowMetadataReader(),
+    restoreSavedPositions: Bool = true) {
     self.launcher = launcher
     self.metadataReader = metadataReader
     super.init()
     let smokeTest = CommandLine.arguments.contains("--smoke-test")
-    if !smokeTest {
+    if !smokeTest && restoreSavedPositions {
       Self.restorePosition(of: launcher, name: "TrayNookLauncher", fallback: 0)
     }
     let separator = NSStatusBar.system.statusItem(withLength: compactWidth)
     separator.isVisible = false
-    if !smokeTest {
+    if !smokeTest && restoreSavedPositions {
       Self.restorePosition(of: separator, name: "TrayNook.HiddenBoundary", fallback: initialBoundaryPosition,
         visible: false)
     }

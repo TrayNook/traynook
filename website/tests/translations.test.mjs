@@ -27,11 +27,20 @@ test('translated rich copy preserves links, HTML structure, and numeric facts', 
     assert.deepEqual(matches(russian[key], /\d+(?:\.\d+)*/g), matches(english[key], /\d+(?:\.\d+)*/g), key);
   }
 });
-test('native app labels stay accurate while website and example names are localized', () => {
-  for (const key of ['file', 'edit', 'settings', 'layout', 'menu', 'dropdown', 'hidden', 'preview', 'empty']) {
-    assert.equal(ru.demo[key], en.demo[key], key);
+test('native app group names stay accurate while image descriptions and links are localized', () => {
+  for (const [key, label] of Object.entries({menuLabel: 'Menu Bar', dropdownLabel: 'Dropdown', hiddenLabel: 'Always Hidden'})) {
+    assert.equal(en.groups[key], label, key);
+    assert.equal(ru.groups[key], label, key);
   }
-  for (const key of ['meta.title', 'hero.line1', 'hero.description', 'nav.skip', 'demo.itemNames.timer', 'demo.moved']) {
+  assert.equal('demo' in en, false);
+  assert.equal('demo' in ru, false);
+  for (const key of ['meta.title', 'hero.line1', 'hero.description', 'nav.skip', ...Object.keys(en.interface).map(key => `interface.${key}`)]) {
     assert.match(russian[`.${key}`], /[А-Яа-яЁё]/, key);
+  }
+  assert.match(en.interface.caption, /rendered natively with sample data/);
+  assert.match(ru.interface.caption, /демонстрационными данными/);
+  for (const key of ['openSettings', 'openDropdown']) {
+    assert.match(en.interface[key], /full size/);
+    assert.match(ru.interface[key], /полном размере/);
   }
 });
