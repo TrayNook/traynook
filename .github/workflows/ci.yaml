@@ -14,7 +14,8 @@ concurrency:
   cancel-in-progress: true
 jobs:
   macos:
-    runs-on: macos-15
+    # Avoid the ARM hosted-runner capacity queue.
+    runs-on: macos-15-intel
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
