@@ -183,6 +183,30 @@ public enum InventoryScanCompleteness: String, Codable, Sendable {
   case incomplete
 }
 
+public enum AccessibilityScanOperation: String, Codable, Sendable {
+  case message, timeoutConfiguration, actions, traversal, validation, budget, ownerUnavailable
+}
+
+public struct AccessibilityScanFailure: Codable, Equatable, Sendable {
+  public let processIdentifier: Int32
+  public let bundleIdentifier: String?
+  public let operation: AccessibilityScanOperation
+  public let errorCode: Int32?
+  public let elapsedMilliseconds: Double
+  public let budgetExceeded: Bool
+
+  public init(processIdentifier: Int32, bundleIdentifier: String? = nil,
+    operation: AccessibilityScanOperation, errorCode: Int32? = nil,
+    elapsedMilliseconds: Double, budgetExceeded: Bool) {
+    self.processIdentifier = processIdentifier
+    self.bundleIdentifier = bundleIdentifier
+    self.operation = operation
+    self.errorCode = errorCode
+    self.elapsedMilliseconds = elapsedMilliseconds
+    self.budgetExceeded = budgetExceeded
+  }
+}
+
 public struct ScanMetrics: Codable, Equatable, Sendable {
   public let durationMilliseconds: Double
   public let inspectedApplicationCount: Int
@@ -191,6 +215,8 @@ public struct ScanMetrics: Codable, Equatable, Sendable {
   public let cannotCompleteApplicationCount: Int
   public let maximumApplicationScanMilliseconds: Double
   public let messagingTimeoutMilliseconds: Double
+  public let firstFailures: [AccessibilityScanFailure]
+  public let budgetExceeded: Bool
 
   public init(
     durationMilliseconds: Double,
@@ -199,7 +225,9 @@ public struct ScanMetrics: Codable, Equatable, Sendable {
     incompleteApplicationCount: Int = 0,
     cannotCompleteApplicationCount: Int = 0,
     maximumApplicationScanMilliseconds: Double = 0,
-    messagingTimeoutMilliseconds: Double = 0
+    messagingTimeoutMilliseconds: Double = 0,
+    firstFailures: [AccessibilityScanFailure] = [],
+    budgetExceeded: Bool = false
   ) {
     self.durationMilliseconds = durationMilliseconds
     self.inspectedApplicationCount = inspectedApplicationCount
@@ -210,6 +238,27 @@ public struct ScanMetrics: Codable, Equatable, Sendable {
     self.maximumApplicationScanMilliseconds =
       maximumApplicationScanMilliseconds
     self.messagingTimeoutMilliseconds = messagingTimeoutMilliseconds
+    self.firstFailures = firstFailures
+    self.budgetExceeded = budgetExceeded
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case durationMilliseconds, inspectedApplicationCount, sourceItemCount, incompleteApplicationCount
+    case cannotCompleteApplicationCount, maximumApplicationScanMilliseconds, messagingTimeoutMilliseconds
+    case firstFailures, budgetExceeded
+  }
+
+  public init(from decoder: Decoder) throws {
+    let values = try decoder.container(keyedBy: CodingKeys.self)
+    self.init(durationMilliseconds: try values.decode(Double.self, forKey: .durationMilliseconds),
+      inspectedApplicationCount: try values.decode(Int.self, forKey: .inspectedApplicationCount),
+      sourceItemCount: try values.decode(Int.self, forKey: .sourceItemCount),
+      incompleteApplicationCount: try values.decodeIfPresent(Int.self, forKey: .incompleteApplicationCount) ?? 0,
+      cannotCompleteApplicationCount: try values.decodeIfPresent(Int.self, forKey: .cannotCompleteApplicationCount) ?? 0,
+      maximumApplicationScanMilliseconds: try values.decodeIfPresent(Double.self, forKey: .maximumApplicationScanMilliseconds) ?? 0,
+      messagingTimeoutMilliseconds: try values.decodeIfPresent(Double.self, forKey: .messagingTimeoutMilliseconds) ?? 0,
+      firstFailures: try values.decodeIfPresent([AccessibilityScanFailure].self, forKey: .firstFailures) ?? [],
+      budgetExceeded: try values.decodeIfPresent(Bool.self, forKey: .budgetExceeded) ?? false)
   }
 }
 

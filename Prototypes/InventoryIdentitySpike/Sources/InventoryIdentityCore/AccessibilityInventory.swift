@@ -11,11 +11,7 @@ public enum AccessibilityInventoryTuning {
   public static let defaultScanBudgetSeconds = 2.0
   public static let allowedScanBudgetSeconds = 0.01...10.0
   public static let maximumDescendantCount = 512
-}
-
-enum AccessibilityScanOperation: Equatable {
-  case message
-  case timeoutConfiguration
+  public static let maximumDiagnosticFailures = 16
 }
 
 func accessibilityErrorRequiresIncompleteSnapshot(
@@ -47,7 +43,7 @@ func accessibilityTraversalCanAppend(
     <= AccessibilityInventoryTuning.maximumDescendantCount - currentCount
 }
 
-func accessibilityTraversalVisitsChildren(role: String?) -> Bool {
+public func accessibilityTraversalVisitsChildren(role: String?) -> Bool {
   role != (kAXMenuBarItemRole as String)
 }
 
@@ -159,7 +155,7 @@ private func activeDisplayFrames() -> [CGRect] {
   guard CGGetActiveDisplayList(0, nil, &count) == .success, count > 0 else { return [] }
   var displays = [CGDirectDisplayID](repeating: 0, count: Int(count))
   guard CGGetActiveDisplayList(count, &displays, &count) == .success else { return [] }
-  return displays.prefix(Int(count)).map { CGDisplayBounds($0) }
+  return displays.prefix(Int(count)).compactMap { DisplayGeometry.bounds(of: $0) }
 }
 
 private func statusWindow(_ window: StatusWindowObservation, overlaps item: RawSourceItemObservation) -> Bool {
@@ -219,10 +215,13 @@ final class AccessibilityScanIssueTracker {
   private let deadline: UInt64
   private let uptimeNanoseconds: () -> UInt64
   private var currentProcessIdentifier: Int32?
+  private var currentBundleIdentifier: String?
+  private var applicationStartedAt: UInt64 = 0
   private(set) var incompleteProcessIdentifiers = Set<Int32>()
   private var cannotCompleteProcessIdentifiers = Set<Int32>()
 
   private(set) var maximumApplicationScanMilliseconds = 0.0
+  private(set) var firstFailures: [AccessibilityScanFailure] = []
 
   init(
     deadline: UInt64 = .max,
@@ -246,7 +245,7 @@ final class AccessibilityScanIssueTracker {
 
   var currentApplicationIsComplete: Bool {
     guard !scanBudgetExceeded else {
-      markCurrentApplicationIncomplete()
+      markCurrentApplicationIncomplete(operation: .budget)
       return false
     }
     guard let currentProcessIdentifier else {
@@ -257,8 +256,10 @@ final class AccessibilityScanIssueTracker {
     )
   }
 
-  func beginApplication(_ processIdentifier: Int32) {
+  func beginApplication(_ processIdentifier: Int32, bundleIdentifier: String? = nil) {
     currentProcessIdentifier = processIdentifier
+    currentBundleIdentifier = bundleIdentifier
+    applicationStartedAt = uptimeNanoseconds()
   }
 
   func finishApplication(durationMilliseconds: Double) {
@@ -283,17 +284,30 @@ final class AccessibilityScanIssueTracker {
       return
     }
 
+    recordFirstFailure(processIdentifier: currentProcessIdentifier, operation: operation, errorCode: error.rawValue)
     incompleteProcessIdentifiers.insert(currentProcessIdentifier)
     if error == .cannotComplete {
       cannotCompleteProcessIdentifiers.insert(currentProcessIdentifier)
     }
   }
 
-  func markCurrentApplicationIncomplete() {
+  func markCurrentApplicationIncomplete(operation: AccessibilityScanOperation = .validation) {
     guard let currentProcessIdentifier else {
       return
     }
+    recordFirstFailure(processIdentifier: currentProcessIdentifier, operation: operation)
     incompleteProcessIdentifiers.insert(currentProcessIdentifier)
+  }
+
+  private func recordFirstFailure(processIdentifier: Int32,
+    operation: AccessibilityScanOperation, errorCode: Int32? = nil) {
+    guard !incompleteProcessIdentifiers.contains(processIdentifier),
+      firstFailures.count < AccessibilityInventoryTuning.maximumDiagnosticFailures else { return }
+    let now = uptimeNanoseconds()
+    firstFailures.append(AccessibilityScanFailure(processIdentifier: processIdentifier,
+      bundleIdentifier: currentBundleIdentifier, operation: operation, errorCode: errorCode,
+      elapsedMilliseconds: Double(now >= applicationStartedAt ? now - applicationStartedAt : 0) / 1_000_000,
+      budgetExceeded: now >= deadline))
   }
 }
 
@@ -377,9 +391,10 @@ public struct AccessibilityInventoryScanner: InventoryScanning, Sendable {
       guard !issueTracker.scanBudgetExceeded else { break }
       inspectedApplicationCount += 1
       let applicationStartedAt = DispatchTime.now().uptimeNanoseconds
-      issueTracker.beginApplication(processIdentifier)
-      guard let application = NSRunningApplication(processIdentifier: processIdentifier) else {
-        issueTracker.markCurrentApplicationIncomplete()
+      let application = NSRunningApplication(processIdentifier: processIdentifier)
+      issueTracker.beginApplication(processIdentifier, bundleIdentifier: application?.bundleIdentifier)
+      guard let application else {
+        issueTracker.markCurrentApplicationIncomplete(operation: .ownerUnavailable)
         issueTracker.finishApplication(durationMilliseconds: elapsedMilliseconds(since: applicationStartedAt))
         continue
       }
@@ -466,7 +481,9 @@ public struct AccessibilityInventoryScanner: InventoryScanning, Sendable {
         maximumApplicationScanMilliseconds:
           issueTracker.maximumApplicationScanMilliseconds,
         messagingTimeoutMilliseconds:
-          messagingTimeoutSeconds * 1_000
+          messagingTimeoutSeconds * 1_000,
+        firstFailures: issueTracker.firstFailures,
+        budgetExceeded: issueTracker.scanBudgetExceeded
       )
     )
   }
@@ -568,7 +585,7 @@ public struct AccessibilityInventoryScanner: InventoryScanning, Sendable {
     let processIdentifier = application.processIdentifier
     var actionValues: CFArray?
     let actionError = AXUIElementCopyActionNames(element, &actionValues)
-    issueTracker.record(actionError)
+    issueTracker.record(actionError, operation: .actions)
     guard issueTracker.currentApplicationIsComplete else {
       return nil
     }
@@ -679,7 +696,7 @@ public struct AccessibilityInventoryScanner: InventoryScanning, Sendable {
           additionalCount: 1
         )
       else {
-        issueTracker.markCurrentApplicationIncomplete()
+        issueTracker.markCurrentApplicationIncomplete(operation: .traversal)
         return []
       }
 
@@ -713,7 +730,7 @@ public struct AccessibilityInventoryScanner: InventoryScanning, Sendable {
             additionalCount: 1
           )
         else {
-          issueTracker.markCurrentApplicationIncomplete()
+          issueTracker.markCurrentApplicationIncomplete(operation: .traversal)
           return []
         }
         visited.append(child)
