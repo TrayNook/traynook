@@ -9,8 +9,10 @@ let nativeLog = Logger(subsystem: Bundle.main.bundleIdentifier ?? "io.github.mah
 
 private struct MenuBarFailure: LocalizedError {
   let errorDescription: String?
-  init(_ message: String) {
+  let reason: DiagnosticHistory.Reason
+  init(_ message: String, reason: DiagnosticHistory.Reason = .unknown) {
     errorDescription = message
+    self.reason = reason
     nativeLog.error("failure: \(message, privacy: .public)")
   }
 }
@@ -438,7 +440,7 @@ final class NativeMenuBarController: NSObject {
         }
         guard placed else {
           let names = Set(blocking).sorted().joined(separator: ", ")
-          throw MenuBarFailure(String(format: L("macOS could not keep %@ visible. Command-drag these items to the right of TrayNook's tray icon, then choose Apply Saved Layout."), names))
+          throw MenuBarFailure(String(format: L("macOS could not keep %@ visible. Command-drag these items to the right of TrayNook's tray icon, then choose Apply Saved Layout."), names), reason: .controlPlacementRefused)
         }
       }
     } catch {
@@ -545,15 +547,17 @@ final class NativeMenuBarController: NSObject {
       let items = snapshot.items.filter {
         $0.observation.processIdentifier != ProcessInfo.processInfo.processIdentifier
       }
-      guard Self.canConceal(items, allowedKeys: allowedKeys,
-        boundary: before.boundary, safeFrame: before.safeFrame, displayFrame: before.displayFrame,
-        occlusionFrame: before.occlusionFrame) else {
+      do {
+        try Self.validateConcealment(items, allowedKeys: allowedKeys,
+          boundary: before.boundary, safeFrame: before.safeFrame, displayFrame: before.displayFrame,
+          occlusionFrame: before.occlusionFrame)
+      } catch {
         for item in items where !Self.canConceal([item], allowedKeys: allowedKeys,
           boundary: before.boundary, safeFrame: before.safeFrame, displayFrame: before.displayFrame,
           occlusionFrame: before.occlusionFrame) {
           nativeLog.error("conceal blocked: \(item.identity.persistentKey ?? item.observation.runtimeID, privacy: .public) frame=\(String(describing: item.observation.frame), privacy: .public) onscreen=\(String(describing: item.observation.isOnscreen), privacy: .public) boundary=\(String(describing: before.boundary), privacy: .public)")
         }
-        throw MenuBarFailure(L("A new, protected, or unassigned item would be hidden. Choose Apply Saved Layout to keep it visible before hiding."))
+        throw error
       }
       try requireIdleInput(checkingKeys: false)
       guard try checkedEnvironment() == before else {
@@ -1131,6 +1135,7 @@ final class NativeMenuBarController: NSObject {
     case NativeMenuActionError.placementInterrupted: .placementInterrupted
     case NativeMenuActionError.inventoryUnavailable: .inventoryUnavailable
     case NativeMenuActionError.responseTimedOut: .responseTimedOut
+    case let failure as MenuBarFailure: failure.reason
     default: .unknown
     }
   }
@@ -1251,18 +1256,18 @@ final class NativeMenuBarController: NSObject {
   /// Runtime window identity and bounds for proxy capture. nil when the item's
   /// native window cannot be identified unambiguously.
   func statusWindowGeometry(for item: RawSourceItemObservation) -> (id: UInt32, frame: ItemFrame)? {
-    guard let binding = try? statusWindow(for: item),
-      let frame = try? statusWindowFrame(binding) else { return nil }
-    return (binding.id, frame)
+    guard let window = Self.matchingStatusWindow(for: item, in: statusWindows()),
+      let frame = try? statusWindowFrame(window.binding) else { return nil }
+    return (window.binding.id, frame)
   }
 
-  private func statusWindow(for item: RawSourceItemObservation,
-    requiringOnscreen: Bool = false) throws -> StatusWindowBinding {
-    guard let frame = item.frame, frame.isUsable else {
-      throw MenuBarFailure(L("Item geometry is unavailable."))
-    }
+  typealias StatusWindow = (binding: StatusWindowBinding, frame: ItemFrame, isOnscreen: Bool)
+
+  static func matchingStatusWindow(for item: RawSourceItemObservation, in windows: [StatusWindow],
+    requiringOnscreen: Bool = false) -> StatusWindow? {
+    guard let frame = item.frame, frame.isUsable else { return nil }
     // Status-level panels (DockDoor's preview spans the display) are not row windows.
-    var matches = statusWindows().filter {
+    var matches = windows.filter {
       $0.binding.pid == item.processIdentifier && $0.frame.height <= 2 * frame.height
         && $0.frame.x < frame.maxX && $0.frame.maxX > frame.x
         && $0.frame.y < frame.maxY && $0.frame.maxY > frame.y
@@ -1272,14 +1277,26 @@ final class NativeMenuBarController: NSObject {
     if matches.count > 1 { matches = matches.filter(\.isOnscreen) }
     guard matches.count == 1, let match = matches.first,
       match.binding.bundle == item.bundleIdentifier,
-      !requiringOnscreen || match.isOnscreen else {
-      nativeLog.notice("no window for \(item.bundleIdentifier ?? "?", privacy: .public) frame=\(String(describing: frame), privacy: .public) matches=\(matches.map { String(describing: $0.frame) }.joined(separator: " "), privacy: .public)")
-      throw MenuBarFailure(L("This item's native window cannot be identified safely. Other hidden items remain hidden."))
+      !requiringOnscreen || match.isOnscreen else { return nil }
+    return match
+  }
+
+  private func statusWindow(for item: RawSourceItemObservation,
+    requiringOnscreen: Bool = false) throws -> StatusWindowBinding {
+    guard let frame = item.frame, frame.isUsable else {
+      throw MenuBarFailure(L("Item geometry is unavailable."), reason: .sourceWindowUnavailable)
+    }
+    let windows = statusWindows()
+    guard let match = Self.matchingStatusWindow(for: item, in: windows,
+      requiringOnscreen: requiringOnscreen) else {
+      let candidates = windows.filter { $0.binding.pid == item.processIdentifier }.map { String(describing: $0.frame) }
+      nativeLog.notice("no window for \(item.bundleIdentifier ?? "?", privacy: .public) frame=\(String(describing: frame), privacy: .public) candidates=\(candidates.joined(separator: " "), privacy: .public)")
+      throw MenuBarFailure(L("This item's native window cannot be identified safely. Other hidden items remain hidden."), reason: .sourceWindowUnavailable)
     }
     return match.binding
   }
 
-  private func statusWindows() -> [(binding: StatusWindowBinding, frame: ItemFrame, isOnscreen: Bool)] {
+  private func statusWindows() -> [StatusWindow] {
     let windows = CGWindowListCopyWindowInfo(.optionAll, kCGNullWindowID) as? [[String: Any]] ?? []
     return windows.compactMap { window in
       guard (window[kCGWindowLayer as String] as? Int) == Int(CGWindowLevelForKey(.statusWindow)),
@@ -1979,7 +1996,7 @@ final class NativeMenuBarController: NSObject {
         safeFrame: environment.safeFrame, expanded: allowingExpanded && isConcealed)
     else {
       nativeLog.error("unsafe geometry launcher=\(String(describing: environment.launcher), privacy: .public) boundary=\(String(describing: environment.boundary), privacy: .public) safe=\(String(describing: environment.safeFrame), privacy: .public)")
-      throw MenuBarFailure(setupMessage ?? L("The menu-bar geometry is unavailable."))
+      throw MenuBarFailure(setupMessage ?? L("The menu-bar geometry is unavailable."), reason: .unsafeControlGeometry)
     }
     return environment
   }
@@ -2224,6 +2241,22 @@ final class NativeMenuBarController: NSObject {
       else { return false }
       return true
     }
+  }
+
+  static func validateConcealment(_ items: [ClassifiedSourceItem],
+    allowedKeys: Set<String>, boundary: ItemFrame, safeFrame: ItemFrame,
+    displayFrame: ItemFrame? = nil, occlusionFrame: ItemFrame? = nil) throws {
+    let blocked = items.filter {
+      !canConceal([$0], allowedKeys: allowedKeys, boundary: boundary, safeFrame: safeFrame,
+        displayFrame: displayFrame, occlusionFrame: occlusionFrame)
+    }
+    guard !blocked.isEmpty else { return }
+    // Unknown sides defer recovery; any confirmed unsafe source still stops it.
+    if blocked.allSatisfy({ item in
+      guard let frame = item.observation.frame else { return true }
+      return hiddenSide(frame, boundary: boundary) == nil
+    }) { throw NativeMenuActionError.inventoryUnavailable }
+    throw MenuBarFailure(L("A new, protected, or unassigned item would be hidden. Choose Apply Saved Layout to keep it visible before hiding."), reason: .unsafeConcealment)
   }
 
   static func outsideDisplay(_ frame: ItemFrame, display: ItemFrame) -> Bool {

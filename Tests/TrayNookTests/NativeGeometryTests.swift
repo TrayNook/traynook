@@ -582,6 +582,37 @@ struct NativeGeometryTests {
     }
   }
 
+  @Test("Final concealment defers unknown boundary overlap without authorizing hiding")
+  func finalConcealmentDefersUnknownGeometry() throws {
+    let divider = ItemFrame(x: 1129, y: 7.5, width: 2, height: 22)
+    let safe = ItemFrame(x: 956, y: -1, width: 772, height: 39)
+    let source = IdentityAssessor().classify([
+      observation(bundle: "example.hidden", x: 1108, y: 6.5, isOnscreen: true),
+    ])
+    #expect(!NativeMenuBarController.canConceal(source, allowedKeys: ["example.hidden"],
+      boundary: divider, safeFrame: safe))
+    #expect(throws: NativeMenuActionError.inventoryUnavailable) {
+      try NativeMenuBarController.validateConcealment(source, allowedKeys: ["example.hidden"],
+        boundary: divider, safeFrame: safe)
+    }
+  }
+
+  @Test("A confirmed unsafe item stops final concealment even beside unknown geometry",
+    arguments: [false, true])
+  func finalConcealmentPrioritizesConfirmedSafety(unknownFirst: Bool) throws {
+    let unknown = observation(bundle: "example.hidden", x: 1220)
+    let unsafe = observation(bundle: "com.apple.protected", x: 1190)
+    let items = IdentityAssessor().classify(unknownFirst ? [unknown, unsafe] : [unsafe, unknown])
+    do {
+      try NativeMenuBarController.validateConcealment(items, allowedKeys: ["example.hidden"],
+        boundary: boundary, safeFrame: safeFrame)
+      Issue.record("A protected source must prevent concealment")
+    } catch {
+      #expect(NativeMenuBarController.diagnosticReason(error) == .unsafeConcealment)
+      #expect(!NativeMenuBarController.shouldRetrySelectedReturn(after: error))
+    }
+  }
+
   private func observation(bundle: String, x: Double, y: Double = 0, width: Double = 24,
     role: String = "AXMenuBarItem",
     isOnscreen: Bool? = nil, window: UInt32? = nil, identifier: String? = nil,

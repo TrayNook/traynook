@@ -989,6 +989,7 @@ final class AppModel: ObservableObject {
     }
     guard !concealed, canEdit else { dropdownShown = true; show(); return }
     runOperation(restoreSettingsFocus: false, deactivateApp: false,
+      diagnosticContext: "layout",
       completion: { self.dropdownShown = true; show() }) {
       try await self.applyAndConceal(restoringToMenuBar: [])
     }
@@ -1505,10 +1506,17 @@ final class AppModel: ObservableObject {
     case "activation": .activation
     default: nil
     }
+    let diagnosticOperation: DiagnosticHistory.Operation? = switch diagnosticContext {
+    case "layout": .savedLayout
+    case "placement": .placement
+    case "menuBarOrder": .menuBarOrder
+    case "activation": .activation
+    default: nil
+    }
     let diagnosticID = UUID()
     if let diagnosticCategory {
       diagnosticHistory.record(diagnosticCategory, outcome: .started,
-        bundleIdentifier: affectedBundles.first, operationID: diagnosticID)
+        operation: diagnosticOperation, bundleIdentifier: affectedBundles.first, operationID: diagnosticID)
     }
     let displayRevision = displayChangeRevision
     operationInitialReveal = previousReveal
@@ -1563,7 +1571,7 @@ final class AppModel: ObservableObject {
       }
       if let diagnosticCategory {
         diagnosticHistory.record(diagnosticCategory, outcome: diagnosticOutcome, reason: diagnosticReason,
-          bundleIdentifier: affectedBundles.first, operationID: diagnosticID)
+          operation: diagnosticOperation, bundleIdentifier: affectedBundles.first, operationID: diagnosticID)
       }
       cleanup?()
       launchRestoreRunning = false
@@ -1617,7 +1625,7 @@ final class AppModel: ObservableObject {
     pendingMenuBarOrder = nil
     attemptedLaunchRestore = true
     message = nil
-    runOperation(revealOnFailure: false, deactivateApp: false) {
+    runOperation(revealOnFailure: false, deactivateApp: false, diagnosticContext: "menuBarOrder") {
       if self.native.hasPendingActivation { try await self.native.restoreActivation() }
       try await self.synchronizeMenuBarOrder(ordered)
     }
@@ -1927,17 +1935,27 @@ final class AppModel: ObservableObject {
       }
     }
 
-    let overlapping = launchModel()
-    overlapping.runLayoutOperation(recovering: true) {
-      _ = try NativeMenuBarController.checkedHiddenSide(
-        ItemFrame(x: 1108, y: 6.5, width: 24, height: 24),
-        boundary: ItemFrame(x: 1129, y: 7.5, width: 2, height: 22))
-    }
-    guard await finish(overlapping), let retry = overlapping.reapplyNotBefore,
-      !overlapping.takeLayoutRecovery(now: retry.addingTimeInterval(-1)),
-      overlapping.takeLayoutRecovery(now: retry) else {
-      fputs("TRAYNOOK_BOUNDARY_OVERLAP_DROPPED_RECOVERY\n", stderr)
-      return false
+    for finalConcealment in [false, true] {
+      let overlapping = launchModel()
+      overlapping.runLayoutOperation(recovering: true) {
+        let frame = ItemFrame(x: 1108, y: 6.5, width: 24, height: 24)
+        let boundary = ItemFrame(x: 1129, y: 7.5, width: 2, height: 22)
+        if finalConcealment {
+          let items = IdentityAssessor().classify([RawSourceItemObservation(runtimeID: "fixture:overlap",
+            processIdentifier: 100, bundleIdentifier: "example.fixture", applicationName: "Fixture", role: "AXMenuBarItem",
+            frame: frame, actions: ["AXPress"], metadata: LiveAccessibilityMetadata(), observedOrder: 0)])
+          try NativeMenuBarController.validateConcealment(items, allowedKeys: ["example.fixture"],
+            boundary: boundary, safeFrame: ItemFrame(x: 956, y: -1, width: 772, height: 39))
+        } else {
+          _ = try NativeMenuBarController.checkedHiddenSide(frame, boundary: boundary)
+        }
+      }
+      guard await finish(overlapping), let retry = overlapping.reapplyNotBefore,
+        !overlapping.takeLayoutRecovery(now: retry.addingTimeInterval(-1)),
+        overlapping.takeLayoutRecovery(now: retry) else {
+        fputs("TRAYNOOK_BOUNDARY_OVERLAP_DROPPED_RECOVERY\n", stderr)
+        return false
+      }
     }
 
     let cancelled = launchModel()

@@ -10,9 +10,13 @@ final class DiagnosticHistory: @unchecked Sendable {
   enum Outcome: String, Codable, Sendable {
     case started, completed, deferred, failed, cancelled, suspended, resumed, changed
   }
+  enum Operation: String, Codable, Sendable {
+    case savedLayout, placement, menuBarOrder, activation
+  }
   enum Reason: String, Codable, Sendable {
     case inputNotIdle, inputInterrupted, placementInterrupted, inventoryUnavailable, responseTimedOut
     case permissionDenied, identityChanged, scanIncomplete, budgetExceeded, displayUnavailable, unknown
+    case controlPlacementRefused, unsafeConcealment, unsafeControlGeometry, sourceWindowUnavailable
   }
   enum StorageError: Error { case unavailable, malformed, newerSchema, oversized }
 
@@ -21,6 +25,7 @@ final class DiagnosticHistory: @unchecked Sendable {
     let category: Category
     let outcome: Outcome
     let reason: Reason?
+    let operation: Operation?
     let bundleIdentifier: String?
     let operationID: UUID?
     let metrics: ScanMetrics?
@@ -71,11 +76,11 @@ final class DiagnosticHistory: @unchecked Sendable {
     self.now = now
   }
 
-  func record(_ category: Category, outcome: Outcome, reason: Reason? = nil,
+  func record(_ category: Category, outcome: Outcome, reason: Reason? = nil, operation: Operation? = nil,
     bundleIdentifier: String? = nil, operationID: UUID? = nil, metrics: ScanMetrics? = nil,
     scanAgeMilliseconds: Double? = nil) {
     guard url != nil else { return }
-    let event = Event(timestamp: now(), category: category, outcome: outcome, reason: reason,
+    let event = Event(timestamp: now(), category: category, outcome: outcome, reason: reason, operation: operation,
       bundleIdentifier: Self.bundleIdentifier(bundleIdentifier), operationID: operationID,
       metrics: metrics.map(Self.sanitized), scanAgeMilliseconds: scanAgeMilliseconds.flatMap {
         $0.isFinite && $0 >= 0 ? $0 : nil

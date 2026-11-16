@@ -56,6 +56,28 @@ struct DiagnosticHistoryTests {
     #expect(try await DiagnosticHistory(url: url, now: { now }).read() == events)
   }
 
+  @Test("Control and source refusals retain a fixed reason without recording item text",
+    arguments: [DiagnosticHistory.Reason.controlPlacementRefused, .unsafeConcealment,
+      .unsafeControlGeometry, .sourceWindowUnavailable])
+  func preservesFixedRefusalReason(_ reason: DiagnosticHistory.Reason) async throws {
+    let directory = temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let url = directory.appendingPathComponent("history.jsonl")
+    let history = DiagnosticHistory(url: url, now: { now })
+    history.record(.layout, outcome: .failed, reason: reason, operation: .savedLayout,
+      bundleIdentifier: "Private item title\nBearer private-token")
+    let events = try await history.read()
+    let event = try #require(events.first)
+    #expect(event.operation == .savedLayout)
+    #expect(event.reason == reason)
+    #expect(event.bundleIdentifier == nil)
+    let stored = try String(contentsOf: url, encoding: .utf8)
+    #expect(!stored.contains("Private"))
+    #expect(!stored.contains("Bearer"))
+    #expect(!stored.contains("private-token"))
+    #expect(try await DiagnosticHistory(url: url, now: { now }).read() == events)
+  }
+
   @Test("Only bundle identifiers and structured finite metrics cross the persistent boundary")
   func fixedSchema() async throws {
     let directory = temporaryDirectory()
@@ -78,6 +100,33 @@ struct DiagnosticHistoryTests {
     #expect(!stored.contains("Private"))
     #expect(!stored.contains("Bearer"))
     #expect(!stored.contains("private-token"))
+  }
+
+  @Test("Version-one history keeps legacy records and distinguishes layout operation contexts")
+  func preservesOperationContexts() async throws {
+    let directory = temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    let url = directory.appendingPathComponent("history.jsonl")
+    let timestamp = now.timeIntervalSinceReferenceDate
+    let records = ["{\"schemaVersion\":1}",
+      "{\"timestamp\":\(timestamp),\"category\":\"layout\",\"outcome\":\"completed\"}"]
+      + ["savedLayout", "placement", "menuBarOrder"].map {
+        "{\"timestamp\":\(timestamp),\"category\":\"layout\",\"outcome\":\"failed\",\"reason\":\"unknown\",\"operation\":\"\($0)\"}"
+      }
+    let original = Data((records.joined(separator: "\n") + "\n").utf8)
+    try original.write(to: url)
+    let history = DiagnosticHistory(url: url, now: { now })
+    let events = try await history.read()
+    #expect(events.count == 4)
+    let encoded = try events.map {
+      try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode($0)) as? [String: Any])
+    }
+    #expect(encoded.first?["operation"] == nil)
+    #expect(encoded.dropFirst().compactMap { $0["operation"] as? String }
+      == ["savedLayout", "placement", "menuBarOrder"])
+    #expect(try Data(contentsOf: url) == original)
+    #expect(try await DiagnosticHistory(url: url, now: { now }).read() == events)
   }
 
   @Test("Rotation expires seven-day-old records and enforces a byte cap")
