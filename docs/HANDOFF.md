@@ -1,12 +1,41 @@
-# TrayNook: build 45, extended local diagnostics
+# TrayNook: build 46, verified concealment and failure classification
 
-Updated 2026-11-16. Build 18's measurements are in
+Updated 2026-11-17. Build 18's measurements are in
 [MVP_REPORT.md](MVP_REPORT.md); build 19's decisions are in
 [ADR 0009](adr/0009-hidden-pointer-sibling-keys-and-session-image-cache.md) and
 [ADR 0010](adr/0010-geometry-follows-the-active-menu-bar-row.md).
 
 ## Current state
 
+- **Visible-source recurrence (2026-11-17):** the original live binary was
+  confirmed as **1.0.0 (45)** by its process sample and matching executable UUID.
+  Before quitting, native readback found four saved hidden-source windows
+  visible. History retains a terminal `unknown` operation at November 16
+  18:21:55, followed by no operation dispatch after the later resume. Its old
+  `layout` category conflates full layout, individual placement, and ordering;
+  the detailed failure and initial reveal are absent from retained unified logs.
+  Relaunching unchanged build 45 restored hiding, so the historical cause remains
+  unassigned. Independently, a failing regression reproduced final concealment
+  treating unknown boundary overlap as terminal. Build **46** defers exclusively
+  unknown geometry through the existing fresh-inventory retry; any confirmed
+  unsafe item, including mixed unknown/unsafe cases, still stops for review.
+  Optional proxy-image misses now retain app-icon fallback without logging an
+  action failure. Local history distinguishes fixed operation contexts and
+  control/source refusal codes while reading existing schema-v1 records.
+- **Build 46 verification:** 291 standard tests, 86 sequential isolated AppKit
+  checks, both native menu-observer variants, native boundary, and selected
+  placement pass. Placement observed 185 sentinel samples with zero reveals.
+  Movement lacked visible fixture space; cancellation passed seven phases then
+  refused fresh return inventory before posting return-sequence input. These
+  remain limits, with safety guards intact. Packaged smoke passed without
+  changing history. The signed `TrayNook Dev` app launched at 00:25:18 Moscow;
+  live UUID matches build 46. Four readbacks three seconds apart found seven
+  hidden-source owners and zero visible hidden-source windows; startup had no
+  Error/Fault entries. Existing user placements/order and history bytes survived;
+  normal cleanup removed only an absent transient Apple audio/video entry.
+  Extended local retention remains enabled at 30 days/32 MiB; public defaults
+  remain seven days/1 MiB. See the [follow-up findings](LOG_REPAIR_PLAN.md#november-17-follow-up-build-46)
+  and [evidence receipt](evidence/2026-11-17-log-review-and-build46.json).
 - **Extended local retention (2026-11-16):** signed development build **45**
   supports `ExtendedLocalDiagnosticHistory` in the development app's machine-local
   preferences. It is enabled on this Mac for the next log review: up to **30 days
@@ -179,7 +208,7 @@ Updated 2026-11-16. Build 18's measurements are in
   WindowServer confirmed the real BroGlow source left of Tunnelblick, matching
   their saved order. The separate disposable `--reorder` check compiled but
   stopped before posting input because its harness lacks Accessibility permission.
-- Development app: `dist/TrayNook Dev.app`, **1.0.0 (42)**, signed with the
+- Development app: `dist/TrayNook Dev.app`, **1.0.0 (46)**, signed with the
   user's `TrayNook Dev` certificate (README "Development signing and
   permissions"). The unit suite, packaged smoke test, and opt-in GUI preview
   snapshots pass, including minimum Settings width and row capacities 1/30.
@@ -334,7 +363,7 @@ action. `.optionAll` is required to find offscreen windows.
 
 ```sh
 Scripts/test.sh
-TRAYNOOK_DEV_SIGNING_IDENTITY='TrayNook Dev' TRAYNOOK_BUILD=33 Scripts/build-app.sh
+TRAYNOOK_DEV_SIGNING_IDENTITY='TrayNook Dev' TRAYNOOK_BUILD=47 Scripts/build-app.sh
 Scripts/smoke-test.sh
 Scripts/test-native-cancellation.sh --compile-only
 Scripts/test-native-movement.sh --compile-only

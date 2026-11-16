@@ -1,0 +1,364 @@
+{
+  "verified_at": "2026-11-17T00:27:46.628845+03:00",
+  "timezone": "Europe/Moscow (UTC+03:00); native readback timestamps are UTC",
+  "local_raw_evidence": "/private/tmp/traynook-log-review-20261117",
+  "original_running_build": {
+    "version": "1.0.0",
+    "build": 45,
+    "pid": 96914,
+    "uuid": "E7181DED-CA92-37A1-A978-A0611CDF288E",
+    "sha256": "7230049103c6c1302d74237461b3d82ba276d49973de7f8de1f6de2e5a9b406c",
+    "verified_by": "sample live binary Version and UUID matched packaged executable",
+    "native_readback": {
+      "hiddenOwnersObserved": 7,
+      "hiddenSourceWindows": 9,
+      "timestamp": "2026-11-16T21:13:06Z",
+      "visibleHiddenSourceWindows": 4
+    }
+  },
+  "coverage": {
+    "query": "/usr/bin/log show --last 8d --info --style json --predicate 'process == \"TrayNook\" OR subsystem == \"io.github.mahenzon.TrayNook.dev\"'",
+    "unified_all_processes": {
+      "records": 94926,
+      "first": "2026-11-13 15:05:00.578656+0300",
+      "last": "2026-11-17 00:10:48.838006+0300"
+    },
+    "unified_daily": [
+      {
+        "day": "2026-11-13",
+        "records": 15,
+        "first": "2026-11-13 15:05:00.578656+0300",
+        "last": "2026-11-13 20:26:50.959497+0300",
+        "application_records": 0
+      },
+      {
+        "day": "2026-11-14",
+        "records": 3,
+        "first": "2026-11-14 10:11:12.796856+0300",
+        "last": "2026-11-14 16:01:43.381327+0300",
+        "application_records": 0
+      },
+      {
+        "day": "2026-11-15",
+        "records": 4,
+        "first": "2026-11-15 14:02:53.446338+0300",
+        "last": "2026-11-15 14:02:58.452351+0300",
+        "application_records": 0
+      },
+      {
+        "day": "2026-11-16",
+        "records": 90230,
+        "first": "2026-11-16 09:03:04.556813+0300",
+        "last": "2026-11-16 23:59:59.315370+0300",
+        "application_records": 354
+      },
+      {
+        "day": "2026-11-17",
+        "records": 4674,
+        "first": "2026-11-17 00:00:00.345971+0300",
+        "last": "2026-11-17 00:10:48.838006+0300",
+        "application_records": 16
+      }
+    ],
+    "unified_build45": {
+      "records": 94833,
+      "first": "2026-11-16 12:11:47.388+0300",
+      "last": "2026-11-17 00:10:48.838+0300"
+    },
+    "application_subsystem": {
+      "records": 370,
+      "first": "2026-11-16 20:45:08.753577+0300",
+      "last": "2026-11-17 00:05:14.756450+0300"
+    },
+    "diagnostic_history": {
+      "events": 516,
+      "first": "2026-11-16 11:48:57.739+0300",
+      "last": "2026-11-16 23:50:59.469+0300",
+      "bytes": 113344,
+      "created_in_build44": "The 30-day cap cannot recover events before local history existed."
+    },
+    "crash_reports": [
+      {
+        "directory": "/Users/mahenzon/Library/Logs/DiagnosticReports",
+        "filesExamined": 31,
+        "matchingReports": [],
+        "readErrors": [],
+        "scope": "filenames recursively including archive subdirectories; first 8 KiB of report headers"
+      },
+      {
+        "directory": "/Library/Logs/DiagnosticReports",
+        "filesExamined": 60,
+        "matchingReports": [],
+        "readErrors": [],
+        "scope": "filenames recursively including archive subdirectories; first 8 KiB of report headers"
+      }
+    ],
+    "gaps": [
+      "No matching unified entries November 9\u201312. Sparse earlier process/system entries do not demonstrate application health.",
+      "No retained application-subsystem entries before November 16 20:45 in this capture; original failure at 18:21 and triggering reveal cannot be recovered.",
+      "History records transitions and rate-limited failures, not every scan; original schema conflated savedLayout, placement, and menuBarOrder.",
+      "Only retained unified default/info records were queried; missing/private payloads cannot establish OS call sites."
+    ]
+  },
+  "findings": {
+    "history_operation_groups": {
+      "started": 11,
+      "completed": 7,
+      "deferred_inventory_unavailable": 3,
+      "failed_unknown": 1,
+      "context": "Historical layout category conflates full layout, single placement and Menu Bar order."
+    },
+    "last_success": "2026-11-16 17:56:11.240+0300",
+    "terminal_failure": {
+      "started": "2026-11-16 18:21:53.659+0300",
+      "failed": "2026-11-16 18:21:55.198+0300",
+      "reason": "unknown",
+      "operation_id": "FC327319-A59E-44C7-B140-BE35A248BBA1",
+      "complete_source_counts": [
+        45,
+        45,
+        45,
+        45
+      ],
+      "next_complete_source_count": 20,
+      "cause": "Unassigned; neither the temporary count increase nor later optional capture misses prove the original trigger."
+    },
+    "later_lifecycle": {
+      "suspended": "2026-11-16 19:17:43.601+0300",
+      "resumed": "2026-11-16 20:14:21.272+0300",
+      "complete_scan": "2026-11-16 20:14:25.075+0300",
+      "subsequent_layout_dispatches": 0
+    },
+    "repeated_messages": {
+      "native_window_refusals": 184,
+      "paired_missing_window_notices": 184,
+      "owners": {
+        "com.pais.handy": 111,
+        "com.crystalidea.macsfancontrol": 73
+      },
+      "classification": "Optional proxy capture can construct a logged error before try? returns nil. These are repeated capture misses, not 184 operation failures; reproduced beside successful build45 concealment."
+    },
+    "inventory": {
+      "incomplete_events": 72,
+      "complete_events": 96,
+      "classification": "Sampled failures/transitions, not reveal counts. Three operation inventory deferrals were followed by completed attempts."
+    },
+    "display_changed_events": 322,
+    "private_system_errors": {
+      "build45_invalid_display_identifier": 12,
+      "broad_query_invalid_display_identifier": 23,
+      "older_process_launchservices_store_error": 1,
+      "cause": "Unassigned private OS messages; no speculative OS fix."
+    },
+    "expected_input_interruptions": "No activation, selected-return or input-interruption history events in this capture. Deterministic input interruption is exercised separately by the native cancellation harness.",
+    "unchanged_build45_relaunch": {
+      "visible_hidden_source_windows": 0,
+      "meaning": "Current symptom recovered using saved layout, but historical failure did not reproduce."
+    }
+  },
+  "fixes": [
+    "Final native concealment uses unchanged canConceal checks and defers exclusively unknown/missing boundary geometry as inventoryUnavailable. Any confirmed unsafe source, including mixed unknown/unsafe snapshots, remains terminal; no movement or concealment is authorized by unknown geometry.",
+    "Optional proxy image geometry returns nil through a shared pure matcher without constructing an action-failure log. Real action refusal preserves owner, bundle, overlap, ambiguity and onscreen guards.",
+    "Local schema-v1 events now include optional fixed operation context and fixed codes for control placement refusal, unsafe control geometry, unsafe concealment and unavailable source windows. Legacy bytes remain readable."
+  ],
+  "verification": {
+    "behavioral_red": "finalConcealmentDefersUnknownGeometry failed with unsafeConcealment before classification fix; passed afterward.",
+    "focused": {
+      "tests": 15,
+      "suites": 3,
+      "passed": true
+    },
+    "standard": {
+      "tests": 291,
+      "suites": 45,
+      "passed": true,
+      "environment": "Host access; sandbox run blocked the unchanged loopback test with POSIX EPERM."
+    },
+    "isolated_appkit": {
+      "tests": 86,
+      "runs": [
+        {
+          "suite": "AppModelInventoryTests",
+          "passed": true,
+          "tests": 19,
+          "log": "/private/tmp/traynook-log-review-20261117/appkit-AppModelInventoryTests.txt"
+        },
+        {
+          "suite": "BackgroundInventoryTests",
+          "passed": true,
+          "tests": 7,
+          "log": "/private/tmp/traynook-log-review-20261117/appkit-BackgroundInventoryTests.txt"
+        },
+        {
+          "suite": "ConcealmentRecoveryTests",
+          "passed": true,
+          "tests": 32,
+          "log": "/private/tmp/traynook-log-review-20261117/appkit-ConcealmentRecoveryTests.txt"
+        },
+        {
+          "suite": "DetailReorderTests",
+          "passed": true,
+          "tests": 4,
+          "log": "/private/tmp/traynook-log-review-20261117/appkit-DetailReorderTests.txt"
+        },
+        {
+          "suite": "DisplayChangeTests",
+          "passed": true,
+          "tests": 1,
+          "log": "/private/tmp/traynook-log-review-20261117/appkit-DisplayChangeTests.txt"
+        },
+        {
+          "suite": "IdleInventoryTests",
+          "passed": true,
+          "tests": 2,
+          "log": "/private/tmp/traynook-log-review-20261117/appkit-IdleInventoryTests.txt"
+        },
+        {
+          "suite": "LoginItemStatusTests",
+          "passed": true,
+          "tests": 5,
+          "log": "/private/tmp/traynook-log-review-20261117/appkit-LoginItemStatusTests.txt"
+        },
+        {
+          "suite": "MenuBarReorderTests",
+          "passed": true,
+          "tests": 6,
+          "log": "/private/tmp/traynook-log-review-20261117/appkit-MenuBarReorderTests.txt"
+        },
+        {
+          "suite": "SavedPlacementEditingTests",
+          "passed": true,
+          "tests": 1,
+          "log": "/private/tmp/traynook-log-review-20261117/appkit-SavedPlacementEditingTests.txt"
+        },
+        {
+          "suite": "WindowMetadataReaderTests",
+          "passed": true,
+          "tests": 9,
+          "log": "/private/tmp/traynook-log-review-20261117/appkit-WindowMetadataReaderTests.txt"
+        }
+      ],
+      "passed": true
+    },
+    "native": {
+      "menu": {
+        "passed": true,
+        "variants": 2,
+        "checks_per_variant": 3
+      },
+      "boundary": {
+        "passed": true,
+        "cycles": 3
+      },
+      "placement": {
+        "passed": true,
+        "show_hide_cycles": 2,
+        "sentinel_samples": 185,
+        "revealed_samples": 0,
+        "unavailable_samples": 0,
+        "original_source_windows": 17,
+        "surviving_source_windows": 17
+      },
+      "movement": {
+        "passed": false,
+        "classification": "blocked fixture precondition",
+        "detail": "36-point fixture not visibly available beside launcher; no item moved."
+      },
+      "cancellation": {
+        "passed": false,
+        "passed_phases": 7,
+        "classification": "fresh-inventory refusal before requested return interruption",
+        "detail": "return-motion-down return validation refused inventoryUnavailable; 0 down/up/recovery events in the tested return sequence. Source promotion ran before those counters were reset. Two return-motion phases and remaining terminal cases unverified; guards preserved."
+      }
+    },
+    "packaged_smoke": {
+      "passed": true,
+      "signature": "deep strict verify passed",
+      "history_unchanged": true
+    },
+    "independent_review": "No confirmed safety/correctness findings for geometry validation or shared optional/action matching."
+  },
+  "running_build": {
+    "version": "1.0.0",
+    "build": 46,
+    "bundle": "io.github.mahenzon.TrayNook.dev",
+    "artifact": "dist/TrayNook Dev.app",
+    "pid": 25392,
+    "launched_at": "2026-11-17 00:25:18+0300",
+    "uuid": "9EED66E6-C204-31C5-909E-E713FBF70E0B",
+    "uuid_matches_live_sample": true,
+    "sha256": "85d3e2ac7093f86b5bbcfc87661941d70a5fd09dc2de6d7dd200aaa3e432f7fb",
+    "signing_identity": "TrayNook Dev",
+    "native_readbacks": [
+      {
+        "hiddenOwnersObserved": 7,
+        "hiddenSourceWindows": 9,
+        "timestamp": "2026-11-16T21:25:36Z",
+        "visibleHiddenSourceWindows": 0
+      },
+      {
+        "hiddenOwnersObserved": 7,
+        "hiddenSourceWindows": 9,
+        "timestamp": "2026-11-16T21:25:39Z",
+        "visibleHiddenSourceWindows": 0
+      },
+      {
+        "hiddenOwnersObserved": 7,
+        "hiddenSourceWindows": 9,
+        "timestamp": "2026-11-16T21:25:42Z",
+        "visibleHiddenSourceWindows": 0
+      },
+      {
+        "hiddenOwnersObserved": 7,
+        "hiddenSourceWindows": 9,
+        "timestamp": "2026-11-16T21:25:45Z",
+        "visibleHiddenSourceWindows": 0
+      }
+    ],
+    "startup_log": {
+      "first": "2026-11-17 00:25:18.657119+0300",
+      "last": "2026-11-17 00:25:47.350430+0300",
+      "records": 238,
+      "app_records": 13,
+      "errors_or_faults": 0,
+      "app_errors_or_faults": 0
+    },
+    "local_history": {
+      "existing_prefix_preserved": true,
+      "mode": "0o600",
+      "extended_local_preference": true,
+      "days": 30,
+      "maximum_bytes": 33554432,
+      "public_defaults": {
+        "days": 7,
+        "maximum_bytes": 1048576
+      },
+      "operation_context_emitted": "savedLayout started then completed at launch"
+    },
+    "saved_layout": {
+      "existing_user_placements_changed": false,
+      "shared_item_order_preserved": true,
+      "removed_by_existing_transient_cleanup": [
+        "com.apple.controlcenter#ax:com.apple.menuextra.audiovideo"
+      ],
+      "added": []
+    },
+    "final_native_readback": {
+      "hiddenOwnersObserved": 7,
+      "hiddenSourceWindows": 9,
+      "timestamp": "2026-11-16T21:29:30Z",
+      "visibleHiddenSourceWindows": 0
+    },
+    "process_errors_through_final_check": {
+      "checked_at": "2026-11-17T00:29:53.392351+03:00",
+      "errors_or_faults": 0
+    }
+  },
+  "limits": [
+    "Original 18:21 terminal failure and initial reveal have no retained detailed cause; the overlap fix is reproduced independently, not proven as that historical trigger.",
+    "Native movement and complete cancellation acceptance remain blocked as described above.",
+    "Actual sleep/wake, display disconnect/reconnect, and prolonged idle behavior were not exercised. Startup readbacks cover a short interval on the current 1728-point display.",
+    "No logs uploaded or system-wide logging retention changed. Raw captures remain only in private local temporary storage."
+  ],
+  "code_commit": "1af176877576fdddf8779d2af4a136253bc1d157"
+}

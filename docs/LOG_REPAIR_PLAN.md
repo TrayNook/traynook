@@ -1,5 +1,102 @@
 # TrayNook log review and repair plan
 
+## November 17 follow-up: build 46
+
+The original running process was **1.0.0 (45)**, PID 96914, with UUID
+`E7181DED-CA92-37A1-A978-A0611CDF288E` matching the packaged binary. Evidence was
+captured before quitting: the local JSONL history, an eight-day process/subsystem
+unified-log query, a live process sample, saved layout, native visibility, and
+both standard crash-report directories including archive subdirectories.
+Native readback reproduced **four visible saved hidden-source windows**.
+
+### Coverage and failure classification
+
+- **Local history:** 516 events on November 16, **11:48:57–23:50:59 Moscow**.
+  Eleven operation groups in the old `layout` category contain seven completions,
+  three inventory deferrals followed by successful attempts, and one terminal
+  `unknown` failure at **18:21:55.198**. This category does not identify whether
+  the operation was a full layout, a single placement, or Menu Bar ordering.
+  Four complete scans during that operation reported 45 sources; the next
+  complete scan reported 20. That change does not establish a cause.
+- **Unified logs:** 94,926 broad-query records cover November 13–17, but only
+  **370 application-subsystem records** remain, on November 16 **20:45:08** through
+  November 17 **00:05:14**. Build 45 contributes 94,833 process records from
+  November 16 **12:11:47** through November 17 **00:10:48**. No query matches
+  November 9–12. The detailed 18:21 error and initial reveal are missing; sparse
+  system records on earlier days do not establish application health. Thirty-day
+  local retention cannot backfill events before history existed.
+- **Repeated messages:** 184 native-window errors pair with 184 missing-window
+  notices: Handy 111, Macs Fan Control 73. Optional proxy capture swallowed these
+  errors and used its fallback; they are not 184 failed layout operations.
+  Unchanged build 45 reproduced capture misses beside successful concealment on
+  relaunch. The history's 72 incomplete-inventory events are sampled transitions,
+  not reveal counts; 322 display events are not 322 failures. No activation,
+  selected-return, or expected input-interruption history events occurred in this
+  capture. Native interruption tests are separate evidence.
+- **Unassigned OS messages and crashes:** build 45 has 12 private invalid-display
+  errors. The broad query's other 11 and one LaunchServices-store error belong to
+  older processes. No caller or user impact is established from private payloads.
+  No TrayNook match was found among 91 crash-directory files, checking filenames
+  recursively and report headers. Raw captures stay in the private local
+  `/private/tmp/traynook-log-review-20261117` directory; only selected technical
+  evidence is recorded in the [receipt](evidence/2026-11-17-log-review-and-build46.json).
+
+The last successful operation was at **17:56:11**. After the terminal failure,
+history records suspension at **19:17:43**, resume at **20:14:21**, and complete
+inventory at **20:14:25**, with no subsequent operation dispatch. Current code
+intentionally does not retry arbitrary native refusals. Relaunching unchanged
+build 45 restored concealment; the original terminal trigger remains unproven.
+
+### Confirmed fixes and acceptance
+
+1. **Final concealment recovery:** the existing safety predicate rejected unknown
+   boundary overlap with the same permanent error as a protected/unassigned
+   hidden-side item. A regression failed with that terminal classification.
+   Native concealment now defers only when every blocking item has unknown
+   geometry. Fresh inventory and idle input are still required; no unknown
+   geometry authorizes concealment. A confirmed unsafe blocker wins in either
+   array order. The packaged model check also exercises this final-validation
+   error through the actual three-second recovery scheduler. This is a reproduced
+   code defect, not proof of the missing historical trigger.
+2. **Optional image readback:** capture and native actions share the same pure
+   owner/bundle/geometry/uniqueness matcher. An optional miss returns `nil` for
+   app-icon fallback without constructing an action-failure log. Actual actions
+   retain their refusal errors and onscreen guards. Four focused checks pass.
+3. **Retained operation context:** schema-v1 records accept an optional fixed
+   operation enum, distinguishing saved layout, placement, ordering, and
+   activation. Control placement, unsafe control geometry/concealment, and
+   unavailable source windows have fixed reason codes. Legacy-read, roundtrip,
+   privacy, retention, and cap checks pass; local history retains its original
+   byte prefix. No labels, titles, input contents, or raw error text were added
+   to history. No logs were uploaded or system-wide retention changed.
+
+The integrated standard suite passes **291 tests** with host access; its initial
+sandbox run blocked the unchanged loopback-server test with `EPERM`. Ten
+sequential isolated AppKit runs pass **86 checks**. Both native-menu variants
+pass three checks each; boundary passes three cycles. Selected placement passes
+two show/hide cycles with **185 sentinel samples, zero reveals**, and all 17
+original windows surviving cleanup. Movement stops before input because the
+36-point fixture lacks visible space. Cancellation passes seven phases, then
+refuses `inventoryUnavailable` before posting any tested return-sequence
+down/up/recovery event in the first return-motion phase. Its preceding source
+promotion had run before those counters were reset. The remaining phases are unverified; guards were not
+weakened to complete them.
+
+Signed development build **1.0.0 (46)** passed packaged smoke and launched at
+**November 17 00:25:18 Moscow**, PID 25392. The sampled live UUID
+`9EED66E6-C204-31C5-909E-E713FBF70E0B` matches its package. Four native readbacks
+three seconds apart observe **seven hidden-source owners, zero visible
+hidden-source windows**. Its sampled startup process log has **238 records and
+no Error/Fault entries**. Smoke left history unchanged; launch appended a
+`savedLayout` start/completion with the original history bytes intact and mode
+`0600`. Saved user placements/order survived; existing cleanup removed only the
+absent transient Apple audio/video source. `ExtendedLocalDiagnosticHistory`
+remains enabled: **30 days/32 MiB** locally, **seven days/1 MiB** public defaults.
+Actual sleep/wake, display disconnect/reconnect, and prolonged idle behavior
+remain unverified. See the [complete receipt](evidence/2026-11-17-log-review-and-build46.json).
+
+## November 16 review and repair plan
+
 Reviewed and implemented 2026-11-16. Build **44** contains the confirmed recovery
 fixes, bounded diagnostics, and defensive display validation. The initial review
 and proposed repair packages below preserve the evidence and acceptance goals;
