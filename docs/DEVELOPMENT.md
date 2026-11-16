@@ -120,6 +120,20 @@ Development layouts are stored at:
 Public builds use `io.github.mahenzon.TrayNook` instead. Unreadable or newer
 layout data is preserved and disables management until **Reset Layout**.
 
+Packaged builds keep `diagnostic-history.jsonl` beside `layout.json`. The local
+history records fixed operation/scan result codes, timestamps, retry outcomes,
+affected bundle/process identifiers, and aggregate timing/count metrics. It is
+capped at 1 MiB and expires entries after seven days; the size cap can evict
+older entries sooner. Writes run on a serial utility queue, and the file is
+private to the current user. Malformed, newer-schema, oversized, or inaccessible
+existing histories are preserved and recording stops with a fixed log message.
+Saved layout management continues independently of history storage failure.
+
+The history contains no item labels, window titles, captured pixels, pointer/key
+contents, or complete application inventory. Copy Diagnostics still copies only
+the current state report. Smoke tests, `--diagnose`, unit tests, and disposable
+native harnesses do not write the user's diagnostic history.
+
 To uninstall, disable Launch at Login, quit TrayNook, and delete the app.
 To erase saved preferences too, remove only the app-specific Application Support
 folder after quitting. Accessibility and Screen Recording approvals are managed

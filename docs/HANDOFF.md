@@ -1,12 +1,38 @@
-# TrayNook: build 42, concealment resilience across app failures
+# TrayNook: build 44, session recovery and selected-item returns
 
-Updated 2026-11-05. Build 18's measurements are in
+Updated 2026-11-16. Build 18's measurements are in
 [MVP_REPORT.md](MVP_REPORT.md); build 19's decisions are in
 [ADR 0009](adr/0009-hidden-pointer-sibling-keys-and-session-image-cache.md) and
 [ADR 0010](adr/0010-geometry-follows-the-active-menu-bar-row.md).
 
 ## Current state
 
+- **Log-driven recovery fixes (2026-11-16):** signed development build **44**
+  suspends discovery and native operation dispatch during sleep or an inactive
+  session, then resumes from fresh inventory once both conditions clear. The
+  native observer hands suspension to the model before revealing, preserving
+  recovery intent regardless of notification order. Explicit Reveal cancels
+  deferred restoration. Queued placement cancellation clears its pending state,
+  and an Apply Saved Layout request queued before sleep remains recoverable.
+  Selected-item return rebinds only its owner through AX, bracketed by fresh
+  permission, exact source-window ownership, all native source-window states,
+  and control geometry; unrelated AX trees cannot block that return. Discovery
+  stops at the selected status icon rather than traversing popup-menu contents.
+  Offline display IDs and disconnect-raced bounds are rejected through one
+  shared guard. Local diagnostic history stores fixed outcomes and sanitized
+  scan failure details for up to seven days within 1 MiB, with no automatic
+  upload or item/window contents. The final standard run reports **281 tests**;
+  sequential isolated AppKit runs report **86 checks**. Both native menu observer
+  variants and the native boundary check pass. Movement stopped before input
+  because its fixture lacked visible menu-bar space; placement and cancellation
+  stopped on active physical input. Packaged smoke passed, and build 44 was
+  launched with the existing layout. Four native readbacks spaced three seconds
+  apart found **nine hidden-source owners and zero visible hidden-source
+  windows**. Its sampled startup log contains no Error/Fault entries. Historical
+  private SkyLight/Mach-O errors have no proven caller, and real power cycles
+  were not triggered during this user's session. See the
+  [repair plan and implementation results](LOG_REPAIR_PLAN.md#implementation-results)
+  and [verification receipt](evidence/2026-11-16-build44-verification.json).
 - **Concealment resilience audit (2026-11-05):** three Lazarus researchers audited
   discovery, native layout, and handoff, followed by independent correctness
   review. Build 42 keeps hiding independent of optional Menu Bar ordering,

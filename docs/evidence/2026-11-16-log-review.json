@@ -1,0 +1,384 @@
+{
+  "review_date": "2026-11-16",
+  "timezone": "Europe/Moscow (UTC+03:00)",
+  "query": {
+    "command": "/usr/bin/log show --last 7d --info --debug --style ndjson --predicate 'process == \"TrayNook\" OR process == \"TrayNook Dev\"'",
+    "scope": "rolling seven days; retained matching entries only",
+    "source_sha256": "785bc1de2fd76a162e7ae154c9e811c06e6cba66cdd6c219c7f733b61bf9de14",
+    "raw_capture_temporary_path": "/tmp/traynook-seven-days-process.ndjson"
+  },
+  "coverage": {
+    "first_process_record": "2026-11-13 15:05:00.578656+0300",
+    "last_process_record": "2026-11-16 10:58:02.521254+0300",
+    "first_traynook_subsystem_record": "2026-11-16 06:46:06.364516+0300",
+    "last_traynook_subsystem_record": "2026-11-16 10:58:02.521254+0300",
+    "total_process_records": 815,
+    "total_traynook_subsystem_records": 466,
+    "by_day": [
+      {
+        "date": "2026-11-13",
+        "process_records": 15,
+        "traynook_subsystem_records": 0,
+        "error_records": 7,
+        "invalid_display_identifier_errors": 7
+      },
+      {
+        "date": "2026-11-14",
+        "process_records": 3,
+        "traynook_subsystem_records": 0,
+        "error_records": 0,
+        "invalid_display_identifier_errors": 0
+      },
+      {
+        "date": "2026-11-15",
+        "process_records": 4,
+        "traynook_subsystem_records": 0,
+        "error_records": 0,
+        "invalid_display_identifier_errors": 0
+      },
+      {
+        "date": "2026-11-16",
+        "process_records": 793,
+        "traynook_subsystem_records": 466,
+        "error_records": 17,
+        "invalid_display_identifier_errors": 2
+      }
+    ]
+  },
+  "identity": {
+    "bundle": "io.github.mahenzon.TrayNook.dev",
+    "process_id": 6374,
+    "executable_uuid": "9897F717-923D-34E6-8EC4-E3A4E1041C95",
+    "matched_local_bundle": "dist/TrayNook Dev.app",
+    "bundle_version": "1.0.0",
+    "bundle_build": "43",
+    "matching_method": "dwarfdump --uuid matches every captured processImageUUID"
+  },
+  "own_event_counts": {
+    "concealment_retained_during_incomplete_scan": 283,
+    "display_parameters_changed": 78,
+    "active_menu_bar_row_changed": 54,
+    "incomplete_scan_reported_as_revealed": 6,
+    "operation_failed": 4,
+    "return_interrupted": 4,
+    "return_attempt_started": 3,
+    "concealment_completed": 1,
+    "unknown_geometry_tolerated_once": 1
+  },
+  "own_levels": {
+    "Default": 456,
+    "Error": 10
+  },
+  "selected_timeline": [
+    {
+      "timestamp": "2026-11-16 09:02:48.135047+0300",
+      "subsystem": "io.github.mahenzon.TrayNook.dev",
+      "category": "model",
+      "messageType": "Default",
+      "eventMessage": "incomplete scan 1 of 3 while concealed: 2 applications could not be scanned completely (io.github.broglow.menubar, ru.yandex.alice.search.concept.p1); this snapshot must not drive changes."
+    },
+    {
+      "timestamp": "2026-11-16 09:10:54.815861+0300",
+      "subsystem": "io.github.mahenzon.TrayNook.dev",
+      "category": "model",
+      "messageType": "Default",
+      "eventMessage": "environment changed: NSWorkspaceWillSleepNotification; revealing, re-applying in 10 s"
+    },
+    {
+      "timestamp": "2026-11-16 09:10:57.547893+0300",
+      "subsystem": "io.github.mahenzon.TrayNook.dev",
+      "category": "model",
+      "messageType": "Error",
+      "eventMessage": "revealed: scan permission=granted completeness=incomplete warnings=2 applications could not be scanned completely (ru.yandex.desktop.telemost, net.tunnelblick.tunnelblick); this snapshot must not drive changes."
+    },
+    {
+      "timestamp": "2026-11-16 09:11:05.746745+0300",
+      "subsystem": "io.github.mahenzon.TrayNook.dev",
+      "category": "model",
+      "messageType": "Error",
+      "eventMessage": "revealed: scan permission=granted completeness=incomplete warnings=3 applications could not be scanned completely (io.github.broglow.menubar, ru.yandex.desktop.telemost, ru.yandex.alice.search.concept.p1); this snapshot must not drive changes."
+    },
+    {
+      "timestamp": "2026-11-16 09:11:08.768455+0300",
+      "subsystem": "io.github.mahenzon.TrayNook.dev",
+      "category": "model",
+      "messageType": "Error",
+      "eventMessage": "revealed: scan permission=granted completeness=incomplete warnings=1 applications could not be scanned completely (io.github.broglow.menubar); this snapshot must not drive changes."
+    },
+    {
+      "timestamp": "2026-11-16 09:11:14.017800+0300",
+      "subsystem": "io.github.mahenzon.TrayNook.dev",
+      "category": "model",
+      "messageType": "Default",
+      "eventMessage": "re-applying the saved layout after a temporary reveal"
+    },
+    {
+      "timestamp": "2026-11-16 09:11:14.716484+0300",
+      "subsystem": "io.github.mahenzon.TrayNook.dev",
+      "category": "model",
+      "messageType": "Default",
+      "eventMessage": "temporary layout failure; retrying after input and inventory settle: A complete, fresh menu-bar inventory is unavailable. Refresh and try again."
+    },
+    {
+      "timestamp": "2026-11-16 09:11:14.716528+0300",
+      "subsystem": "io.github.mahenzon.TrayNook.dev",
+      "category": "model",
+      "messageType": "Error",
+      "eventMessage": "operation failed: A complete, fresh menu-bar inventory is unavailable. Refresh and try again."
+    },
+    {
+      "timestamp": "2026-11-16 09:11:17.515856+0300",
+      "subsystem": "io.github.mahenzon.TrayNook.dev",
+      "category": "model",
+      "messageType": "Error",
+      "eventMessage": "revealed: scan permission=granted completeness=incomplete warnings=1 applications could not be scanned completely (io.github.broglow.menubar); this snapshot must not drive changes."
+    },
+    {
+      "timestamp": "2026-11-16 09:11:20.821757+0300",
+      "subsystem": "io.github.mahenzon.TrayNook.dev",
+      "category": "model",
+      "messageType": "Error",
+      "eventMessage": "revealed: scan permission=granted completeness=incomplete warnings=1 applications could not be scanned completely (io.github.broglow.menubar); this snapshot must not drive changes."
+    },
+    {
+      "timestamp": "2026-11-16 09:11:21.778913+0300",
+      "subsystem": "io.github.mahenzon.TrayNook.dev",
+      "category": "model",
+      "messageType": "Error",
+      "eventMessage": "revealed: scan permission=granted completeness=incomplete warnings=3 applications could not be scanned completely (io.github.broglow.menubar, ru.yandex.desktop.telemost, ru.yandex.alice.search.concept.p1); this snapshot must not drive changes."
+    },
+    {
+      "timestamp": "2026-11-16 09:14:11.200974+0300",
+      "subsystem": "io.github.mahenzon.TrayNook.dev",
+      "category": "model",
+      "messageType": "Default",
+      "eventMessage": "re-applying the saved layout after a temporary reveal"
+    },
+    {
+      "timestamp": "2026-11-16 09:14:12.436090+0300",
+      "subsystem": "io.github.mahenzon.TrayNook.dev",
+      "category": "native",
+      "messageType": "Default",
+      "eventMessage": "conceal allowed=12 sources=9 displayWidth=1728.000000 widest=1728.000000 screens=[1728.0] length=1730.0"
+    },
+    {
+      "timestamp": "2026-11-16 10:49:23.437036+0300",
+      "subsystem": "io.github.mahenzon.TrayNook.dev",
+      "category": "model",
+      "messageType": "Default",
+      "eventMessage": "unsafe once, waiting for the next scan: ru.yandex-team.q[-39.0,6.5 40.0x24.0 on=nil] behind=nil assigned=true ; ru.yandex.alice.search.concept.p1[-33.0,6.5 34.0x24.0 on=nil] behind=nil assigned=true"
+    },
+    {
+      "timestamp": "2026-11-16 10:54:46.372199+0300",
+      "subsystem": "io.github.mahenzon.TrayNook.dev",
+      "category": "model",
+      "messageType": "Default",
+      "eventMessage": "tray click: busy=false pending=false concealed=true"
+    },
+    {
+      "timestamp": "2026-11-16 10:54:47.931143+0300",
+      "subsystem": "io.github.mahenzon.TrayNook.dev",
+      "category": "model",
+      "messageType": "Error",
+      "eventMessage": "operation failed: Physical input interrupted the action. The selected item can be restored without revealing the section."
+    },
+    {
+      "timestamp": "2026-11-16 10:54:48.599455+0300",
+      "subsystem": "io.github.mahenzon.TrayNook.dev",
+      "category": "model",
+      "messageType": "Default",
+      "eventMessage": "interface closed; returning the promoted item"
+    },
+    {
+      "timestamp": "2026-11-16 10:54:49.268894+0300",
+      "subsystem": "io.github.mahenzon.TrayNook.dev",
+      "category": "native",
+      "messageType": "Default",
+      "eventMessage": "return interrupted; waiting for idle input"
+    },
+    {
+      "timestamp": "2026-11-16 10:54:50.871751+0300",
+      "subsystem": "io.github.mahenzon.TrayNook.dev",
+      "category": "native",
+      "messageType": "Default",
+      "eventMessage": "return interrupted; waiting for idle input"
+    },
+    {
+      "timestamp": "2026-11-16 10:54:51.605241+0300",
+      "subsystem": "io.github.mahenzon.TrayNook.dev",
+      "category": "model",
+      "messageType": "Error",
+      "eventMessage": "operation failed: A complete, fresh menu-bar inventory is unavailable. Refresh and try again."
+    },
+    {
+      "timestamp": "2026-11-16 10:54:52.021175+0300",
+      "subsystem": "io.github.mahenzon.TrayNook.dev",
+      "category": "model",
+      "messageType": "Default",
+      "eventMessage": "incomplete scan 1 of 3 while concealed: 1 applications could not be scanned completely (io.github.broglow.menubar); this snapshot must not drive changes."
+    },
+    {
+      "timestamp": "2026-11-16 10:54:53.197490+0300",
+      "subsystem": "io.github.mahenzon.TrayNook.dev",
+      "category": "model",
+      "messageType": "Default",
+      "eventMessage": "incomplete scan 2 of 3 while concealed: 2 applications could not be scanned completely (io.github.broglow.menubar, ru.yandex.desktop.telemost); this snapshot must not drive changes."
+    },
+    {
+      "timestamp": "2026-11-16 10:54:54.779805+0300",
+      "subsystem": "io.github.mahenzon.TrayNook.dev",
+      "category": "model",
+      "messageType": "Default",
+      "eventMessage": "interface closed; returning the promoted item"
+    },
+    {
+      "timestamp": "2026-11-16 10:54:55.494710+0300",
+      "subsystem": "io.github.mahenzon.TrayNook.dev",
+      "category": "model",
+      "messageType": "Error",
+      "eventMessage": "operation failed: A complete, fresh menu-bar inventory is unavailable. Refresh and try again."
+    },
+    {
+      "timestamp": "2026-11-16 10:54:56.045285+0300",
+      "subsystem": "io.github.mahenzon.TrayNook.dev",
+      "category": "model",
+      "messageType": "Default",
+      "eventMessage": "incomplete scan 3 of 3 while concealed: 2 applications could not be scanned completely (io.github.broglow.menubar, ru.yandex.desktop.telemost); this snapshot must not drive changes."
+    },
+    {
+      "timestamp": "2026-11-16 10:54:58.607480+0300",
+      "subsystem": "io.github.mahenzon.TrayNook.dev",
+      "category": "model",
+      "messageType": "Default",
+      "eventMessage": "interface closed; returning the promoted item"
+    },
+    {
+      "timestamp": "2026-11-16 10:54:59.005689+0300",
+      "subsystem": "io.github.mahenzon.TrayNook.dev",
+      "category": "native",
+      "messageType": "Default",
+      "eventMessage": "return interrupted; waiting for idle input"
+    },
+    {
+      "timestamp": "2026-11-16 10:55:00.827788+0300",
+      "subsystem": "io.github.mahenzon.TrayNook.dev",
+      "category": "native",
+      "messageType": "Default",
+      "eventMessage": "return interrupted; waiting for idle input"
+    }
+  ],
+  "non_app_subsystem_errors": [
+    {
+      "timestamp": "2026-11-13 16:25:59.850311+0300",
+      "subsystem": "com.apple.SkyLight",
+      "category": "default",
+      "messageType": "Error",
+      "eventMessage": "invalid display identifier <private>"
+    },
+    {
+      "timestamp": "2026-11-13 16:25:59.857192+0300",
+      "subsystem": "com.apple.SkyLight",
+      "category": "default",
+      "messageType": "Error",
+      "eventMessage": "invalid display identifier <private>"
+    },
+    {
+      "timestamp": "2026-11-13 16:31:16.971654+0300",
+      "subsystem": "com.apple.SkyLight",
+      "category": "default",
+      "messageType": "Error",
+      "eventMessage": "invalid display identifier <private>"
+    },
+    {
+      "timestamp": "2026-11-13 16:31:16.980559+0300",
+      "subsystem": "com.apple.SkyLight",
+      "category": "default",
+      "messageType": "Error",
+      "eventMessage": "invalid display identifier <private>"
+    },
+    {
+      "timestamp": "2026-11-13 20:26:50.864817+0300",
+      "subsystem": "com.apple.SkyLight",
+      "category": "default",
+      "messageType": "Error",
+      "eventMessage": "invalid display identifier <private>"
+    },
+    {
+      "timestamp": "2026-11-13 20:26:50.948778+0300",
+      "subsystem": "com.apple.SkyLight",
+      "category": "default",
+      "messageType": "Error",
+      "eventMessage": "invalid display identifier <private>"
+    },
+    {
+      "timestamp": "2026-11-13 20:26:50.959497+0300",
+      "subsystem": "com.apple.SkyLight",
+      "category": "default",
+      "messageType": "Error",
+      "eventMessage": "invalid display identifier <private>"
+    },
+    {
+      "timestamp": "2026-11-16 09:03:04.641180+0300",
+      "subsystem": "com.apple.launchservices",
+      "category": "registration",
+      "messageType": "Error",
+      "eventMessage": "Failed to get unit 4921360 from store <private>"
+    },
+    {
+      "timestamp": "2026-11-16 10:01:08.112549+0300",
+      "subsystem": "",
+      "category": "",
+      "messageType": "Error",
+      "eventMessage": "Unable to open mach-O at path: <private>  Error:2"
+    },
+    {
+      "timestamp": "2026-11-16 10:18:27.730738+0300",
+      "subsystem": "",
+      "category": "",
+      "messageType": "Error",
+      "eventMessage": "Unable to open mach-O at path: <private>  Error:2"
+    },
+    {
+      "timestamp": "2026-11-16 10:28:28.473522+0300",
+      "subsystem": "com.apple.SkyLight",
+      "category": "default",
+      "messageType": "Error",
+      "eventMessage": "invalid display identifier <private>"
+    },
+    {
+      "timestamp": "2026-11-16 10:28:28.498318+0300",
+      "subsystem": "com.apple.SkyLight",
+      "category": "default",
+      "messageType": "Error",
+      "eventMessage": "invalid display identifier <private>"
+    },
+    {
+      "timestamp": "2026-11-16 10:34:59.229324+0300",
+      "subsystem": "",
+      "category": "",
+      "messageType": "Error",
+      "eventMessage": "Unable to open mach-O at path: <private>  Error:2"
+    },
+    {
+      "timestamp": "2026-11-16 10:40:34.602244+0300",
+      "subsystem": "",
+      "category": "",
+      "messageType": "Error",
+      "eventMessage": "Unable to open mach-O at path: <private>  Error:2"
+    }
+  ],
+  "interpretation_limits": [
+    "No TrayNook subsystem records before November 16 in this capture.",
+    "Counts are log records, not distinct incidents or all scans.",
+    "No wake timestamp or selected-return success event; neither wake-to-recovery latency nor final return outcome can be established.",
+    "System errors with private fields do not identify their exact caller or cause."
+  ],
+  "verification": {
+    "command": "Scripts/test.sh --filter 'HandoffRecoveryTests|AccessibilityErrorClassificationTests'",
+    "build": "completed in 4.50 seconds",
+    "tests_passed": 29,
+    "suites_passed": 2,
+    "native_input_tests_run": false,
+    "crash_report_check": "No TrayNook-named entries in ~/Library/Logs/DiagnosticReports or /Library/Logs/DiagnosticReports; archive subdirectories were not searched."
+  }
+}

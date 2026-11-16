@@ -1,0 +1,218 @@
+{
+  "verified_at": "2026-11-16T11:55:10.118623+03:00",
+  "build": {
+    "version": "1.0.0",
+    "build": "44",
+    "bundle": "io.github.mahenzon.TrayNook.dev",
+    "artifact": "dist/TrayNook Dev.app",
+    "executable_uuid": "CD4A9EF4-08C7-31F8-B948-01073CFBF1B3",
+    "executable_sha256": "e5ce428832f4b7c72fccc9bec7639aaf0b49a220f9ac4b35afc0d0a820e65feb",
+    "signing_identity": "TrayNook Dev",
+    "packaged_smoke": "passed including deep strict signature verification",
+    "running_process_id": 23929
+  },
+  "tests": {
+    "standard": {
+      "suite": "standard",
+      "passed": true,
+      "tests": 281,
+      "log": "/tmp/traynook-final-standard.txt"
+    },
+    "isolated_appkit_checks": 86,
+    "isolated_runs": [
+      {
+        "suite": "ConcealmentRecoveryTests",
+        "passed": true,
+        "tests": 32,
+        "log": "/tmp/traynook-final-ConcealmentRecoveryTests.txt"
+      },
+      {
+        "suite": "DisplayChangeTests",
+        "passed": true,
+        "tests": 1,
+        "log": "/tmp/traynook-final-DisplayChangeTests.txt"
+      },
+      {
+        "suite": "BackgroundInventoryTests",
+        "passed": true,
+        "tests": 7,
+        "log": "/tmp/traynook-final-BackgroundInventoryTests.txt"
+      },
+      {
+        "suite": "IdleInventoryTests",
+        "passed": true,
+        "tests": 2,
+        "log": "/tmp/traynook-final-IdleInventoryTests.txt"
+      },
+      {
+        "suite": "MenuBarReorderTests",
+        "passed": true,
+        "tests": 6,
+        "log": "/tmp/traynook-final-MenuBarReorderTests.txt"
+      },
+      {
+        "suite": "WindowMetadataReaderTests",
+        "passed": true,
+        "tests": 9,
+        "log": "/tmp/traynook-final-WindowMetadataReaderTests.txt"
+      },
+      {
+        "suite": "AppModelInventoryTests",
+        "passed": true,
+        "tests": 19,
+        "log": "/tmp/traynook-final-AppModelInventoryTests.txt"
+      },
+      {
+        "suite": "SavedPlacementEditingTests",
+        "passed": true,
+        "tests": 1,
+        "log": "/tmp/traynook-final-SavedPlacementEditingTests.txt"
+      },
+      {
+        "suite": "LoginItemStatusTests",
+        "passed": true,
+        "tests": 5,
+        "log": "/tmp/traynook-final-LoginItemStatusTests.txt"
+      },
+      {
+        "suite": "DetailReorderTests",
+        "passed": true,
+        "tests": 4,
+        "log": "/tmp/traynook-final-DetailReorderTests.txt"
+      }
+    ],
+    "focused_initial_pure": {
+      "tests": 50,
+      "suites": 7,
+      "status": "passed"
+    },
+    "behavioral_red_checks": [
+      {
+        "scenario": "suspension acceptance and combined-session recovery",
+        "tests": 3,
+        "issues": 11,
+        "before_fix": "failed",
+        "after_fix": "passed"
+      },
+      {
+        "scenario": "queued placement cleanup and layout intent",
+        "tests": 2,
+        "issues": 3,
+        "before_fix": "failed",
+        "after_fix": "passed, including explicit Reveal cancellation"
+      }
+    ]
+  },
+  "native_checks": {
+    "menu": {
+      "invoker": "trusted Terminal",
+      "exit_code": 0,
+      "variants": 2,
+      "checks_per_variant": 3,
+      "pointer_input": "none"
+    },
+    "harnesses": [
+      {
+        "harness": "boundary",
+        "exit_code": 0,
+        "log": "/tmp/traynook-native-boundary-terminal.txt",
+        "interpretation": "passed native visibility checks"
+      },
+      {
+        "harness": "movement",
+        "exit_code": 1,
+        "log": "/tmp/traynook-native-movement-terminal.txt",
+        "interpretation": "visible 36-point fixture unavailable; stopped before movement"
+      },
+      {
+        "harness": "placement",
+        "exit_code": 1,
+        "log": "/tmp/traynook-native-placement-terminal.txt",
+        "interpretation": "physical input active; hidden sentinel had zero revealed samples"
+      },
+      {
+        "harness": "cancellation",
+        "exit_code": 1,
+        "log": "/tmp/traynook-native-cancellation-terminal.txt",
+        "interpretation": "physical input active during preparation; zero down/up/recovery events posted"
+      }
+    ]
+  },
+  "live_readback": {
+    "sampling": "four reads spaced three seconds apart",
+    "results": [
+      {
+        "allNativeSourceWindows": 54,
+        "hiddenOwnersObserved": 9,
+        "hiddenSourceWindows": 21,
+        "visibleHiddenSourceWindows": 0
+      },
+      {
+        "allNativeSourceWindows": 54,
+        "hiddenOwnersObserved": 9,
+        "hiddenSourceWindows": 21,
+        "visibleHiddenSourceWindows": 0
+      },
+      {
+        "allNativeSourceWindows": 54,
+        "hiddenOwnersObserved": 9,
+        "hiddenSourceWindows": 21,
+        "visibleHiddenSourceWindows": 0
+      },
+      {
+        "allNativeSourceWindows": 54,
+        "hiddenOwnersObserved": 9,
+        "hiddenSourceWindows": 21,
+        "visibleHiddenSourceWindows": 0
+      }
+    ]
+  },
+  "sampled_running_log": {
+    "first": "2026-11-16 11:48:57.766385+0300",
+    "last": "2026-11-16 11:50:44.465822+0300",
+    "records": 25,
+    "levels": {
+      "Default": 25
+    },
+    "errors_or_faults": 0,
+    "uuid_matches_bundle": true
+  },
+  "diagnostics": {
+    "trusted_terminal": [
+      "Accessibility: granted",
+      "Inventory: complete",
+      "Items: 22",
+      "Incomplete apps: 0",
+      "Scan milliseconds: 246",
+      "Screen Recording: not granted"
+    ],
+    "runner_context": "direct command-runner lacks AX/Screen Recording grants; GUI launch and trusted Terminal use existing grants",
+    "history": {
+      "exists": true,
+      "bytes": 2745,
+      "mode": "0o600",
+      "schema_version": 1,
+      "outcomes": {
+        "inventory.completed": 4,
+        "layout.started": 1,
+        "layout.completed": 1,
+        "display.changed": 12
+      },
+      "smoke_created_history": false
+    }
+  },
+  "review": {
+    "independent_agent": "Lazarus reviewer",
+    "confirmed_findings": 3,
+    "resolved": [
+      "stop AX traversal at menu-bar item",
+      "unconditional cleanup for operations cancelled before body entry",
+      "preserve uncancelled queued layout/placement intent across suspension"
+    ]
+  },
+  "limits": [
+    "Native pointer acceptance incomplete because of crowded fixture space and active physical input.",
+    "Actual power/sleep cycles and prolonged idle operation were not exercised.",
+    "Historical private SkyLight/Mach-O/LaunchServices messages do not identify a proven caller; defensive display validation is not proof of their elimination."
+  ]
+}

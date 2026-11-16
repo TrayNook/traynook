@@ -55,6 +55,12 @@ Open **Settings → General → Report a Problem…**, or
 Diagnostics are never attached automatically. Review any copied diagnostics
 before posting: they can include affected applications' bundle identifiers.
 
+TrayNook also keeps a local diagnostic history of operation outcomes, scan
+failures, timing, and affected apps' bundle/process identifiers. It retains up to
+seven days within a 1 MiB limit. Item labels, window titles, images, and input
+contents are excluded. This history is neither uploaded nor attached to copied
+diagnostics; see [Development](docs/DEVELOPMENT.md#local-settings) for its location.
+
 ## Build from source
 
 Requires Xcode with Swift 6.
