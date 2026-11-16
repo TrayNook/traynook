@@ -8,6 +8,128 @@ import Testing
   .enabled(if: ProcessInfo.processInfo.environment["TRAYNOOK_APPKIT_TESTS"] == "1"))
 @MainActor
 struct ConcealmentRecoveryTests {
+  @Test("Suspension before a placement task starts still clears every pending placement")
+  func suspensionClearsQueuedPlacement() async throws {
+    let fixture = Fixture()
+    defer { fixture.close() }
+    let model = fixture.model
+    model.setPlacement("example.bar", .dropdown)
+    #expect(model.busy && !model.pendingPlacementKeys.isEmpty)
+    model.environmentChanged(NSWorkspace.willSleepNotification.rawValue)
+    try await waitUntil { !model.busy }
+    #expect(model.pendingPlacementKeys.isEmpty)
+    #expect(model.diagnosticsReport().pendingPlacementCount == 0)
+  }
+
+  @Test("A queued layout resumes after sleep unless explicit Reveal cancelled it", arguments: [false, true])
+  func suspensionKeepsQueuedLayoutRequest(explicitReveal: Bool) async throws {
+    let scanner = HeldConcealmentScanner()
+    defer { scanner.release() }
+    let fixture = Fixture(scanner: scanner)
+    defer { fixture.close() }
+    let model = fixture.model
+    scanner.set(fixture.snapshot(complete: false))
+    model.reveal()
+    model.applySavedLayout()
+    #expect(model.busy)
+    if explicitReveal { model.reveal() }
+    model.environmentChanged(NSWorkspace.willSleepNotification.rawValue)
+    try await waitUntil { !model.busy }
+    model.environmentChanged(NSWorkspace.didWakeNotification.rawValue)
+    try await waitUntil { scanner.calls == 1 }
+    #expect((model.reapplyNotBefore != nil) == !explicitReveal)
+  }
+
+  @Test("Inventory diagnostics retain transitions and permission failures without logging every poll")
+  func inventoryHistoryTransitions() async throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent("traynook-model-history-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let history = DiagnosticHistory(url: directory.appendingPathComponent("history.jsonl"))
+    let fixture = Fixture(diagnosticHistory: history)
+    defer { fixture.close() }
+    let model = fixture.model
+    #expect(model.acceptScanStatus(fixture.snapshot()))
+    #expect(model.acceptScanStatus(fixture.snapshot()))
+    #expect(!model.acceptScanStatus(fixture.snapshot(complete: false)))
+    #expect(!model.acceptScanStatus(fixture.snapshot(complete: false)))
+    #expect(!model.acceptScanStatus(fixture.snapshot(complete: false, windows: nil, permission: .denied)))
+    #expect(model.acceptScanStatus(fixture.snapshot()))
+    let events = try await history.read()
+    #expect(events.map(\.outcome) == [.completed, .deferred, .deferred, .completed])
+    #expect(events.map(\.reason) == [nil, .scanIncomplete, .permissionDenied, nil])
+    #expect(events.allSatisfy { $0.category == .inventory && $0.metrics != nil })
+    #expect(model.diagnosticsReport().diagnosticHistoryEnabled)
+  }
+
+  @Test("Sleep suspends scanning and rejects even complete late inventories")
+  func suspensionBlocksInventory() async throws {
+    let scanner = HeldConcealmentScanner()
+    defer { scanner.release() }
+    let fixture = Fixture(scanner: scanner)
+    defer { fixture.close() }
+    let model = fixture.model
+    let snapshot = fixture.snapshot()
+    scanner.set(fixture.snapshot(complete: false))
+    let saved = model.layout
+    let suspend = try #require(model.native.onSessionSuspend)
+    suspend(NSWorkspace.willSleepNotification.rawValue)
+    #expect(model.reapplyNotBefore == nil)
+    #expect(!model.canEdit)
+    // The app delegate receives the same event after the native observer.
+    model.environmentChanged(NSWorkspace.willSleepNotification.rawValue)
+    model.refresh(showProgress: false)
+    try await Task.sleep(for: .milliseconds(50))
+    #expect(scanner.calls == 0)
+    #expect(!model.acceptScanStatus(snapshot))
+    #expect(!model.scanComplete)
+    #expect(await model.acceptLatest(snapshot) == false)
+    #expect(model.layout == saved)
+  }
+
+  @Test("Wake waits for session activation and duplicate lifecycle events resume only once")
+  func resumeWaitsForActiveSession() async throws {
+    let scanner = HeldConcealmentScanner()
+    defer { scanner.release() }
+    let fixture = Fixture(scanner: scanner)
+    defer { fixture.close() }
+    let model = fixture.model
+    scanner.set(fixture.snapshot(complete: false))
+    let suspend = try #require(model.native.onSessionSuspend)
+    suspend(NSWorkspace.willSleepNotification.rawValue)
+    model.environmentChanged(NSWorkspace.willSleepNotification.rawValue)
+    model.environmentChanged(NSWorkspace.sessionDidResignActiveNotification.rawValue)
+    model.environmentChanged(NSWorkspace.willSleepNotification.rawValue)
+    model.environmentChanged(NSWorkspace.didWakeNotification.rawValue)
+    model.refresh(showProgress: false)
+    try await Task.sleep(for: .milliseconds(50))
+    #expect(scanner.calls == 0)
+    #expect(model.reapplyNotBefore == nil)
+    model.environmentChanged(NSWorkspace.sessionDidBecomeActiveNotification.rawValue)
+    try await waitUntil { scanner.calls == 1 }
+    let retry = try #require(model.reapplyNotBefore)
+    #expect(!model.canEdit && !model.scanComplete)
+    model.environmentChanged(NSWorkspace.didWakeNotification.rawValue)
+    model.environmentChanged(NSWorkspace.sessionDidBecomeActiveNotification.rawValue)
+    #expect(model.reapplyNotBefore == retry)
+    #expect(scanner.calls == 1)
+  }
+
+  @Test("Explicit Reveal during sleep prevents automatic restoration after wake")
+  func explicitRevealCancelsSuspendedRecovery() async throws {
+    let scanner = HeldConcealmentScanner()
+    defer { scanner.release() }
+    let fixture = Fixture(scanner: scanner)
+    defer { fixture.close() }
+    let model = fixture.model
+    scanner.set(fixture.snapshot(complete: false))
+    model.environmentChanged(NSWorkspace.willSleepNotification.rawValue)
+    model.reveal()
+    model.environmentChanged(NSWorkspace.didWakeNotification.rawValue)
+    try await waitUntil { scanner.calls == 1 }
+    #expect(model.lastReveal?.reason == .userReveal)
+    #expect(model.reapplyNotBefore == nil)
+  }
+
   @Test("Display mirror replacement preserves ranked identities while confirmed unsafe placement still reveals")
   func screenChangesPreserveRankedMirrorIdentities() {
     let fixture = Fixture()
@@ -657,6 +779,7 @@ private final class Fixture {
   }
 
   init(scanner: any InventoryScanning = AccessibilityInventoryScanner(),
+    diagnosticHistory: DiagnosticHistory = .shared,
     sourceStatusSnapshot: @escaping @Sendable () -> [StatusWindowState]? = AccessibilityInventoryScanner.sourceStatusSnapshot,
     currentPermission: @escaping @MainActor () -> Bool = { true }) {
     NSApplication.shared.setActivationPolicy(.accessory)
@@ -672,6 +795,7 @@ private final class Fixture {
     launcher.isVisible = false
     model = AppModel(native: NativeMenuBarController(launcher: launcher), store: nil,
       currentAccessibilityPermission: currentPermission, inventoryScanner: scanner,
+      diagnosticHistory: diagnosticHistory,
       sourceStatusSnapshot: sourceStatusSnapshot)
     launcher.isVisible = false
     model.permissionGranted = true

@@ -52,6 +52,11 @@ private struct MenuBarEnvironment: Equatable {
   let launcherWindowID: UInt32
 }
 
+private struct RestorationState: Equatable {
+  let environment: MenuBarEnvironment
+  let windows: [StatusWindowState]
+}
+
 private struct MenuBarEnvironmentSeed: Equatable, Sendable {
   struct Screen: Equatable, Sendable {
     let display: UInt32
@@ -108,6 +113,7 @@ final class NativeMenuBarController: NSObject {
     }
   }
   var onReveal: (() -> Void)?
+  var onSessionSuspend: ((String) -> Void)?
   var onExternalReveal: (() -> Void)?
   var onMenuBarRowChange: (() -> Void)?
 
@@ -230,6 +236,11 @@ final class NativeMenuBarController: NSObject {
 
   func reveal(keepBoundaryVisible: Bool = false) {
     nativeLog.notice("reveal (was concealed: \(self.isConcealed))")
+    if let pendingActivation {
+      DiagnosticHistory.shared.record(.selectedReturn, outcome: .cancelled,
+        bundleIdentifier: pendingActivation.source.observation.bundleIdentifier,
+        operationID: pendingActivation.operationID)
+    }
     generation += 1
     metadataReader.cancelAll()
     releasePointer()
@@ -243,6 +254,7 @@ final class NativeMenuBarController: NSObject {
   }
 
   func screenParametersChanged() {
+    DiagnosticHistory.shared.record(.display, outcome: .changed)
     generation += 1
     inspectionRevision += 1
     metadataReader.cancelAll()
@@ -251,7 +263,7 @@ final class NativeMenuBarController: NSObject {
     activeDisplay = nil
     guard isConcealed, let separator else { return }
     let widths = NSScreen.screens.compactMap { Self.displayID(of: $0) }
-      .map { CGDisplayBounds($0).width }
+      .compactMap { DisplayGeometry.bounds(of: $0)?.width }
     // Keep the expanded length while mirrors are recreated, including on removal.
     separator.length = Self.concealmentLength(current: separator.length, displayWidths: widths)
   }
@@ -510,8 +522,8 @@ final class NativeMenuBarController: NSObject {
     guard !isConcealed, separator?.isVisible == false, let frame = item.frame, frame.isUsable,
       let screen = NSScreen.screens.first(where: { Self.displayID(of: $0) == activeDisplay })
         ?? launcher.button?.window?.screen,
-      let display = Self.displayID(of: screen) else { return false }
-    let bounds = CGDisplayBounds(display)
+      let display = Self.displayID(of: screen),
+      let bounds = DisplayGeometry.bounds(of: display) else { return false }
     let displayFrame = ItemFrame(x: bounds.minX, y: bounds.minY, width: bounds.width, height: bounds.height)
     let cutout = Self.cameraOcclusion(left: screen.auxiliaryTopLeftArea, right: screen.auxiliaryTopRightArea,
       screenFrame: screen.frame, displayBounds: bounds)
@@ -560,7 +572,7 @@ final class NativeMenuBarController: NSObject {
       }, uniquingKeysWith: { first, _ in first })
       // Hidden items must leave every menu bar, so grow to the widest display.
       let displayWidths = NSScreen.screens.compactMap { Self.displayID(of: $0) }
-        .map { CGDisplayBounds($0).width }.filter { $0.isFinite && $0 > 0 }
+        .compactMap { DisplayGeometry.bounds(of: $0)?.width }
       let widestDisplay = displayWidths.max() ?? CGFloat(before.displayWidth)
       separator?.length = Self.concealmentLength(current: CGFloat(before.displayWidth) + compactWidth,
         displayWidths: displayWidths)
@@ -603,6 +615,7 @@ final class NativeMenuBarController: NSObject {
   }
 
   private struct PendingActivation {
+    let operationID = UUID()
     let source: ClassifiedSourceItem
     let sourceWindow: StatusWindowBinding
     let returnWindow: StatusWindowBinding
@@ -1016,6 +1029,15 @@ final class NativeMenuBarController: NSObject {
   func restoreActivation() async throws {
     guard let pending = pendingActivation else { return }
     guard !isBusy else { throw MenuBarFailure(L("Another menu-bar action is in progress.")) }
+    let bundle = pending.source.observation.bundleIdentifier
+    var outcome = DiagnosticHistory.Outcome.deferred
+    var reason: DiagnosticHistory.Reason? = .unknown
+    DiagnosticHistory.shared.record(.selectedReturn, outcome: .started,
+      bundleIdentifier: bundle, operationID: pending.operationID)
+    defer {
+      DiagnosticHistory.shared.record(.selectedReturn, outcome: Task.isCancelled ? .cancelled : outcome,
+        reason: Task.isCancelled ? nil : reason, bundleIdentifier: bundle, operationID: pending.operationID)
+    }
     isBusy = true
     defer {
       isBusy = false
@@ -1030,31 +1052,28 @@ final class NativeMenuBarController: NSObject {
         let initialBindings = try restorationBindings()
         if !initialBindings.contains(where: { $0.id == pending.sourceWindow.id }) {
           pendingActivation = nil
+          outcome = .completed; reason = .identityChanged
           return
         }
         guard initialBindings.contains(pending.sourceWindow) else {
           throw NativeMenuActionError.inventoryUnavailable
         }
-        let prepared = try await stableTarget(pending.source, token: token,
-          allowingClipped: true, allowingConcealed: true)
-        guard prepared.item.observation.statusWindowIdentifier == pending.sourceWindow.id,
-          try statusWindow(for: prepared.item.observation) == pending.sourceWindow else {
-          throw NativeMenuActionError.inventoryUnavailable
-        }
+        let environment = try stableRestorationTarget(pending.source, binding: pending.sourceWindow, token: token)
         let boundary = isConcealed
-          ? StatusWindowBinding(id: prepared.environment.boundaryWindowID,
+          ? StatusWindowBinding(id: environment.boundaryWindowID,
             pid: ProcessInfo.processInfo.processIdentifier, bundle: Bundle.main.bundleIdentifier)
           : nil
         let bindings = try restorationBindings()
         let preferredIsHidden: Bool
         if isConcealed, pending.returnWindow != boundary, bindings.contains(pending.returnWindow) {
           preferredIsHidden = Self.hiddenSide(try statusWindowFrame(pending.returnWindow),
-            boundary: prepared.environment.boundary) == true
+            boundary: environment.boundary) == true
         } else { preferredIsHidden = true }
         guard let anchor = try Self.restorationAnchor(source: pending.sourceWindow,
           preferred: pending.returnWindow, boundary: boundary, current: bindings,
           preferredIsHidden: preferredIsHidden) else {
           pendingActivation = nil
+          outcome = .completed; reason = .identityChanged
           return
         }
         let usingBoundary = anchor != pending.returnWindow
@@ -1067,8 +1086,13 @@ final class NativeMenuBarController: NSObject {
         }
         if try !restored() {
           try await waitForIdleInput(token: token)
-          guard try checkedEnvironment(allowingExpanded: true) == prepared.environment else {
+          guard try stableRestorationTarget(pending.source, binding: pending.sourceWindow, token: token) == environment else {
             throw NativeMenuActionError.inventoryUnavailable
+          }
+          if isConcealed, anchor != boundary {
+            guard Self.hiddenSide(try statusWindowFrame(anchor), boundary: environment.boundary) == true else {
+              throw NativeMenuActionError.inventoryUnavailable
+            }
           }
           try await moveTargeted(source: pending.sourceWindow, before: anchor,
             fallbackBefore: anchor, token: token)
@@ -1083,14 +1107,78 @@ final class NativeMenuBarController: NSObject {
           throw MenuBarFailure(L("The item could not return to its original position. Try restoring it again; other hidden items remain hidden."))
         }
         pendingActivation = nil
+        outcome = .completed; reason = nil
         return
       } catch let error as NativeMenuActionError where [.inputNotIdle, .inputInterrupted].contains(error) {
+        reason = Self.diagnosticReason(error)
         guard attempt < 2 else { throw error }
         // The click dismissing a menu can overlap its return; retry only the move.
         nativeLog.notice("return interrupted; waiting for idle input")
         try await pause(0.3, token: token)
+      } catch {
+        outcome = error is CancellationError ? .cancelled
+          : (Self.shouldRetrySelectedReturn(after: error) ? .deferred : .failed)
+        reason = Self.diagnosticReason(error)
+        throw error
       }
     }
+  }
+
+  static func diagnosticReason(_ error: Error) -> DiagnosticHistory.Reason {
+    switch error {
+    case NativeMenuActionError.inputNotIdle: .inputNotIdle
+    case NativeMenuActionError.inputInterrupted: .inputInterrupted
+    case NativeMenuActionError.placementInterrupted: .placementInterrupted
+    case NativeMenuActionError.inventoryUnavailable: .inventoryUnavailable
+    case NativeMenuActionError.responseTimedOut: .responseTimedOut
+    default: .unknown
+    }
+  }
+
+  // Returning an already-bound window needs fresh selected AX identity, not unrelated apps' AX trees.
+  private func stableRestorationTarget(_ source: ClassifiedSourceItem, binding: StatusWindowBinding,
+    token: Int) throws -> MenuBarEnvironment {
+    let restored = try Self.readSelectedRestoration(readState: {
+      try self.checkOperation(token)
+      try self.requirePermission()
+      let environment = try self.checkedEnvironment(allowingExpanded: true)
+      guard let windows = AccessibilityInventoryScanner.sourceStatusSnapshot() else {
+        throw NativeMenuActionError.inventoryUnavailable
+      }
+      guard Set(windows.map(\.windowIdentifier)).count == windows.count,
+        windows.contains(where: { $0.windowIdentifier == binding.id && $0.processIdentifier == binding.pid }) else {
+        throw NativeMenuActionError.inventoryUnavailable
+      }
+      return RestorationState(environment: environment, windows: windows)
+    }, rebindSelected: {
+      let windowFrame = try self.statusWindowFrame(binding)
+      let selected: ItemFrame
+      do {
+        (_, selected) = try self.accessibilityTarget(source.observation, token: token, expectedFrame: windowFrame)
+      } catch is CancellationError { throw CancellationError() }
+      catch { throw NativeMenuActionError.inventoryUnavailable }
+      guard Self.selectedReturnFrameMatches(selected, window: windowFrame) else {
+        throw NativeMenuActionError.inventoryUnavailable
+      }
+      return selected
+    })
+    return restored.state.environment
+  }
+
+  static func readSelectedRestoration<State: Equatable>(readState: () throws -> State,
+    rebindSelected: () throws -> ItemFrame) throws -> (state: State, frame: ItemFrame) {
+    let before = try readState()
+    let frame = try rebindSelected()
+    guard frame.isUsable, try readState() == before else {
+      throw NativeMenuActionError.inventoryUnavailable
+    }
+    return (before, frame)
+  }
+
+  static func selectedReturnFrameMatches(_ selected: ItemFrame, window: ItemFrame) -> Bool {
+    selected.isUsable && window.isUsable
+      && selected.x < window.maxX && selected.maxX > window.x
+      && selected.y < window.maxY && selected.maxY > window.y
   }
 
   static func restorationAnchor(source: StatusWindowBinding, preferred: StatusWindowBinding,
@@ -1663,9 +1751,11 @@ final class NativeMenuBarController: NSObject {
     while index < queue.count {
       let (element, depth) = queue[index]
       index += 1
-      if try value(kAXRoleAttribute as CFString, of: element) as? String == kAXMenuBarItemRole as String {
+      let role = try value(kAXRoleAttribute as CFString, of: element) as? String
+      if role == kAXMenuBarItemRole as String {
         candidates.append(element)
       }
+      guard accessibilityTraversalVisitsChildren(role: role) else { continue }
       let childrenValue = try value(kAXChildrenAttribute as CFString, of: element, optional: true)
       guard childrenValue == nil || childrenValue as? [AXUIElement] != nil else { throw failure }
       for child in childrenValue as? [AXUIElement] ?? [] {
@@ -1733,11 +1823,17 @@ final class NativeMenuBarController: NSObject {
       AccessibilityInventoryScanner().scan(promptForPermission: false)
     }.value
     try checkOperation(token)
+    let age = Date().timeIntervalSince(snapshot.capturedAt)
+    let accepted = snapshot.permission == .granted && snapshot.completeness == .complete && age <= 3
+    DiagnosticHistory.shared.record(.inventory, outcome: accepted ? .completed : .deferred,
+      reason: accepted ? nil : (snapshot.permission != .granted ? .permissionDenied
+        : (snapshot.completeness != .complete ? .scanIncomplete : .inventoryUnavailable)),
+      metrics: snapshot.metrics, scanAgeMilliseconds: max(0, age * 1000))
     guard snapshot.permission == .granted else {
       throw MenuBarFailure(L("Allow TrayNook in System Settings → Privacy & Security → Accessibility, then try again."))
     }
     guard snapshot.completeness == .complete,
-      Date().timeIntervalSince(snapshot.capturedAt) <= 3
+      age <= 3
     else { throw NativeMenuActionError.inventoryUnavailable }
     noteInventory(snapshot)
     return snapshot
@@ -1893,8 +1989,8 @@ final class NativeMenuBarController: NSObject {
   @discardableResult
   func noteInventory(_ snapshot: InventorySnapshot) -> Bool {
     let screens = NSScreen.screens.compactMap { screen -> (id: UInt32, bounds: CGRect)? in
-      guard let id = Self.displayID(of: screen) else { return nil }
-      return (id, CGDisplayBounds(id))
+      guard let id = Self.displayID(of: screen), let bounds = DisplayGeometry.bounds(of: id) else { return nil }
+      return (id, bounds)
     }
     guard let display = Self.inventoryDisplay(for: snapshot.items.map(\.observation), screens: screens)
     else { return false }
@@ -1985,8 +2081,8 @@ final class NativeMenuBarController: NSObject {
       let launcherID = UInt32(exactly: launcherWindow.windowNumber)
     else { return nil }
     let screens = NSScreen.screens.compactMap { screen -> MenuBarEnvironmentSeed.Screen? in
-      guard let display = Self.displayID(of: screen) else { return nil }
-      let bounds = CGDisplayBounds(display)
+      guard let display = Self.displayID(of: screen),
+        let bounds = DisplayGeometry.bounds(of: display) else { return nil }
       let height = screen.auxiliaryTopRightArea?.height ?? NSStatusBar.system.thickness
       guard bounds.width > 0, height > 0 else { return nil }
       let safe = screen.auxiliaryTopRightArea ?? CGRect(
@@ -2158,6 +2254,8 @@ final class NativeMenuBarController: NSObject {
   @objc private func environmentChanged(_ notification: Notification) {
     if notification.name == NSApplication.didChangeScreenParametersNotification {
       screenParametersChanged()
+    } else if let onSessionSuspend {
+      onSessionSuspend(notification.name.rawValue)
     } else { reveal() }
   }
 }

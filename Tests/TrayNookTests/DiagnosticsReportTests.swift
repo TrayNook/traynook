@@ -18,6 +18,7 @@ struct DiagnosticsReportTests {
       macOS test macOS
       Accessibility: true
       Inventory complete: true
+      Session suspended: false
       Layout recovery: false
       Native section concealed: true
       Private APIs: none
@@ -38,6 +39,7 @@ struct DiagnosticsReportTests {
       Pending return source: none
       panelWatch: false
       dropdownShown: false
+      Local diagnostic history enabled: false
       pendingPlacementKeys: 0
       automaticPlacementKeys: 0
       Pending placement sources: none

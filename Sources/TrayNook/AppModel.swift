@@ -81,6 +81,8 @@ final class AppModel: ObservableObject {
   private var observationRevision = 0
   private let currentAccessibilityPermission: @MainActor () -> Bool
   private let inventoryScanner: any InventoryScanning
+  private let diagnosticHistory: DiagnosticHistory
+  private var lastDiagnosticInventory: (reason: DiagnosticHistory.Reason?, recordedAt: Date)?
   private let sourceStatusReader: WindowMetadataReader
   private var attemptedLaunchRestore = false
   private var launchRestoreRunning = false
@@ -88,6 +90,10 @@ final class AppModel: ObservableObject {
   private(set) var reapplyNotBefore: Date?
   private var recoveringLayout = false
   private var applyingFullLayout = false
+  @Published private var sleeping = false
+  @Published private var sessionInactive = false
+  private var restoreAfterResume = false
+  private var sessionSuspended: Bool { sleeping || sessionInactive }
   private var panelWatch: Task<Void, Never>?
   /// True while the dropdown is open; a promoted item waits until it closes.
   var dropdownShown = false
@@ -96,7 +102,7 @@ final class AppModel: ObservableObject {
     dropdownShown = false
     guard native.hasPendingActivation, !busy, !waitingForDisplayInventory else { return }
     modelLog.notice("dropdown closed; returning the promoted item")
-    runOperation(restoreSettingsFocus: false, revealOnFailure: false) {
+    runOperation(restoreSettingsFocus: false, revealOnFailure: false, diagnosticContext: "selectedReturn") {
       try await self.returnPromotedItem()
       self.message = nil
     }
@@ -112,12 +118,14 @@ final class AppModel: ObservableObject {
     loginItemStatus: LoginItemStatus? = nil,
     currentAccessibilityPermission: @escaping @MainActor () -> Bool = { AXIsProcessTrusted() },
     inventoryScanner: any InventoryScanning = AccessibilityInventoryScanner(),
+    diagnosticHistory: DiagnosticHistory = .shared,
     sourceStatusSnapshot: @escaping @Sendable () -> [StatusWindowState]? = AccessibilityInventoryScanner.sourceStatusSnapshot) {
     self.native = native
     self.store = store
     self.applyMenuBarOrder = applyMenuBarOrder
     self.currentAccessibilityPermission = currentAccessibilityPermission
     self.inventoryScanner = inventoryScanner
+    self.diagnosticHistory = diagnosticHistory
     sourceStatusReader = WindowMetadataReader(load: { _ in
       // Enumerate every source window; known IDs alone cannot detect newly hidden items.
       (sourceStatusSnapshot() ?? []).map { window in
@@ -154,17 +162,21 @@ final class AppModel: ObservableObject {
       self?.pendingMenuBarOrder = nil
       self?.attemptedLaunchRestore = true
       self?.reapplyNotBefore = nil
+      self?.restoreAfterResume = false
       self?.operationTask?.cancel()
     }
+    native.onSessionSuspend = { [weak self] reason in self?.environmentChanged(reason) }
     native.onMenuBarRowChange = { [weak self] in
       guard let self, self.concealed || self.native.isConcealed || self.applyingFullLayout else { return }
       self.revalidateDisplayInventory(cancelCurrentScan: false)
     }
   }
 
-  var canEdit: Bool { permissionGranted && scanComplete && !busy && !recoveryRequired && !waitingForDisplayInventory }
+  var canEdit: Bool {
+    permissionGranted && scanComplete && !busy && !recoveryRequired && !waitingForDisplayInventory && !sessionSuspended
+  }
   func canEditPlacement(_ key: String) -> Bool {
-    permissionGranted && scanComplete && !recoveryRequired && !waitingForDisplayInventory
+    permissionGranted && scanComplete && !recoveryRequired && !waitingForDisplayInventory && !sessionSuspended
       && (!busy || (placementOperationRunning && operationTask?.isCancelled == false))
       && !pendingPlacementKeys.contains(key)
   }
@@ -333,7 +345,7 @@ final class AppModel: ObservableObject {
 
   func refresh(invalidateIcons: Bool = false, showProgress: Bool = true) {
     if invalidateIcons { invalidateApplicationIcons() }
-    guard scanTask == nil, !scanning, !busy else { return }
+    guard scanTask == nil, !scanning, !busy, !sessionSuspended else { return }
     if showProgress { scanning = true }
     scanGeneration += 1
     let generation = scanGeneration
@@ -449,8 +461,9 @@ final class AppModel: ObservableObject {
   /// Polling suspends for metadata without blocking scrolling or native actions.
   @discardableResult func acceptLatest(_ snapshot: InventorySnapshot) async -> Bool {
     observationRevision &+= 1
-    guard !busy, !Task.isCancelled else { return false }
+    guard !busy, !Task.isCancelled, !sessionSuspended else { return false }
     guard Date().timeIntervalSince(snapshot.capturedAt) <= 3 else {
+      recordInventoryDiagnostic(snapshot)
       scanComplete = false
       if concealed { await verifyConcealmentDuringInventoryFailure() }
       else { message = NativeMenuActionError.inventoryUnavailable.localizedDescription }
@@ -481,6 +494,7 @@ final class AppModel: ObservableObject {
   }
 
   private func prepareInventory(_ snapshot: InventorySnapshot) -> PreparedInventory? {
+    guard !sessionSuspended else { return nil }
     let displayRevision = displayChangeRevision
     native.noteInventory(snapshot)
     // This scan captured native windows before AX discovered the new row.
@@ -633,6 +647,9 @@ final class AppModel: ObservableObject {
   }
 
   func acceptScanStatus(_ snapshot: InventorySnapshot, firstSnapshot: Bool = false) -> Bool {
+    guard !sessionSuspended else { return false }
+    recordInventoryDiagnostic(snapshot)
+    let wasConcealed = concealed
     let wasGranted = permissionGranted
     let wasComplete = scanComplete
     let granted = snapshot.permission == .granted
@@ -674,7 +691,11 @@ final class AppModel: ObservableObject {
         native.reveal(); concealed = false
       }
       else { revealForInventoryRecovery() }
-      modelLog.error("revealed: scan permission=\(snapshot.permission.rawValue, privacy: .public) completeness=\(snapshot.completeness.rawValue, privacy: .public) warnings=\(snapshot.warnings.joined(separator: " | "), privacy: .public)")
+      if wasConcealed || !granted {
+        modelLog.error("revealed: scan permission=\(snapshot.permission.rawValue, privacy: .public) completeness=\(snapshot.completeness.rawValue, privacy: .public) warnings=\(snapshot.warnings.joined(separator: " | "), privacy: .public)")
+      } else {
+        modelLog.notice("inventory unavailable while already revealed; waiting for a complete scan")
+      }
       guard !recoveryRequired else { return false }
       if !permissionGranted {
         if firstSnapshot || wasGranted { modelLog.notice("settings: accessibility not granted (first=\(firstSnapshot))"); showSettings?() }
@@ -688,6 +709,21 @@ final class AppModel: ObservableObject {
     }
     if !wasGranted && !recoveryRequired { message = nil }
     return true
+  }
+
+  private func recordInventoryDiagnostic(_ snapshot: InventorySnapshot) {
+    let now = Date()
+    let age = max(0, now.timeIntervalSince(snapshot.capturedAt))
+    let complete = snapshot.permission == .granted && snapshot.completeness == .complete && age <= 3
+    let reason: DiagnosticHistory.Reason? = complete ? nil
+      : (snapshot.permission != .granted ? .permissionDenied
+        : (snapshot.metrics.budgetExceeded ? .budgetExceeded
+          : (snapshot.completeness != .complete ? .scanIncomplete : .inventoryUnavailable)))
+    if let last = lastDiagnosticInventory, last.reason == reason,
+      complete || now.timeIntervalSince(last.recordedAt) < 60 { return }
+    lastDiagnosticInventory = (reason, now)
+    diagnosticHistory.record(.inventory, outcome: complete ? .completed : .deferred,
+      reason: reason, metrics: snapshot.metrics, scanAgeMilliseconds: age * 1000)
   }
 
   /// An inventory change together with the persistent key it concerns.
@@ -804,6 +840,40 @@ final class AppModel: ObservableObject {
   }
 
   func environmentChanged(_ reason: String) {
+    let wasSuspended = sessionSuspended
+    switch reason {
+    case NSWorkspace.willSleepNotification.rawValue: sleeping = true
+    case NSWorkspace.sessionDidResignActiveNotification.rawValue: sessionInactive = true
+    case NSWorkspace.didWakeNotification.rawValue: sleeping = false
+    case NSWorkspace.sessionDidBecomeActiveNotification.rawValue: sessionInactive = false
+    default: break
+    }
+    if sessionSuspended {
+      guard !wasSuspended else { return }
+      let shouldRestore = layout.items.contains { $0.placement != .menuBar }
+        && (concealed || native.isConcealed || reapplyNotBefore != nil || !attemptedLaunchRestore
+          || ((applyingFullLayout || placementOperationRunning) && operationTask?.isCancelled == false))
+      cancelScan()
+      reveal(reason: .environmentChange)
+      restoreAfterResume = shouldRestore
+      scanComplete = false
+      queuedDropdown = nil
+      diagnosticHistory.record(.lifecycle, outcome: .suspended)
+      modelLog.notice("session suspended: \(reason, privacy: .public); waiting for wake and active session")
+      return
+    }
+    if wasSuspended {
+      let shouldRestore = restoreAfterResume
+      restoreAfterResume = false
+      revalidateDisplayInventory(cancelCurrentScan: true)
+      if shouldRestore && !recoveryRequired { reapplyNotBefore = Date() }
+      diagnosticHistory.record(.lifecycle, outcome: .resumed)
+      modelLog.notice("session resumed: \(reason, privacy: .public); requesting fresh inventory")
+      refresh(showProgress: false)
+      return
+    }
+    if reason == NSWorkspace.didWakeNotification.rawValue
+      || reason == NSWorkspace.sessionDidBecomeActiveNotification.rawValue { return }
     if reason == NSApplication.didChangeScreenParametersNotification.rawValue {
       revalidateDisplayInventory(cancelCurrentScan: true)
       modelLog.notice("display parameters changed; retaining concealment while inventory settles")
@@ -869,6 +939,7 @@ final class AppModel: ObservableObject {
     if cancelLaunchRestore {
       attemptedLaunchRestore = true
       reapplyNotBefore = nil
+      restoreAfterResume = false
     }
     operationTask?.cancel(); native.reveal(); concealed = false
   }
@@ -972,14 +1043,13 @@ final class AppModel: ObservableObject {
     placementOperationRunning = true
     attemptedLaunchRestore = true
     message = nil
-    runOperation(revealOnFailure: false, deactivateApp: false, diagnosticContext: "placement") {
-      defer {
-        self.placementOperationRunning = false
-        self.pendingPlacementKeys.removeAll()
-        self.placementStatuses.removeAll()
-        self.pendingVisiblePlacements.removeAll()
-        self.automaticPlacementKeys.removeAll()
-      }
+    runOperation(revealOnFailure: false, deactivateApp: false, diagnosticContext: "placement", cleanup: {
+      self.placementOperationRunning = false
+      self.pendingPlacementKeys.removeAll()
+      self.placementStatuses.removeAll()
+      self.pendingVisiblePlacements.removeAll()
+      self.automaticPlacementKeys.removeAll()
+    }) {
       var warnings: [String] = []
       while !self.pendingPlacementKeys.isEmpty {
         try Task.checkCancellation()
@@ -1117,9 +1187,12 @@ final class AppModel: ObservableObject {
     let shouldRecover = recovering || launchRestoreRunning
     attemptedLaunchRestore = true
     message = L("Applying placements…")
-    runOperation(revealOnFailure: false, diagnosticContext: "layout") {
-      self.recoveringLayout = shouldRecover
-      defer { self.recoveringLayout = false }
+    applyingFullLayout = true
+    recoveringLayout = shouldRecover
+    runOperation(revealOnFailure: false, diagnosticContext: "layout", cleanup: {
+      self.applyingFullLayout = false
+      self.recoveringLayout = false
+    }) {
       do { try await operation() }
       catch {
         self.retryLayoutRecovery(after: error, recovering: shouldRecover)
@@ -1389,7 +1462,7 @@ final class AppModel: ObservableObject {
             }
             modelLog.notice("interface closed; returning the promoted item")
             var outcome: Result<Void, Error>?
-            self.runOperation(restoreSettingsFocus: false, revealOnFailure: false) {
+            self.runOperation(restoreSettingsFocus: false, revealOnFailure: false, diagnosticContext: "selectedReturn") {
               do {
                 try await self.native.restoreActivation()
                 self.message = nil
@@ -1422,10 +1495,21 @@ final class AppModel: ObservableObject {
   private func runOperation(restoreSettingsFocus: Bool = true, revealOnFailure: Bool = true, deactivateApp: Bool = true,
     showSettingsOnFailure: Bool = false,
     diagnosticContext: String = "operation", affectedBundles: [String] = [],
+    cleanup: (@MainActor () -> Void)? = nil,
     completion: (@MainActor () -> Void)? = nil,
     _ operation: @escaping @MainActor () async throws -> Void) {
-    guard !busy else { return }
+    guard !busy, !sessionSuspended else { cleanup?(); return }
     let previousReveal = lastReveal
+    let diagnosticCategory: DiagnosticHistory.Category? = switch diagnosticContext {
+    case "layout", "placement", "menuBarOrder": .layout
+    case "activation": .activation
+    default: nil
+    }
+    let diagnosticID = UUID()
+    if let diagnosticCategory {
+      diagnosticHistory.record(diagnosticCategory, outcome: .started,
+        bundleIdentifier: affectedBundles.first, operationID: diagnosticID)
+    }
     let displayRevision = displayChangeRevision
     operationInitialReveal = previousReveal
     let affected = affectedBundles + (native.pendingActivationBundleIdentifier.map { [$0] } ?? [])
@@ -1436,11 +1520,19 @@ final class AppModel: ObservableObject {
     if deactivateApp { NSApp.deactivate() }
     operationTask = Task {
       var failed = false
-      do { try await operation() }
+      var diagnosticOutcome = DiagnosticHistory.Outcome.completed
+      var diagnosticReason: DiagnosticHistory.Reason?
+      do {
+        try Task.checkCancellation()
+        try await operation()
+      }
       catch is CancellationError {
+        diagnosticOutcome = .cancelled
         if revealOnFailure, displayRevision == displayChangeRevision { native.reveal() }
       }
       catch NativeMenuActionError.inputNotIdle {
+        diagnosticOutcome = .deferred
+        diagnosticReason = .inputNotIdle
         if displayRevision == displayChangeRevision {
           failed = true
           if lastReveal == previousReveal {
@@ -1450,6 +1542,8 @@ final class AppModel: ObservableObject {
         }
       }
       catch {
+        diagnosticOutcome = NativeMenuBarController.shouldRetrySelectedReturn(after: error) ? .deferred : .failed
+        diagnosticReason = NativeMenuBarController.diagnosticReason(error)
         if displayRevision == displayChangeRevision {
           failed = true
           if lastReveal == previousReveal {
@@ -1458,11 +1552,20 @@ final class AppModel: ObservableObject {
           preservingRevealReason {
             if revealOnFailure { native.reveal() }
             message = error.localizedDescription
-            modelLog.error("operation failed: \(error.localizedDescription, privacy: .public)")
+            if diagnosticOutcome == .deferred {
+              modelLog.notice("operation deferred: \(diagnosticReason?.rawValue ?? "unknown", privacy: .public)")
+            } else {
+              modelLog.error("operation failed: \(error.localizedDescription, privacy: .public)")
+            }
             if launchRestoreRunning && reapplyNotBefore == nil { modelLog.notice("settings: launch restore failed"); showSettings?() }
           }
         }
       }
+      if let diagnosticCategory {
+        diagnosticHistory.record(diagnosticCategory, outcome: diagnosticOutcome, reason: diagnosticReason,
+          bundleIdentifier: affectedBundles.first, operationID: diagnosticID)
+      }
+      cleanup?()
       launchRestoreRunning = false
       concealed = native.isConcealed
       busy = false
@@ -1672,13 +1775,15 @@ final class AppModel: ObservableObject {
     return DiagnosticsReport(version: info["CFBundleShortVersionString"] as? String ?? "development",
       build: info["CFBundleVersion"] as? String ?? "0",
       macOS: ProcessInfo.processInfo.operatingSystemVersionString,
-      permissionGranted: permissionGranted, scanComplete: scanComplete, recoveryRequired: recoveryRequired,
+      permissionGranted: permissionGranted, scanComplete: scanComplete, sessionSuspended: sessionSuspended,
+      recoveryRequired: recoveryRequired,
       concealed: concealed, screenRecordingGranted: screenRecordingGranted, lastReveal: lastReveal,
       reapplyNotBefore: reapplyNotBefore, recoveringLayout: recoveringLayout, busy: busy, scanning: scanning,
       nativeBusy: native.isBusy, incompleteScans: incompleteScans, unsafeScans: unsafeScans,
       hasPendingActivation: native.hasPendingActivation,
       pendingActivationBundle: native.pendingActivationBundleIdentifier,
       panelWatch: panelWatch != nil, dropdownShown: dropdownShown,
+      diagnosticHistoryEnabled: diagnosticHistory.url != nil,
       pendingPlacementCount: pendingPlacementKeys.count, automaticPlacementCount: automaticPlacementKeys.count,
       pendingPlacementBundles: pendingPlacementKeys.map(Self.bundle(ofKey:)),
       automaticPlacementBundles: automaticPlacementKeys.map(Self.bundle(ofKey:)),

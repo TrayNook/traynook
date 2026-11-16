@@ -23,13 +23,21 @@ if source.count(before) != 1:
 Path(sys.argv[2]).write_text(source.replace(before, after))
 PY
 
+export CLANG_MODULE_CACHE_PATH="$check_dir/modules"
+swiftc -swift-version 6 -parse-as-library -whole-module-optimization \
+  -emit-object -emit-module -module-name InventoryIdentityCore \
+  -emit-module-path "$check_dir/InventoryIdentityCore.swiftmodule" \
+  "$repo_dir"/Prototypes/InventoryIdentitySpike/Sources/InventoryIdentityCore/*.swift \
+  -o "$check_dir/InventoryIdentityCore.o"
+
 for variant in NativeMenuInteraction WithoutMenuNotifications; do
   source="$repo_dir/Sources/TrayNook/NativeMenuInteraction.swift"
   if [[ "$variant" == WithoutMenuNotifications ]]; then
     source="$check_dir/WithoutMenuNotifications.swift"
   fi
-  CLANG_MODULE_CACHE_PATH="$check_dir/modules" swiftc -swift-version 6 -parse-as-library \
-    "$source" "$repo_dir/Tests/Manual/NativeMenuInteractionCheck.swift" \
+  swiftc -swift-version 6 -parse-as-library -I "$check_dir" \
+    "$check_dir/InventoryIdentityCore.o" "$source" \
+    "$repo_dir/Tests/Manual/NativeMenuInteractionCheck.swift" \
     -o "$check_dir/$variant"
 done
 if [[ "${1:-}" == --compile-only ]]; then exit 0; fi

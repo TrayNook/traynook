@@ -23,6 +23,7 @@ struct DiagnosticsReport: Equatable {
   var macOS = "unknown"
   var permissionGranted = false
   var scanComplete = false
+  var sessionSuspended = false
   var recoveryRequired = false
   var concealed = false
   var screenRecordingGranted = false
@@ -38,6 +39,7 @@ struct DiagnosticsReport: Equatable {
   var pendingActivationBundle: String?
   var panelWatch = false
   var dropdownShown = false
+  var diagnosticHistoryEnabled = false
   var pendingPlacementCount = 0
   var automaticPlacementCount = 0
   var pendingPlacementBundles: [String] = []
@@ -61,6 +63,7 @@ struct DiagnosticsReport: Equatable {
     macOS \(macOS)
     Accessibility: \(permissionGranted)
     Inventory complete: \(scanComplete)
+    Session suspended: \(sessionSuspended)
     Layout recovery: \(recoveryRequired)
     Native section concealed: \(concealed)
     Private APIs: none
@@ -81,6 +84,7 @@ struct DiagnosticsReport: Equatable {
     Pending return source: \(hasPendingActivation ? pendingActivationBundle ?? "unknown" : "none")
     panelWatch: \(panelWatch)
     dropdownShown: \(dropdownShown)
+    Local diagnostic history enabled: \(diagnosticHistoryEnabled)
     pendingPlacementKeys: \(pendingPlacementCount)
     automaticPlacementKeys: \(automaticPlacementCount)
     Pending placement sources: \(bundles(pendingPlacementBundles))

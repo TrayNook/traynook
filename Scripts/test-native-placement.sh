@@ -18,6 +18,7 @@ swiftc -swift-version 6 -parse-as-library -whole-module-optimization \
 swiftc -swift-version 6 -parse-as-library -I "$check_dir" \
   "$check_dir/InventoryIdentityCore.o" "$repo_dir/Sources/TrayNook/NativeMenuBarController.swift" \
   "$repo_dir/Sources/TrayNook/WindowMetadataReader.swift" \
+  "$repo_dir/Sources/TrayNook/DiagnosticHistory.swift" \
   "$repo_dir/Tests/Manual/SelectivePlacementCheck.swift" -o "$check_dir/Check"
 if [[ "${1:-}" == --compile-only ]]; then exit 0; fi
 token="$(uuidgen)"

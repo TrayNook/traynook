@@ -1,6 +1,7 @@
 import AppKit
 import ApplicationServices
 import Foundation
+import InventoryIdentityCore
 
 /// Watches one native interaction through menu events and transient windows.
 @MainActor
@@ -94,8 +95,8 @@ final class NativeMenuInteraction {
   private static func windowSnapshot(of pid: Int32) -> WindowSnapshot? {
     let windows = CGWindowListCopyWindowInfo(.optionOnScreenOnly, kCGNullWindowID) as? [[String: Any]]
     let rows = NSScreen.screens.compactMap { screen -> CGRect? in
-      guard let id = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? UInt32 else { return nil }
-      let bounds = CGDisplayBounds(id)
+      guard let id = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? UInt32,
+        let bounds = DisplayGeometry.bounds(of: id) else { return nil }
       return CGRect(x: bounds.minX, y: bounds.minY, width: bounds.width,
         height: max(NSStatusBar.system.thickness, screen.safeAreaInsets.top))
     }
