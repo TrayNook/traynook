@@ -1,4 +1,4 @@
-# TrayNook: build 44, session recovery and selected-item returns
+# TrayNook: build 45, extended local diagnostics
 
 Updated 2026-11-16. Build 18's measurements are in
 [MVP_REPORT.md](MVP_REPORT.md); build 19's decisions are in
@@ -7,6 +7,15 @@ Updated 2026-11-16. Build 18's measurements are in
 
 ## Current state
 
+- **Extended local retention (2026-11-16):** signed development build **45**
+  supports `ExtendedLocalDiagnosticHistory` in the development app's machine-local
+  preferences. It is enabled on this Mac for the next log review: up to **30 days
+  within 32 MiB**. Public builds ignore the flag and keep seven days/1 MiB;
+  development builds without the local opt-in also keep those defaults. Twelve
+  focused diagnostics tests and packaged smoke pass. Relaunch preserved the
+  existing history bytes and appended new events with private `0600` permissions.
+  Native readback found nine hidden-source owners and zero visible hidden-source
+  windows. No upload or system-wide logging-retention change was introduced.
 - **Log-driven recovery fixes (2026-11-16):** signed development build **44**
   suspends discovery and native operation dispatch during sleep or an inactive
   session, then resumes from fresh inventory once both conditions clear. The

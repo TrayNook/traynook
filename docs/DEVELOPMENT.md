@@ -129,6 +129,12 @@ private to the current user. Malformed, newer-schema, oversized, or inaccessible
 existing histories are preserved and recording stops with a fixed log message.
 Saved layout management continues independently of history storage failure.
 
+For longer local investigations, the development app alone supports the
+machine-local preference `ExtendedLocalDiagnosticHistory`. When enabled in
+`io.github.mahenzon.TrayNook.dev`, it retains up to 30 days within 32 MiB after
+relaunch. Public builds ignore that preference and retain the seven-day/1 MiB
+defaults. This changes only the local file's limits; no upload is added.
+
 The history contains no item labels, window titles, captured pixels, pointer/key
 contents, or complete application inventory. Copy Diagnostics still copies only
 the current state report. Smoke tests, `--diagnose`, unit tests, and disposable

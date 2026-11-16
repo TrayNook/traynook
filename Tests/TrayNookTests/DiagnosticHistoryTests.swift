@@ -8,6 +8,38 @@ import Testing
 struct DiagnosticHistoryTests {
   private let now = Date(timeIntervalSince1970: 1_794_000_000)
 
+  @Test("Extended limits require the local preference and development identity")
+  func localLimitsAreScoped() {
+    for bundle in ["io.github.mahenzon.TrayNook", "example.fixture", "io.github.mahenzon.TrayNook.dev"] {
+      for enabled in [false, true] {
+        let limits = DiagnosticHistory.limits(for: bundle, extendedLocally: enabled)
+        let extended = bundle == "io.github.mahenzon.TrayNook.dev" && enabled
+        #expect(limits.maximumBytes == (extended ? 32 * 1_048_576 : 1_048_576))
+        #expect(limits.retention == TimeInterval(extended ? 30 : 7) * 86400)
+      }
+    }
+  }
+
+  @Test("Local retention keeps older evidence across restart and expires records after thirty days")
+  func extendedRetention() async throws {
+    let directory = temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let url = directory.appendingPathComponent("history.jsonl")
+    let limits = DiagnosticHistory.limits(for: "io.github.mahenzon.TrayNook.dev", extendedLocally: true)
+    let old = DiagnosticHistory(url: url, now: { now.addingTimeInterval(-10 * 86400) })
+    old.record(.layout, outcome: .completed)
+    _ = try await old.read()
+    let before = try Data(contentsOf: url)
+    let history = DiagnosticHistory(url: url, maximumBytes: limits.maximumBytes,
+      retention: limits.retention, now: { now })
+    #expect(try await history.read().count == 1)
+    #expect(try Data(contentsOf: url) == before)
+    let expired = DiagnosticHistory(url: url, maximumBytes: limits.maximumBytes,
+      retention: limits.retention, now: { now.addingTimeInterval(21 * 86400) })
+    #expect(try await expired.read().isEmpty)
+    #expect(try await DiagnosticHistory(url: url, now: { now }).read().isEmpty)
+  }
+
   @Test("History preserves event order and fixed result codes across a restart")
   func preservesOrder() async throws {
     let directory = temporaryDirectory()

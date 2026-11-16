@@ -35,12 +35,22 @@ final class DiagnosticHistory: @unchecked Sendable {
       return DiagnosticHistory(url: nil)
     }
     let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+    let limits = DiagnosticHistory.limits(for: bundle,
+      extendedLocally: UserDefaults.standard.bool(forKey: "ExtendedLocalDiagnosticHistory"))
     return DiagnosticHistory(url: support.appendingPathComponent(bundle)
-      .appendingPathComponent("diagnostic-history.jsonl"))
+      .appendingPathComponent("diagnostic-history.jsonl"), maximumBytes: limits.maximumBytes,
+      retention: limits.retention)
   }()
+
+  static func limits(for bundleIdentifier: String, extendedLocally: Bool)
+    -> (maximumBytes: Int, retention: TimeInterval) {
+    let extended = bundleIdentifier == "io.github.mahenzon.TrayNook.dev" && extendedLocally
+    return (extended ? 32 * 1_048_576 : 1_048_576, TimeInterval(extended ? 30 : 7) * 86400)
+  }
 
   let url: URL?
   private let maximumBytes: Int
+  private let retention: TimeInterval
   private let now: @Sendable () -> Date
   private let queue = DispatchQueue(label: "io.github.mahenzon.TrayNook.diagnostic-history", qos: .utility)
   private var loaded = false
@@ -49,13 +59,15 @@ final class DiagnosticHistory: @unchecked Sendable {
   private var lines: [Data] = []
   private var byteCount = 0
   private static let header = Data("{\"schemaVersion\":1}\n".utf8)
-  private static let retention: TimeInterval = 7 * 24 * 60 * 60
   private static let log = Logger(subsystem: "io.github.mahenzon.TrayNook", category: "diagnostic-history")
 
-  init(url: URL?, maximumBytes: Int = 1_048_576, now: @escaping @Sendable () -> Date = { Date() }) {
-    precondition(maximumBytes >= 1024 && maximumBytes <= 1_048_576)
+  init(url: URL?, maximumBytes: Int = 1_048_576, retention: TimeInterval = 7 * 86400,
+    now: @escaping @Sendable () -> Date = { Date() }) {
+    precondition(maximumBytes >= 1024 && maximumBytes <= 32 * 1_048_576)
+    precondition(retention > 0 && retention <= 30 * 86400)
     self.url = url
     self.maximumBytes = maximumBytes
+    self.retention = retention
     self.now = now
   }
 
@@ -78,7 +90,7 @@ final class DiagnosticHistory: @unchecked Sendable {
         self.load()
         if let failure = self.failure { continuation.resume(throwing: failure) }
         else {
-          let cutoff = self.now().addingTimeInterval(-Self.retention)
+          let cutoff = self.now().addingTimeInterval(-self.retention)
           continuation.resume(returning: self.events.filter { $0.timestamp >= cutoff })
         }
       }
@@ -123,7 +135,7 @@ final class DiagnosticHistory: @unchecked Sendable {
     do {
       var line = try JSONEncoder().encode(event); line.append(10)
       guard line.count + Self.header.count <= maximumBytes else { return }
-      let cutoff = now().addingTimeInterval(-Self.retention)
+      let cutoff = now().addingTimeInterval(-retention)
       let oldCount = events.count
       var keptEvents: [Event] = [], keptLines: [Data] = []
       for (existing, data) in zip(events, lines) where existing.timestamp >= cutoff {
@@ -132,7 +144,7 @@ final class DiagnosticHistory: @unchecked Sendable {
       events = keptEvents; lines = keptLines
       byteCount = Self.header.count + lines.reduce(0) { $0 + $1.count }
       if byteCount + line.count > maximumBytes {
-        // Keep headroom so a full history does not rewrite one megabyte on every event.
+        // Keep headroom so a full history does not rewrite its entire byte cap on every event.
         let target = max(maximumBytes / 2, Self.header.count + line.count)
         while byteCount + line.count > target, !lines.isEmpty {
           byteCount -= lines.removeFirst().count
