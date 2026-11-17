@@ -1,0 +1,369 @@
+{
+  "reviewed_at": "2026-11-17T17:24:59.634904+03:00",
+  "previous_verified_cutoff": "2026-11-17T00:29:53.392351+03:00",
+  "local_raw_evidence": "/private/tmp/traynook-review-20261117-afternoon",
+  "original_running_build": {
+    "version": "1.0.0",
+    "build": 46,
+    "pid": 25392,
+    "uuid": "9EED66E6-C204-31C5-909E-E713FBF70E0B",
+    "verified_by": "live sample version and UUID matched packaged executable",
+    "native_readback": {
+      "hiddenOwnersObserved": 7,
+      "hiddenSourceWindows": 9,
+      "timestamp": "2026-11-17T14:19:49Z",
+      "visibleHiddenSourceWindows": 0
+    }
+  },
+  "coverage": {
+    "query": "/usr/bin/log show --last 8d --info --style json --predicate 'process == \"TrayNook\" OR subsystem == \"io.github.mahenzon.TrayNook.dev\"'",
+    "unified": {
+      "records": 1497,
+      "first": "2026-11-13 15:05:00.578656+0300",
+      "last": "2026-11-17 17:17:26.804124+0300"
+    },
+    "application": {
+      "records": 108,
+      "first": "2026-11-17 13:17:13.478794+0300",
+      "last": "2026-11-17 17:16:59.374916+0300"
+    },
+    "build46_process": {
+      "records": 308,
+      "first": "2026-11-17 00:25:18.724024+0300",
+      "last": "2026-11-17 17:17:26.804124+0300"
+    },
+    "daily": [
+      {
+        "day": "2026-11-13",
+        "records": 15,
+        "first": "2026-11-13 15:05:00.578656+0300",
+        "last": "2026-11-13 20:26:50.959497+0300"
+      },
+      {
+        "day": "2026-11-14",
+        "records": 3,
+        "first": "2026-11-14 10:11:12.796856+0300",
+        "last": "2026-11-14 16:01:43.381327+0300"
+      },
+      {
+        "day": "2026-11-15",
+        "records": 4,
+        "first": "2026-11-15 14:02:53.446338+0300",
+        "last": "2026-11-15 14:02:58.452351+0300"
+      },
+      {
+        "day": "2026-11-16",
+        "records": 1156,
+        "first": "2026-11-16 09:03:04.556813+0300",
+        "last": "2026-11-16 23:59:26.039512+0300"
+      },
+      {
+        "day": "2026-11-17",
+        "records": 319,
+        "first": "2026-11-17 00:03:14.673333+0300",
+        "last": "2026-11-17 17:17:26.804124+0300"
+      }
+    ],
+    "history": {
+      "events": 626,
+      "first": "2026-11-16T11:48:57.739278+03:00",
+      "last": "2026-11-17T17:09:50.475667+03:00",
+      "bytes": 166644,
+      "since_previous_verification": 96,
+      "since_previous_first": "2026-11-17T02:58:54.676402+03:00",
+      "since_previous_last": "2026-11-17T17:09:50.475667+03:00"
+    },
+    "crashes": [
+      {
+        "root": "/Users/mahenzon/Library/Logs/DiagnosticReports",
+        "files": 33,
+        "matches": [],
+        "errors": []
+      },
+      {
+        "root": "/Library/Logs/DiagnosticReports",
+        "files": 65,
+        "matches": [],
+        "errors": []
+      }
+    ],
+    "gaps": [
+      "No matching unified records November 9\u201312. Earlier system records do not establish application health.",
+      "Application unified records start November 17 13:17:13; process-attributed system records start at launch 00:25:18. Neither is continuous activity evidence.",
+      "Local history begins November 16 11:48:57; thirty-day retention does not backfill older events. It records transitions/rate-limited scan failures, not every poll.",
+      "Before this fix local history omits polling reveal causes; early recovery trigger at 13:06 has no retained unified detail.",
+      "Private/truncated OS payloads cannot establish call sites. Query includes retained default/info, not debug."
+    ]
+  },
+  "findings": {
+    "since_previous_history_counts": [
+      {
+        "category": "inventory",
+        "outcome": "deferred",
+        "reason": "scanIncomplete",
+        "count": 34
+      },
+      {
+        "category": "inventory",
+        "outcome": "completed",
+        "reason": null,
+        "count": 50
+      },
+      {
+        "category": "layout",
+        "outcome": "started",
+        "reason": null,
+        "count": 6
+      },
+      {
+        "category": "layout",
+        "outcome": "deferred",
+        "reason": "inventoryUnavailable",
+        "count": 1
+      },
+      {
+        "category": "layout",
+        "outcome": "completed",
+        "reason": null,
+        "count": 5
+      }
+    ],
+    "operation_outcomes": "Six attempts: five completed, one inventoryUnavailable deferral at 13:06:46 followed by successful attempt at 13:06:54; no terminal failure or input-interruption event.",
+    "temporary_geometry_reveals": [
+      {
+        "reveal": "2026-11-17T14:33:05.112750+03:00",
+        "native_conceal": "2026-11-17T14:33:09.118751+03:00"
+      },
+      {
+        "reveal": "2026-11-17T16:19:31.940515+03:00",
+        "native_conceal": "2026-11-17T16:19:35.852792+03:00"
+      }
+    ],
+    "new_source_recovery": {
+      "bundle": "us.zoom.xos",
+      "created": "2026-11-17T16:57:27.538243+03:00",
+      "native_conceal": "2026-11-17T16:57:28.347032+03:00"
+    },
+    "repeated_safety_fallbacks": {
+      "unchanged_native_incomplete_transitions": 27,
+      "slow_discovery_unchanged_native": 2,
+      "meaning": "Successful concealment retention; not reveal incidents or counts of all scans."
+    },
+    "system_messages": {
+      "build46_errors": [
+        {
+          "timestamp": "2026-11-17 13:49:43.743836+0300",
+          "subsystem": "com.apple.AppKit",
+          "message": "Dock connection error: Connection interrupte"
+        },
+        {
+          "timestamp": "2026-11-17 13:50:39.416627+0300",
+          "subsystem": "com.apple.AppKit",
+          "message": "Dock connection error: Connection interrupte"
+        },
+        {
+          "timestamp": "2026-11-17 14:33:05.112750+0300",
+          "subsystem": "io.github.mahenzon.TrayNook.dev",
+          "message": "temporary unknown-geometry safety reveal"
+        },
+        {
+          "timestamp": "2026-11-17 16:19:31.940515+0300",
+          "subsystem": "io.github.mahenzon.TrayNook.dev",
+          "message": "temporary unknown-geometry safety reveal"
+        }
+      ],
+      "older_process_invalid_display_messages": 23,
+      "meaning": "Two AppKit Dock connection interruptions have no demonstrated user impact/caller; private display errors are from earlier processes, not build46. No speculative OS changes."
+    },
+    "diagnostic_defect": "AppModel.reveal updates lastReveal but did not persist actual polling reveal causes; confirmed independently by code and missing JSONL events."
+  },
+  "fixes": [
+    "Persist actual model concealed-to-revealed transitions as concealment/changed with fixed reason codes; no item/window/input contents. Debounce and repeated revealed-state cleanup emit no transition. Annotation-only recordReveal remains in-memory.",
+    "Keep native safety and recovery behavior unchanged: both observed geometry episodes recovered; no underlying geometry caller was proven."
+  ],
+  "verification": {
+    "behavioral_red": "revealHistoryTransitions: all three cases observed zero history events before the fix; exit 1.",
+    "focused": "42 tests in 2 suites passed",
+    "standard": "292 tests in 45 suites passed",
+    "independent_review": "No findings in correctness/privacy review of the logging diff.",
+    "isolated_appkit": {
+      "passed": true,
+      "tests": 87,
+      "runs": [
+        {
+          "suite": "AppModelInventoryTests",
+          "tests": 19,
+          "passed": true
+        },
+        {
+          "suite": "BackgroundInventoryTests",
+          "tests": 7,
+          "passed": true
+        },
+        {
+          "suite": "ConcealmentRecoveryTests",
+          "tests": 33,
+          "passed": true
+        },
+        {
+          "suite": "DetailReorderTests",
+          "tests": 4,
+          "passed": true
+        },
+        {
+          "suite": "DisplayChangeTests",
+          "tests": 1,
+          "passed": true
+        },
+        {
+          "suite": "IdleInventoryTests",
+          "tests": 2,
+          "passed": true
+        },
+        {
+          "suite": "LoginItemStatusTests",
+          "tests": 5,
+          "passed": true
+        },
+        {
+          "suite": "MenuBarReorderTests",
+          "tests": 6,
+          "passed": true
+        },
+        {
+          "suite": "SavedPlacementEditingTests",
+          "tests": 1,
+          "passed": true
+        },
+        {
+          "suite": "WindowMetadataReaderTests",
+          "tests": 9,
+          "passed": true
+        }
+      ]
+    },
+    "native": {
+      "menu": {
+        "passed": true,
+        "variants": 2,
+        "checks_per_variant": 3
+      },
+      "boundary": {
+        "passed": true,
+        "cycles": 3
+      },
+      "movement": {
+        "passed": false,
+        "classification": "visible fixture space precondition",
+        "detail": "36-point disposable fixture not visible beside launcher; no item moved."
+      },
+      "placement": {
+        "passed": false,
+        "classification": "physical input at setup",
+        "detail": "Input-not-idle refusal; hidden sentinel witness unavailable."
+      },
+      "cancellation": {
+        "passed": false,
+        "classification": "physical input in queued-down preparation",
+        "posted_down_up_recovery": [
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    "diagnostics": {
+      "accessibility": "granted",
+      "inventory": "complete",
+      "items": 20,
+      "incomplete_apps": 0,
+      "scan_milliseconds": 224,
+      "screen_recording": "not granted"
+    },
+    "packaged_smoke": {
+      "passed": true,
+      "signature_deep_strict_verified": true,
+      "history_and_layout_bytes_unchanged": true
+    },
+    "initial_sandbox_appkit_attempt": "Terminated before assertions; host GUI run produced the red regression, then the passing focused/full isolated results."
+  },
+  "limits": [
+    "Logging covers model reveal() transitions, not a complete record of every native separator movement.",
+    "Unknown-geometry origin and Dock connection interruption caller remain unassigned.",
+    "Live movement needs visible fixture space; placement and cancellation refused physical input. Guards were preserved; no tested cancellation-sequence input was posted.",
+    "Actual sleep/wake, monitor reconnect and a prolonged post-fix idle observation were not exercised.",
+    "No logs uploaded and no system-wide logging retention changed. Raw data remain in the private local temporary directory."
+  ],
+  "verified_at": "2026-11-17T17:30:26.853380+03:00",
+  "code_commit": "c2f0684598a87fc48f81daa83eb204a5f0e7834a",
+  "running_build": {
+    "version": "1.0.0",
+    "build": 47,
+    "bundle": "io.github.mahenzon.TrayNook.dev",
+    "artifact": "dist/TrayNook Dev.app",
+    "pid": 29051,
+    "launched_at": "2026-11-17T17:28:00.440+03:00",
+    "uuid": "570C4AB9-0A2B-39F8-B0C3-6A8F3A4B9323",
+    "uuid_matches_live_sample": true,
+    "sha256": "4682db057a95c6a9b7fa2c72a71fe445c4d3bdc255b3c9009d9b54feef97e6b5",
+    "signing_identity": "TrayNook Dev",
+    "native_readbacks": [
+      {
+        "hiddenOwnersObserved": 7,
+        "hiddenSourceWindows": 9,
+        "timestamp": "2026-11-17T14:28:26Z",
+        "visibleHiddenSourceWindows": 0
+      },
+      {
+        "hiddenOwnersObserved": 7,
+        "hiddenSourceWindows": 9,
+        "timestamp": "2026-11-17T14:28:29Z",
+        "visibleHiddenSourceWindows": 0
+      },
+      {
+        "hiddenOwnersObserved": 7,
+        "hiddenSourceWindows": 9,
+        "timestamp": "2026-11-17T14:28:32Z",
+        "visibleHiddenSourceWindows": 0
+      },
+      {
+        "hiddenOwnersObserved": 7,
+        "hiddenSourceWindows": 9,
+        "timestamp": "2026-11-17T14:28:35Z",
+        "visibleHiddenSourceWindows": 0
+      }
+    ],
+    "startup_log": {
+      "records": 250,
+      "first": "2026-11-17 17:28:00.471563+0300",
+      "last": "2026-11-17 17:28:53.393596+0300",
+      "application_records": 14,
+      "errors_or_faults": 0
+    },
+    "local_history": {
+      "original_byte_prefix_preserved": true,
+      "mode": "0o600",
+      "extended_local_preference": true,
+      "days": 30,
+      "maximum_bytes": 33554432,
+      "public_defaults": {
+        "days": 7,
+        "maximum_bytes": 1048576
+      },
+      "startup_saved_layout": "started 17:28:00.759, completed 17:28:02.127 Moscow"
+    },
+    "saved_layout_bytes_preserved": true,
+    "final_native_readback": {
+      "hiddenOwnersObserved": 7,
+      "hiddenSourceWindows": 9,
+      "timestamp": "2026-11-17T14:31:03Z",
+      "visibleHiddenSourceWindows": 0
+    },
+    "final_process_log_check": {
+      "first": "2026-11-17 17:28:00.471563+0300",
+      "last": "2026-11-17 17:31:03.802208+0300",
+      "records": 236,
+      "errors_or_faults": 0
+    }
+  }
+}

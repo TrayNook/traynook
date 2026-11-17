@@ -1,5 +1,93 @@
 # TrayNook log review and repair plan
 
+## November 17 afternoon follow-up: build 47
+
+Evidence was collected before quitting. The live sample identified **1.0.0
+(46)**, PID 25392, with UUID `9EED66E6-C204-31C5-909E-E713FBF70E0B` matching the
+package. Build 45 in the request was historical. The previous receipt's final
+verified check at **00:29:53 Moscow** is the comparison cutoff. Native readback
+found seven hidden-source owners, nine source windows, and none visible.
+
+### Actual coverage and classification
+
+- **Local history:** 626 events, **November 16 11:48:57–November 17 17:09:50
+  Moscow**, 166,644 bytes. The 96 events after the cutoff span **02:58:54–17:09:50**:
+  50 complete-inventory events, 34 sampled incomplete-inventory events, and six
+  layout attempts. Five attempts completed; one deferred at **13:06:46.620** for
+  unavailable inventory, followed by a successful attempt at **13:06:54.468**.
+  No terminal operation failure, activation, selected-return, or physical-input
+  interruption event occurs in this interval. These are sampled transitions,
+  not a record of every scan or every interruption on the Mac.
+- **Unified logs:** the eight-day process/subsystem query returned **1,497
+  records**, November 13 **15:05:00** through November 17 **17:17:26**. Daily
+  totals are 15, 3, 4, 1,156, and 319 for November 13–17. Build 46 has 308
+  process-attributed records from **00:25:18–17:17:26**; only 108 application
+  subsystem records remain, **13:17:13–17:16:59**. No matches remain November
+  9–12. Earlier sparse system records do not establish application health.
+  Application details before 13:17, including the 13:06 recovery trigger, are
+  missing. Extended local retention cannot backfill history before November 16.
+- **Distinct recovered episodes:** unknown-geometry safety reveals at
+  **14:33:05.113** and **16:19:31.941** reached native concealment at
+  **14:33:09.119** and **16:19:35.853**, respectively. A new Zoom source at
+  **16:57:27.538** was reconciled by **16:57:28.347**. The two error records are
+  temporary safety reveals, not terminal failures. Repeated `unsafe once`
+  messages are debounced observations, not separate reveals. There are also
+  **27** incomplete-scan transitions and **two** slow-discovery messages retaining
+  concealment through unchanged native-window verification: successful fallbacks.
+- **System messages and crashes:** build 46 has two AppKit `Dock connection
+  error: Connection interrupted` records at **13:49:43.744** and **13:50:39.417**,
+  with no demonstrated TrayNook user impact or actionable caller. The broad
+  query's 23 private invalid-display errors and one LaunchServices-store error
+  belong to earlier processes. No cause was invented for these messages or for
+  unavailable geometry. No TrayNook match was found among **98 files** in both
+  standard crash-report directories, including archive subdirectories, using
+  filenames and the first 8 KiB of report headers; no read errors occurred.
+
+### Confirmed defect, fix, and verification
+
+The two geometry-reveal causes were absent from JSONL: `recordReveal` only
+updated the current in-memory snapshot. A focused AppKit regression reproduced
+zero history events for geometry, identity-review, and user reveals before the
+fix. Build 47 records `concealment / changed` with a fixed reason only when
+`AppModel.reveal()` transitions from concealed. Debounce polls and repeated
+revealed-state cleanup emit no transition; annotation-only `recordReveal` remains
+in-memory to avoid inventing cleanup events. This covers model reveal calls,
+not every native separator movement. No item labels, window titles, raw error
+text, input contents, or extra preferences were added. Existing schema-v1 events
+remain readable. Safety checks and recovery scheduling are unchanged; the
+underlying unknown-geometry caller was not reproduced or assigned.
+
+The standard suite passes **292 tests in 45 suites**; ten sequential isolated
+AppKit runs pass **87 checks**, including 33 recovery tests. Both native-menu
+observer variants pass three checks each, and native boundary passes three
+cycles. Movement stops before input because its 36-point fixture lacks visible
+space. Placement refuses physical input at setup; its sentinel witness is
+unavailable. Cancellation refuses physical input in queued-down preparation,
+posting **0 down / 0 up / 0 recovery events**. These are blocked checks, not
+passes; guards remain intact. Independent review found no correctness/privacy
+issues in the logging change. Trusted-Terminal diagnostics report Accessibility
+granted, complete inventory, 20 items, zero incomplete apps, and Screen Recording
+not granted. The app-icon fallback remains available.
+
+Signed development build **1.0.0 (47)** passed packaged smoke and launched at
+**17:28:00.440 Moscow**, PID **29051**. Live sample UUID
+`570C4AB9-0A2B-39F8-B0C3-6A8F3A4B9323` matches its package; signing authority is
+the existing **TrayNook Dev** certificate. Four native readbacks three seconds
+apart find **seven hidden-source owners, nine windows, zero visible**. The startup
+capture spans **17:28:00.472–17:28:53.394**, with 250 process records, 14 application
+records, and no Error/Fault entries. Startup history records successful saved
+layout completion at **17:28:02.127**. Smoke preserves layout/history hashes;
+launch preserves layout bytes and the complete old history prefix, mode `0600`.
+`ExtendedLocalDiagnosticHistory` remains enabled at **30 days/32 MiB**; public
+defaults remain **seven days/1 MiB**. No upload or system-wide retention change
+occurred. Raw captures remain in the private local directory
+`/private/tmp/traynook-review-20261117-afternoon`.
+
+Actual sleep/wake, monitor reconnect, and prolonged post-fix idle behavior remain
+unverified. The observed earlier build-46 recoveries demonstrate bounded
+successful episodes, not a guarantee that every geometry failure recovers.
+See the [machine-readable receipt](evidence/2026-11-17-build47-log-followup.json).
+
 ## November 17 follow-up: build 46
 
 The original running process was **1.0.0 (45)**, PID 96914, with UUID

@@ -1,4 +1,4 @@
-# TrayNook: build 46, verified concealment and failure classification
+# TrayNook: build 47, retained reveal causes and verified concealment
 
 Updated 2026-11-17. Build 18's measurements are in
 [MVP_REPORT.md](MVP_REPORT.md); build 19's decisions are in
@@ -7,6 +7,26 @@ Updated 2026-11-17. Build 18's measurements are in
 
 ## Current state
 
+- **Afternoon log follow-up (2026-11-17):** the actual live binary was **46**, not
+  45. Since its last verified check, local history contains 96 events: five
+  completed layout attempts and one inventory deferral followed by recovery,
+  with no terminal operation failure. Retained unified logs show two temporary
+  unknown-geometry reveals recovering in about four seconds and a new Zoom
+  source reconciled successfully. The original geometry caller remains unknown.
+  Confirmed defect: those polling reveal causes existed only in unified logs and
+  in-memory diagnostics. Build **47** records actual model concealed-to-revealed
+  transitions with fixed local reason codes, excluding debounce/repeated cleanup;
+  native safety behavior is unchanged. The regression failed before the fix.
+  **292 standard tests**, **87 isolated AppKit checks**, both native-menu variants,
+  boundary, and packaged smoke pass. Movement lacked visible fixture space;
+  placement/cancellation refused active physical input. Signed `TrayNook Dev`
+  build **1.0.0 (47)** launched at **17:28:00 Moscow**; its live UUID matches the
+  package. Four readbacks three seconds apart found seven hidden-source owners,
+  nine source windows, and **zero visible hidden-source windows**. Startup has
+  no Error/Fault records. Saved layout bytes and history prefix survive; local
+  extended retention remains 30 days/32 MiB and public defaults seven days/1 MiB.
+  See [coverage and limits](LOG_REPAIR_PLAN.md#november-17-afternoon-follow-up-build-47)
+  and the [receipt](evidence/2026-11-17-build47-log-followup.json).
 - **Visible-source recurrence (2026-11-17):** the original live binary was
   confirmed as **1.0.0 (45)** by its process sample and matching executable UUID.
   Before quitting, native readback found four saved hidden-source windows
@@ -208,7 +228,7 @@ Updated 2026-11-17. Build 18's measurements are in
   WindowServer confirmed the real BroGlow source left of Tunnelblick, matching
   their saved order. The separate disposable `--reorder` check compiled but
   stopped before posting input because its harness lacks Accessibility permission.
-- Development app: `dist/TrayNook Dev.app`, **1.0.0 (46)**, signed with the
+- Development app: `dist/TrayNook Dev.app`, **1.0.0 (47)**, signed with the
   user's `TrayNook Dev` certificate (README "Development signing and
   permissions"). The unit suite, packaged smoke test, and opt-in GUI preview
   snapshots pass, including minimum Settings width and row capacities 1/30.
