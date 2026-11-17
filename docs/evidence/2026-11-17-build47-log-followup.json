@@ -365,5 +365,85 @@
       "records": 236,
       "errors_or_faults": 0
     }
+  },
+  "native_idle_recheck": {
+    "checked_at": "2026-11-17T17:35:51.331989+03:00",
+    "running_build": 47,
+    "pid": 35488,
+    "uuid": "570C4AB9-0A2B-39F8-B0C3-6A8F3A4B9323",
+    "uuid_matches_live_sample": true,
+    "readbacks": [
+      {
+        "hiddenOwnersObserved": 7,
+        "hiddenSourceWindows": 9,
+        "timestamp": "2026-11-17T14:35:42Z",
+        "visibleHiddenSourceWindows": 0
+      },
+      {
+        "hiddenOwnersObserved": 7,
+        "hiddenSourceWindows": 9,
+        "timestamp": "2026-11-17T14:35:45Z",
+        "visibleHiddenSourceWindows": 0
+      },
+      {
+        "hiddenOwnersObserved": 7,
+        "hiddenSourceWindows": 9,
+        "timestamp": "2026-11-17T14:35:48Z",
+        "visibleHiddenSourceWindows": 0
+      },
+      {
+        "hiddenOwnersObserved": 7,
+        "hiddenSourceWindows": 9,
+        "timestamp": "2026-11-17T14:35:51Z",
+        "visibleHiddenSourceWindows": 0
+      }
+    ],
+    "saved_layout_bytes_preserved": true,
+    "history_prefix_preserved": true,
+    "local_raw_evidence": "/private/tmp/traynook-idle-native-20261117",
+    "movement": {
+      "passed": false,
+      "classification": "visible fixture space precondition",
+      "detail": "36-point fixture not visible beside launcher; no item moved."
+    },
+    "placement": {
+      "passed": true,
+      "show_hide_cycles": 2,
+      "sentinel_samples": 142,
+      "sentinel_revealed_samples": 0,
+      "sentinel_unavailable_samples": 0,
+      "maximum_sample_gap_seconds": 0.024183583445847034,
+      "original_windows": 17,
+      "surviving_windows": 17
+    },
+    "cancellation": {
+      "passed": false,
+      "passed_phases": [
+        "queued-down",
+        "delivered-down",
+        "delivered-up",
+        "queued-motion",
+        "queued-up-motion",
+        "motion-down",
+        "motion-up"
+      ],
+      "blocked_phase": "return-motion-down",
+      "classification": "fresh inventoryUnavailable in return preparation",
+      "tested_return_sequence_down_up_recovery": [
+        0,
+        0,
+        0
+      ],
+      "detail": "Source promotion ran before counters reset; the requested return sequence posted no input. Remaining return and terminal cases unverified."
+    },
+    "startup_log": {
+      "records": 307,
+      "first": "2026-11-17 17:35:01.522260+0300",
+      "last": "2026-11-17 17:36:00.431479+0300",
+      "errors_or_faults": 0
+    },
+    "extended_local_retention_preserved": true,
+    "input_released_to_user": true,
+    "scope": "Idle native recheck only; no code changes or build increment, no sleep/display cycle testing."
   }
 }

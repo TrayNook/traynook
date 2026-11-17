@@ -7,6 +7,16 @@ Updated 2026-11-17. Build 18's measurements are in
 
 ## Current state
 
+- **Idle native recheck (2026-11-17, 17:34 Moscow):** with user input idle,
+  selected placement passes two show/hide cycles and 142 sentinel samples with
+  zero reveals; all 17 original windows survive cleanup. Cancellation passes
+  seven phases, then refuses fresh return inventory before posting any tested
+  return-sequence input. Movement still lacks visible fixture space. Build 47
+  relaunched with matching live UUID; four readbacks find seven hidden-source
+  owners, nine windows, zero visible. Saved layout bytes, history prefix and
+  extended retention remain intact. Input was released to the user after checks
+  stopped and concealment was verified. See the
+  [recheck evidence](evidence/2026-11-17-build47-log-followup.json).
 - **Afternoon log follow-up (2026-11-17):** the actual live binary was **46**, not
   45. Since its last verified check, local history contains 96 events: five
   completed layout attempts and one inventory deferral followed by recovery,

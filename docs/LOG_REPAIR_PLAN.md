@@ -2,6 +2,22 @@
 
 ## November 17 afternoon follow-up: build 47
 
+**Idle native recheck at 17:34 Moscow:** selected placement now passes two
+show/hide cycles, with 142 sentinel samples, zero revealed/unavailable samples,
+and all 17 original windows surviving cleanup. Cancellation passes queued-down,
+delivered-down/up, queued-motion, queued-up-motion, and motion-down/up. It then
+refuses `inventoryUnavailable` during return-motion-down preparation, with
+zero tested return-sequence down/up/recovery posts; preceding source promotion
+ran before those counters reset. Remaining return and terminal cases stay
+unverified. Movement still refuses the unavailable visible fixture. No guards or
+production code changed. Build 47 relaunched with its matching UUID; four native
+readbacks again found seven hidden-source owners, nine windows, zero visible.
+Saved layout bytes, history prefix and extended retention were preserved. This
+recheck supersedes the physical-input blockers below; it does not add sleep,
+display-cycle or prolonged-idle acceptance. Raw evidence is local under
+`/private/tmp/traynook-idle-native-20261117`; the receipt includes
+`native_idle_recheck`.
+
 Evidence was collected before quitting. The live sample identified **1.0.0
 (46)**, PID 25392, with UUID `9EED66E6-C204-31C5-909E-E713FBF70E0B` matching the
 package. Build 45 in the request was historical. The previous receipt's final
