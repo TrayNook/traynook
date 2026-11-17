@@ -54,11 +54,42 @@ struct ConcealmentRecoveryTests {
     #expect(!model.acceptScanStatus(fixture.snapshot(complete: false)))
     #expect(!model.acceptScanStatus(fixture.snapshot(complete: false, windows: nil, permission: .denied)))
     #expect(model.acceptScanStatus(fixture.snapshot()))
-    let events = try await history.read()
+    let historyEvents = try await history.read()
+    let events = historyEvents.filter { $0.category == .inventory }
     #expect(events.map(\.outcome) == [.completed, .deferred, .deferred, .completed])
     #expect(events.map(\.reason) == [nil, .scanIncomplete, .permissionDenied, nil])
     #expect(events.allSatisfy { $0.category == .inventory && $0.metrics != nil })
+    #expect(historyEvents.filter { $0.category == .concealment }.map(\.reason) == [.inventoryUnavailable])
     #expect(model.diagnosticsReport().diagnosticHistoryEnabled)
+  }
+
+  @Test("Local history records actual reveals, not debounce polls or repeated cleanup",
+    arguments: ["geometryUnavailable", "identityReview", "userReveal"])
+  func revealHistoryTransitions(_ reason: String) async throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent("traynook-reveal-history-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let history = DiagnosticHistory(url: directory.appendingPathComponent("history.jsonl"))
+    let fixture = Fixture(diagnosticHistory: history)
+    defer { fixture.close() }
+    let model = fixture.model
+    if reason == "userReveal" {
+      model.reveal()
+    } else {
+      model.validateConcealment { _ in reason == "identityReview" ? true : nil }
+      #expect(try await history.read().isEmpty)
+      model.validateConcealment { _ in reason == "identityReview" ? true : nil }
+    }
+    #expect(!model.concealed)
+    #expect((model.reapplyNotBefore != nil) == (reason == "geometryUnavailable"))
+    model.reveal()
+    let events = try await history.read()
+    #expect(events.count == 1)
+    let event = try #require(events.first)
+    #expect(event.category.rawValue == "concealment")
+    #expect(event.outcome == .changed)
+    #expect(event.reason?.rawValue == reason)
+    #expect(event.bundleIdentifier == nil && event.metrics == nil && event.operationID == nil)
+    #expect(try await DiagnosticHistory(url: directory.appendingPathComponent("history.jsonl")).read() == events)
   }
 
   @Test("Sleep suspends scanning and rejects even complete late inventories")

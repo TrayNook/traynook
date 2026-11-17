@@ -933,6 +933,17 @@ final class AppModel: ObservableObject {
 
   func reveal(cancelLaunchRestore: Bool = true, reason: DiagnosticsReport.Reason = .userReveal,
     affectedBundles: [String] = []) {
+    if concealed {
+      let code: DiagnosticHistory.Reason = switch reason {
+      case .userReveal: .userReveal
+      case .environmentChange: .environmentChange
+      case .inventoryUnavailable: .inventoryUnavailable
+      case .geometryUnavailable: .geometryUnavailable
+      case .identityReview: .identityReview
+      case .operationFailure: .operationFailure
+      }
+      diagnosticHistory.record(.concealment, outcome: .changed, reason: code)
+    }
     recordReveal(reason, affectedBundles: affectedBundles)
     pendingMenuBarOrder = nil
     cancelPanelWatch()

@@ -123,7 +123,9 @@ layout data is preserved and disables management until **Reset Layout**.
 Packaged builds keep `diagnostic-history.jsonl` beside `layout.json`. The local
 history records fixed operation/scan result codes, timestamps, retry outcomes,
 affected bundle/process identifiers, and aggregate timing/count metrics. It is
-capped at 1 MiB and expires entries after seven days; the size cap can evict
+also updated when the model changes from concealed to revealed, with a fixed
+reason code; debounce polls and repeated revealed-state cleanup add no such event.
+It is capped at 1 MiB and expires entries after seven days; the size cap can evict
 older entries sooner. Writes run on a serial utility queue, and the file is
 private to the current user. Malformed, newer-schema, oversized, or inaccessible
 existing histories are preserved and recording stops with a fixed log message.

@@ -5,7 +5,7 @@ import os
 /// Only fixed diagnostic categories and affected bundle identifiers cross this boundary.
 final class DiagnosticHistory: @unchecked Sendable {
   enum Category: String, Codable, Sendable {
-    case inventory, layout, activation, selectedReturn, lifecycle, display
+    case inventory, layout, activation, selectedReturn, lifecycle, display, concealment
   }
   enum Outcome: String, Codable, Sendable {
     case started, completed, deferred, failed, cancelled, suspended, resumed, changed
@@ -17,6 +17,7 @@ final class DiagnosticHistory: @unchecked Sendable {
     case inputNotIdle, inputInterrupted, placementInterrupted, inventoryUnavailable, responseTimedOut
     case permissionDenied, identityChanged, scanIncomplete, budgetExceeded, displayUnavailable, unknown
     case controlPlacementRefused, unsafeConcealment, unsafeControlGeometry, sourceWindowUnavailable
+    case userReveal, environmentChange, geometryUnavailable, identityReview, operationFailure
   }
   enum StorageError: Error { case unavailable, malformed, newerSchema, oversized }
 
