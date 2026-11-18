@@ -1,0 +1,490 @@
+{
+  "reviewed_at": "2026-11-18T11:25:38.488367+03:00",
+  "previous_verified_cutoff": "2026-11-17T17:35:51.331989+03:00",
+  "local_raw_evidence": "/private/tmp/traynook-review-20261118",
+  "source_commit": "f4c53ff4baf3a095cba384987b58ccbb7887c749",
+  "original_running_build": {
+    "version": "1.0.0",
+    "build": 47,
+    "pid": 35488,
+    "uuid": "570C4AB9-0A2B-39F8-B0C3-6A8F3A4B9323",
+    "verified_by": "live process sample version/UUID matching the pre-rebuild package",
+    "native_readback": {
+      "timestamp": "2026-11-18T08:19:43Z",
+      "hiddenOwnersObserved": 7,
+      "hiddenSourceWindows": 14,
+      "visibleHiddenSourceWindows": 0,
+      "racedWindows": [],
+      "topologyChangedDuringReadback": false
+    }
+  },
+  "coverage": {
+    "query": "/usr/bin/log show --last 8d --info --style json --predicate 'process == \"TrayNook\" OR subsystem == \"io.github.mahenzon.TrayNook.dev\" OR subsystem == \"io.github.mahenzon.TrayNook\"'",
+    "unified": {
+      "records": 9473,
+      "first": "2026-11-16 22:05:25.802845+0300",
+      "last": "2026-11-18 11:15:12.033284+0300"
+    },
+    "unified_log_events": {
+      "records": 180,
+      "first": "2026-11-16 22:05:25.802845+0300",
+      "last": "2026-11-18 11:15:12.033284+0300"
+    },
+    "activity_events": {
+      "records": 9293,
+      "first": "2026-11-18 05:12:23.124417+0300",
+      "last": "2026-11-18 11:15:12.033021+0300"
+    },
+    "activity_kinds": {
+      "TCCAccessRequest() IPC": 9245,
+      "Loading Preferences From User CFPrefsD": 47,
+      "tcc_send_request_authorization() IPC": 1
+    },
+    "application": {
+      "records": 94,
+      "first": "2026-11-18 07:41:50.622980+0300",
+      "last": "2026-11-18 11:14:35.286732+0300"
+    },
+    "running_pid_log_events": {
+      "records": 124,
+      "first": "2026-11-17 17:35:01.530979+0300",
+      "last": "2026-11-18 11:15:12.033284+0300"
+    },
+    "since_cutoff_pid_log_events": {
+      "records": 119,
+      "first": "2026-11-18 07:41:50.622980+0300",
+      "last": "2026-11-18 11:15:12.033284+0300"
+    },
+    "daily": [
+      {
+        "day": "2026-11-16",
+        "records": 31,
+        "first": "2026-11-16 22:05:25.802845+0300",
+        "last": "2026-11-16 23:59:26.039512+0300",
+        "log_events": 31,
+        "activity_events": 0
+      },
+      {
+        "day": "2026-11-17",
+        "records": 30,
+        "first": "2026-11-17 00:03:14.673333+0300",
+        "last": "2026-11-17 17:35:12.029313+0300",
+        "log_events": 30,
+        "activity_events": 0
+      },
+      {
+        "day": "2026-11-18",
+        "records": 9412,
+        "first": "2026-11-18 05:12:23.124417+0300",
+        "last": "2026-11-18 11:15:12.033284+0300",
+        "log_events": 119,
+        "activity_events": 9293
+      }
+    ],
+    "history": {
+      "events": 772,
+      "first": "2026-11-16T11:48:57.739278+03:00",
+      "last": "2026-11-18T11:15:34.834006+03:00",
+      "bytes": 225552,
+      "since_previous_verification": 128,
+      "since_previous_first": "2026-11-17T17:42:09.609+03:00",
+      "since_previous_last": "2026-11-18T11:15:34.834+03:00",
+      "since_previous_counts": [
+        {
+          "category": "inventory",
+          "outcome": "deferred",
+          "reason": "scanIncomplete",
+          "operation": null,
+          "count": 33
+        },
+        {
+          "category": "inventory",
+          "outcome": "completed",
+          "reason": null,
+          "operation": null,
+          "count": 36
+        },
+        {
+          "category": "concealment",
+          "outcome": "changed",
+          "reason": "environmentChange",
+          "operation": null,
+          "count": 1
+        },
+        {
+          "category": "lifecycle",
+          "outcome": "suspended",
+          "reason": null,
+          "operation": null,
+          "count": 1
+        },
+        {
+          "category": "lifecycle",
+          "outcome": "resumed",
+          "reason": null,
+          "operation": null,
+          "count": 1
+        },
+        {
+          "category": "display",
+          "outcome": "changed",
+          "reason": null,
+          "operation": null,
+          "count": 54
+        },
+        {
+          "category": "layout",
+          "outcome": "started",
+          "reason": null,
+          "operation": "savedLayout",
+          "count": 1
+        },
+        {
+          "category": "layout",
+          "outcome": "completed",
+          "reason": null,
+          "operation": "savedLayout",
+          "count": 1
+        }
+      ]
+    },
+    "crashes": [
+      {
+        "root": "/Users/mahenzon/Library/Logs/DiagnosticReports",
+        "files": 34,
+        "matches": [],
+        "errors": []
+      },
+      {
+        "root": "/Library/Logs/DiagnosticReports",
+        "files": 61,
+        "matches": [],
+        "errors": []
+      }
+    ],
+    "gaps": [
+      "Eight-day query retains no matching records before November 16 22:05:25; older-day absence cannot establish health or inactivity.",
+      "Application logEvent coverage starts November 18 07:41:50; November 17 evening and earlier overnight application details are absent despite retained transition history.",
+      "9293 activityCreateEvent records are TCC/CoreFoundation activity metadata, not application outcome messages; they do not fill the application coverage gaps.",
+      "Local history starts November 16 and records transitions/rate-limited failures, not every poll; thirty-day retention cannot backfill earlier history.",
+      "Capture includes retained default/info, not debug. Private Metal payloads and framework-only backtraces cannot establish caller or user impact.",
+      "Observed one sleep/wake recovery is not controlled five-cycle acceptance or proof of prolonged health."
+    ]
+  },
+  "findings": {
+    "confirmed_new_product_defects": [],
+    "terminal_operation_failures": 0,
+    "expected_input_interruptions": 0,
+    "activation_or_selected_return_events": 0,
+    "sleep_recovery": {
+      "expected_reveal": "2026-11-18T09:15:10.198736+03:00",
+      "suspended": "2026-11-18T09:15:10.243065+03:00",
+      "resumed": "2026-11-18T10:11:08.050982+03:00",
+      "first_complete_inventory": "2026-11-18T10:11:29.755741+03:00",
+      "operation_started": "2026-11-18T10:11:29.904398+03:00",
+      "native_concealed": "2026-11-18 10:11:30.733694+0300",
+      "operation_completed": "2026-11-18T10:11:31.274817+03:00",
+      "resume_to_completion_seconds": 23.223835,
+      "complete_inventory_to_dispatch_seconds": 0.148657,
+      "already_revealed_inventory_wait_messages": 7,
+      "meaning": "One expected sleep safety reveal followed by automatic recovery; the incomplete post-wake scans delayed readiness, no dispatch occurred until complete inventory."
+    },
+    "fallbacks": {
+      "incomplete_native_unchanged_transitions": 6,
+      "slow_discovery_native_unchanged": 1,
+      "tolerated_incomplete_scan_messages": 2,
+      "menu_bar_row_messages": 53,
+      "history_display_events": 54,
+      "meaning": "Successful concealment fallbacks and display revalidation events, not independent failures."
+    },
+    "system_errors": [
+      {
+        "timestamp": "2026-11-18 10:11:30.753972+0300",
+        "sender": "Metal.framework",
+        "message": "Unable to open mach-O at path: <private> Error:2",
+        "caller_or_user_impact": "Unproven; framework-only backtrace does not identify TrayNook call site."
+      },
+      {
+        "timestamp": "2026-11-18 10:23:17.417007+0300",
+        "sender": "Metal.framework",
+        "message": "Unable to open mach-O at path: <private> Error:2",
+        "caller_or_user_impact": "Unproven; framework-only backtrace does not identify TrayNook call site."
+      },
+      {
+        "timestamp": "2026-11-18 10:54:01.720222+0300",
+        "sender": "Metal.framework",
+        "message": "Unable to open mach-O at path: <private> Error:2",
+        "caller_or_user_impact": "Unproven; framework-only backtrace does not identify TrayNook call site."
+      }
+    ],
+    "application_error_or_fault_records": 0,
+    "scan_failures": "33 sampled incomplete events include unavailable process owners and AX cannotComplete (-25204); no scan budget exhaustion in this interval. These are incomplete inventory reports, not 33 reveals."
+  },
+  "implementation": {
+    "product_code_changed": false,
+    "new_regressions_added": false,
+    "reason": "No new confirmed product defect or red-capable failing symptom. Current recovery and native stability guards match the successful captured episode; private OS messages cannot justify a speculative fix. Build 48 rebundles the verified current code with the development build number incremented.",
+    "code_correlation": [
+      "Sources/TrayNook/AppModel.swift:649 (incomplete-inventory native-stability fallback)",
+      "Sources/TrayNook/AppModel.swift:842 (sleep/session suspension and fresh resume)",
+      "Sources/TrayNook/AppModel.swift:915 (dispatch only after canEdit and recovery deadline)"
+    ]
+  },
+  "verification": {
+    "standard": {
+      "command": "Scripts/test.sh",
+      "passed": true,
+      "tests": 292,
+      "suites": 45,
+      "environment": "host access",
+      "sandbox_limit": "Initial unchanged loopback-server test failed with EPERM; host rerun passed."
+    },
+    "isolated_appkit": {
+      "checks": 87,
+      "runs": [
+        {
+          "suite": "BackgroundInventoryTests",
+          "tests": 7,
+          "passed": true
+        },
+        {
+          "suite": "AppModelInventoryTests",
+          "tests": 19,
+          "passed": true
+        },
+        {
+          "suite": "IdleInventoryTests",
+          "tests": 2,
+          "passed": true
+        },
+        {
+          "suite": "WindowMetadataReaderTests",
+          "tests": 9,
+          "passed": true
+        },
+        {
+          "suite": "MenuBarReorderTests",
+          "tests": 6,
+          "passed": true
+        },
+        {
+          "suite": "SavedPlacementEditingTests",
+          "tests": 1,
+          "passed": true
+        },
+        {
+          "suite": "LoginItemStatusTests",
+          "tests": 5,
+          "passed": true
+        },
+        {
+          "suite": "DisplayChangeTests",
+          "tests": 1,
+          "passed": true
+        },
+        {
+          "suite": "DetailReorderTests",
+          "tests": 4,
+          "passed": true
+        },
+        {
+          "suite": "ConcealmentRecoveryTests",
+          "tests": 33,
+          "passed": true
+        }
+      ]
+    },
+    "native_menu": {
+      "passed": true,
+      "variants": 2,
+      "checks_per_variant": 3
+    },
+    "native_boundary": {
+      "passed": true,
+      "cycles": 3
+    },
+    "native_movement": {
+      "passed": false,
+      "classification": "visible fixture space precondition",
+      "detail": "36-point disposable fixture not visible beside launcher; no item moved."
+    },
+    "native_placement": {
+      "passed": true,
+      "show_hide_cycles": 2,
+      "sentinel_samples": 118,
+      "revealed_samples": 0,
+      "unavailable_samples": 0,
+      "maximum_sample_gap_seconds": 0.025359166553243995,
+      "original_windows": 35,
+      "surviving_windows": 35
+    },
+    "native_cancellation": {
+      "passed": false,
+      "blocked_phase": "queued-down",
+      "classification": "physical input not idle during preparation",
+      "posted_down_up_recovery": [
+        0,
+        0,
+        0
+      ],
+      "detail": "No cancellation phase completed; remaining phases unverified. Safety guard retained."
+    },
+    "trusted_terminal_diagnostics": {
+      "accessibility": "granted",
+      "inventory": "complete",
+      "items": 18,
+      "incomplete_apps": 0,
+      "scan_milliseconds": 270,
+      "screen_recording": "not granted",
+      "fallback": "app icons"
+    },
+    "packaged_smoke": {
+      "passed": true,
+      "preserved_layout_and_history_bytes": true
+    },
+    "launched_build": {
+      "version": "1.0.0",
+      "build": 48,
+      "pid": 39745,
+      "launched_at": "2026-11-18T11:23:17.706+03:00",
+      "signing_authority": "TrayNook Dev",
+      "signature_deep_strict_verified": true,
+      "uuid": "570C4AB9-0A2B-39F8-B0C3-6A8F3A4B9323",
+      "uuid_matches_live_sample": true,
+      "unchanged_executable_uuid_expected": "Product source is unchanged; CFBundleVersion increments in the signed bundle Info.plist. Live sample independently reports version 1.0.0 (48).",
+      "readbacks": [
+        {
+          "exit_code": 0,
+          "timestamp": "2026-11-18T08:23:22Z",
+          "hiddenOwnersObserved": 7,
+          "hiddenSourceWindows": 14,
+          "visibleHiddenSourceWindows": 0,
+          "racedWindows": [],
+          "topologyChangedDuringReadback": false
+        },
+        {
+          "exit_code": 0,
+          "timestamp": "2026-11-18T08:23:25Z",
+          "hiddenOwnersObserved": 7,
+          "hiddenSourceWindows": 14,
+          "visibleHiddenSourceWindows": 0,
+          "racedWindows": [],
+          "topologyChangedDuringReadback": false
+        },
+        {
+          "exit_code": 0,
+          "timestamp": "2026-11-18T08:23:28Z",
+          "hiddenOwnersObserved": 7,
+          "hiddenSourceWindows": 14,
+          "visibleHiddenSourceWindows": 0,
+          "racedWindows": [],
+          "topologyChangedDuringReadback": false
+        },
+        {
+          "exit_code": 0,
+          "timestamp": "2026-11-18T08:23:32Z",
+          "hiddenOwnersObserved": 7,
+          "hiddenSourceWindows": 14,
+          "visibleHiddenSourceWindows": 0,
+          "racedWindows": [],
+          "topologyChangedDuringReadback": false
+        }
+      ],
+      "startup_log": {
+        "records": 259,
+        "log_events": 226,
+        "activity_events": 33,
+        "first": "2026-11-18 11:23:17.744724+0300",
+        "last": "2026-11-18 11:23:28.585975+0300",
+        "application_log_events": 15,
+        "errors_or_faults": 1,
+        "error_details": [
+          {
+            "timestamp": "2026-11-18 11:23:22.118037+0300",
+            "subsystem": "",
+            "message": "Unable to open mach-O at path: <private>  Error:2",
+            "sender": "Metal.framework",
+            "interpretation": "Private missing Mach-O path; no proven TrayNook caller or demonstrated user impact. Saved layout completed afterward and all four native readbacks are concealed."
+          }
+        ],
+        "application_errors_or_faults": 0
+      },
+      "layout_history": [
+        {
+          "category": "layout",
+          "operationID": "F9350ABF-2417-49E4-9925-015B2B8E6D18",
+          "timestamp": "2026-11-18T11:23:21.329219+03:00",
+          "operation": "savedLayout",
+          "outcome": "started"
+        },
+        {
+          "operationID": "F9350ABF-2417-49E4-9925-015B2B8E6D18",
+          "category": "layout",
+          "timestamp": "2026-11-18T11:23:22.539736+03:00",
+          "operation": "savedLayout",
+          "outcome": "completed"
+        }
+      ]
+    }
+  },
+  "preservation": {
+    "layout_bytes_preserved": false,
+    "layout_contents_preserved": true,
+    "pre_native_layout_bytes_preserved": true,
+    "history_prefix_preserved": true,
+    "history_mode": "0o600",
+    "history_bytes": 229069,
+    "layout_sha256": "d1d91d6d94250ef7c2a02f1002cdcd1e65943867e0731687a5f775a8d76d0c2f",
+    "history_sha256": "25f8425019e7a3e4b184060da0d90db7264e967d364db98400379323473c35db",
+    "smoke": {
+      "before": {
+        "layout.json": "d1d91d6d94250ef7c2a02f1002cdcd1e65943867e0731687a5f775a8d76d0c2f",
+        "diagnostic-history.jsonl": "df23ca206864ec4158c2896edcf1f511f4be6e3f0b1df29f7e7424194b8e254e"
+      },
+      "after": {
+        "layout.json": "d1d91d6d94250ef7c2a02f1002cdcd1e65943867e0731687a5f775a8d76d0c2f",
+        "diagnostic-history.jsonl": "df23ca206864ec4158c2896edcf1f511f4be6e3f0b1df29f7e7424194b8e254e"
+      },
+      "unchanged": true
+    },
+    "layout_serialization_note": "By the pre-native checkpoint, bytes differed only in JSON object key order; decoded layout, ordered items, placements, and row capacity match the original. Smoke and launch preserve the pre-native bytes. No saved data was restored or rewritten by repair tooling.",
+    "extended_local_retention_enabled": true,
+    "development_limits": {
+      "days": 30,
+      "bytes": 33554432
+    },
+    "public_default_limits": {
+      "days": 7,
+      "bytes": 1048576
+    },
+    "system_logging_retention_changed": false,
+    "logs_uploaded": false
+  },
+  "native_readback_method": {
+    "helper_source": "/private/tmp/traynook-review-20261118/readback.swift",
+    "helper_sha256": "a70c0ff39bfe7eaf1d17d820d7e7ffed5e008121767f22dbae5b6e182e444290",
+    "coverage": "optionAll bracketed around optionOnScreenOnly; visibility uses on-screen ID membership. All online displays, including offscreen x positions. Current display top row bands use TrayNook control heights when available, otherwise conservative 40-point bands. Row windows must be positive and at most twice row height.",
+    "limits": "Owner/window witness, not AX sibling identity. Missing/closed-owner windows are not proof of concealment. Off-row windows may be stale display duplicates or secondary panels, not exact attributed sources. Snapshots are sequential, not atomic; changed owner/frame/presence and topology are reported as races. No AX/input operations.",
+    "saved_hidden_owners": 12,
+    "observed_hidden_owners": 7,
+    "running_hidden_owners_without_menu_row_window": [
+      "com.openai.codex"
+    ],
+    "saved_hidden_owners_not_running": [
+      "com.anthropic.claudefordesktop",
+      "local.markdown-viewer.electron-demo-16365588",
+      "ru.yandex.alice.search.concept.p1",
+      "ru.yandex.desktop.telemost"
+    ],
+    "excluded_off_row_windows": 2,
+    "excluded_oversized_windows": 1,
+    "initial_inconclusive_capture": "readback-before-inconclusive.json preserves initial omitted-onscreen-flag uncertainty; corrected readback uses explicit optionOnScreenOnly membership and brackets owner/frame/topology."
+  },
+  "remaining_limits": [
+    "Movement requires visible disposable fixture space; cancellation requires idle physical input. Neither refusal was bypassed.",
+    "Private Metal missing-path errors recur at startup without an attributable TrayNook caller or demonstrated user impact; not declared fixed.",
+    "One organic sleep/wake recovery is observed; controlled five-cycle sleep/wake, monitor reconnect, interaction with a missing owner window, and prolonged build48 idle acceptance remain unverified.",
+    "Native readbacks witness observed owners/windows on current menu rows, not AX sibling identity or absence of unseen/closed sources.",
+    "No new production change means no new regression was invented; existing focused lifecycle, retention, geometry, and return regressions were rerun."
+  ]
+}

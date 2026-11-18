@@ -1,5 +1,108 @@
 # TrayNook log review and repair plan
 
+## November 18 follow-up: build 48
+
+Evidence was collected before quitting or rebuilding. The live process was
+**1.0.0 (47)**, PID **35488**, launched November 17 at 17:35:01 Moscow. Its sample
+and package share UUID `570C4AB9-0A2B-39F8-B0C3-6A8F3A4B9323`. Build 45 in the
+request was historical. The comparison cutoff is the final idle-native check at
+**November 17 17:35:51.331989 Moscow**, rather than the earlier build-47 launch.
+Pre-quit native readback found seven hidden owners and 14 current-menu-row
+windows, all concealed.
+
+### Actual coverage and classification
+
+- **Local history:** 772 events, **November 16 11:48:57–November 18 11:15:34
+  Moscow**, 225,552 bytes. The **128** events after the cutoff span November 17
+  **17:42:09** through November 18 **11:15:34**: 33 sampled incomplete inventories,
+  36 complete inventories, 54 display events, one concealment transition, one
+  suspend/resume pair, and one saved-layout start/completion pair. There are
+  **zero terminal operation failures, activations, selected returns, or recorded
+  input interruptions** in this interval. Sampled transitions do not count all
+  scans, and thirty-day retention cannot backfill history before November 16.
+- **Unified logs:** the eight-day process/subsystem query returned **9,473
+  records**, November 16 **22:05:25** through November 18 **11:15:12**. Only **180**
+  are log messages; **9,293** are TCC/CoreFoundation activity records. Daily
+  message totals are 31, 30, and 119 for November 16–18. Application messages
+  cover only November 18 **07:41:50–11:14:35** (94 records). The live PID has 124
+  retained messages, 119 after the cutoff. There are no matching query records
+  before November 16 22:05 within the requested eight-day window. Earlier sparse
+  system messages and activity metadata do not fill the missing application
+  coverage, including November 17 evening and earlier overnight details.
+- **One recovered sleep episode:** the expected environment reveal at
+  **09:15:10.199** precedes suspension. Resume at **10:11:08.051** is followed by
+  seven already-revealed inventory waits, the first complete inventory at
+  **10:11:29.756**, dispatch at **10:11:29.904**, native concealment at
+  **10:11:30.734**, and completion at **10:11:31.275**. Resume-to-completion is
+  **23.224 seconds**; complete-inventory-to-dispatch is **0.149 seconds**. These
+  are one expected safety reveal and one successful recovery. Current lifecycle
+  and fresh-inventory gates match the trace; incomplete wake scans cannot
+  authorize movement. Six unchanged-native incomplete-scan transitions and one
+  slow-discovery fallback retain concealment successfully. Two tolerated partial
+  scans, 53 menu-bar-row messages, and 54 history display events are observations,
+  not separate failures.
+- **System messages and crashes:** three process-attributed Metal errors at
+  **10:11:30.754**, **10:23:17.417**, and **10:54:01.720** report a private missing
+  Mach-O path. Framework-only backtraces establish neither a TrayNook caller nor
+  user impact. No application Error/Fault messages occur. Both standard crash
+  directories, including archive subdirectories, contain **95 files** with no
+  TrayNook filename/header matches and no read errors (first 8 KiB inspected).
+
+### Verification and delivery
+
+No new product defect or failing behavioral reproduction was established.
+Product code, safety guards, timeouts, and logging policy remain unchanged;
+no speculative fix or duplicate regression was added. Build **48** increments
+the development bundle version while retaining the verified current code.
+
+The standard suite passes **292 tests in 45 suites** with host access; its initial
+sandbox run refused the unchanged loopback-server bind with `EPERM`. Ten
+sequential isolated AppKit runs pass **87 checks**. Both native-menu notification
+variants pass three checks each; native boundary passes three cycles. Selected
+placement passes two show/hide cycles with **118 sentinel samples, zero reveals
+or unavailable samples**, and all **35 original windows surviving cleanup**.
+Movement stops before input because its 36-point fixture lacks visible space.
+Cancellation stops during queued-down preparation because physical input is not
+idle, posting **0 down / 0 up / 0 recovery events**; no phase completes. These
+are blocked checks. Trusted-Terminal diagnostics report Accessibility granted,
+complete inventory, 18 items, zero incomplete apps, and Screen Recording not
+granted; app-icon fallback remains available.
+
+Signed development build **1.0.0 (48)** passes packaged smoke and launches at
+**11:23:17.706 Moscow**, PID **39745**. The existing **TrayNook Dev** certificate
+and deep/strict signature verification pass. The live sample reports build 48
+and the package's UUID; its unchanged executable UUID is expected because only
+the bundle build number changed. Four native readbacks three seconds apart find
+**seven hidden owners, 14 current-row windows, zero visible**, with no detected
+owner/frame/presence/topology races. The startup capture spans
+**11:23:17.745–11:23:28.586**, with 226 log messages and 33 activity records.
+It contains **one private Metal Mach-O error** at **11:23:22.118** and **zero
+application Error/Fault messages**. Saved layout completes at **11:23:22.539**,
+followed by concealed native readbacks. This recurrence is not declared fixed.
+
+The native witness brackets explicit onscreen-ID membership with `.optionAll`
+reads and uses current online display rows. An initial omitted-onscreen-flag
+capture was retained as inconclusive, then corrected with this explicit query.
+Off-row secondary/stale windows and an oversized panel are excluded and reported
+separately; all were offscreen. The witness covers observed owner/windows,
+not AX sibling identities. Four saved hidden owners are closed, and running
+Codex has no observed menu-row window; their absence does not prove concealment.
+
+Layout contents, item order, placements, and row capacity are preserved. By the
+pre-native checkpoint only JSON object key order differed from the original;
+smoke and launch preserve those checkpoint bytes. Smoke leaves history bytes
+unchanged; launch preserves the entire original history prefix and mode `0600`.
+`ExtendedLocalDiagnosticHistory` stays enabled at **30 days/32 MiB** on this Mac;
+public defaults remain **seven days/1 MiB**. No log upload or system-wide
+retention change occurred. Raw captures remain local under
+`/private/tmp/traynook-review-20261118`; the
+[sanitized receipt](evidence/2026-11-18-build48-log-followup.json) records the
+coverage, readback method, outcomes, and preservation checks.
+
+Controlled five-cycle sleep/wake, monitor reconnect, remaining cancellation
+phases, and prolonged build-48 idle acceptance remain unverified. The observed
+organic wake recovery is useful evidence, not replacement hardware acceptance.
+
 ## November 17 afternoon follow-up: build 47
 
 **Idle native recheck at 17:34 Moscow:** selected placement now passes two
