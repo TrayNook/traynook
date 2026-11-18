@@ -481,10 +481,105 @@
     "initial_inconclusive_capture": "readback-before-inconclusive.json preserves initial omitted-onscreen-flag uncertainty; corrected readback uses explicit optionOnScreenOnly membership and brackets owner/frame/topology."
   },
   "remaining_limits": [
-    "Movement requires visible disposable fixture space; cancellation requires idle physical input. Neither refusal was bypassed.",
+    "Movement still requires visible fixture space. Idle recheck passes seven cancellation phases, then fresh inventory blocks the first tested return sequence before input; later phases remain unverified.",
     "Private Metal missing-path errors recur at startup without an attributable TrayNook caller or demonstrated user impact; not declared fixed.",
     "One organic sleep/wake recovery is observed; controlled five-cycle sleep/wake, monitor reconnect, interaction with a missing owner window, and prolonged build48 idle acceptance remain unverified.",
     "Native readbacks witness observed owners/windows on current menu rows, not AX sibling identity or absence of unseen/closed sources.",
     "No new production change means no new regression was invented; existing focused lifecycle, retention, geometry, and return regressions were rerun."
-  ]
+  ],
+  "native_idle_recheck": {
+    "checked_at": "2026-11-18T11:37:12.628703+03:00",
+    "local_raw_evidence": "/private/tmp/traynook-idle-native-20261118",
+    "scope": "Retry only the previously blocked movement and cancellation checks with idle user input; no product change, rebuild, or build increment.",
+    "movement": {
+      "passed": false,
+      "classification": "visible fixture space precondition",
+      "detail": "The 36-point disposable fixture is not visible beside launcher; no item moved."
+    },
+    "cancellation": {
+      "passed": false,
+      "passed_phases": [
+        "queued-down",
+        "delivered-down",
+        "delivered-up",
+        "queued-motion",
+        "queued-up-motion",
+        "motion-down",
+        "motion-up"
+      ],
+      "blocked_phase": "return-motion-down",
+      "classification": "fresh inventoryUnavailable during tested restoreActivation",
+      "tested_return_sequence_down_up_recovery": [
+        0,
+        0,
+        0
+      ],
+      "detail": "Selected-source promotion completed before return-sequence counters reset; zero counts apply only to the tested return sequence. Remaining return and terminal no-space checks are unverified; guards unchanged."
+    },
+    "running_build": 48,
+    "pid": 95356,
+    "uuid": "570C4AB9-0A2B-39F8-B0C3-6A8F3A4B9323",
+    "uuid_matches_package": true,
+    "launched_at": "2026-11-18T11:34:45.870+03:00",
+    "readbacks": [
+      {
+        "exit_code": 0,
+        "timestamp": "2026-11-18T08:35:18Z",
+        "hiddenOwnersObserved": 7,
+        "hiddenSourceWindows": 14,
+        "visibleHiddenSourceWindows": 0,
+        "racedWindows": [],
+        "topologyChangedDuringReadback": false
+      },
+      {
+        "exit_code": 0,
+        "timestamp": "2026-11-18T08:35:21Z",
+        "hiddenOwnersObserved": 7,
+        "hiddenSourceWindows": 14,
+        "visibleHiddenSourceWindows": 0,
+        "racedWindows": [],
+        "topologyChangedDuringReadback": false
+      },
+      {
+        "exit_code": 0,
+        "timestamp": "2026-11-18T08:35:25Z",
+        "hiddenOwnersObserved": 7,
+        "hiddenSourceWindows": 14,
+        "visibleHiddenSourceWindows": 0,
+        "racedWindows": [],
+        "topologyChangedDuringReadback": false
+      },
+      {
+        "exit_code": 0,
+        "timestamp": "2026-11-18T08:35:28Z",
+        "hiddenOwnersObserved": 7,
+        "hiddenSourceWindows": 14,
+        "visibleHiddenSourceWindows": 0,
+        "racedWindows": [],
+        "topologyChangedDuringReadback": false
+      }
+    ],
+    "startup_log": {
+      "records": 298,
+      "log_messages": 215,
+      "activity_records": 83,
+      "first": "2026-11-18 11:34:45.914410+0300",
+      "last": "2026-11-18 11:36:01.912678+0300",
+      "errors_or_faults": 1,
+      "application_errors_or_faults": 0,
+      "error_details": [
+        {
+          "timestamp": "2026-11-18 11:34:47.113133+0300",
+          "sender": "/System/Library/Frameworks/Metal.framework/Versions/A/Metal",
+          "message": "Unable to open mach-O at path: <private>  Error:2"
+        }
+      ]
+    },
+    "saved_layout_bytes_preserved": true,
+    "history_prefix_preserved": true,
+    "history_mode": "0o600",
+    "extended_local_retention_preserved": true,
+    "input_released_to_user": true,
+    "supersedes": "Initial queued-down physical-input blocker is superseded by seven passing phases and an inventory refusal in the first tested return phase. Movement remains blocked by space."
+  }
 }

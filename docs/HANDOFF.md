@@ -7,6 +7,17 @@ Updated 2026-11-18. Build 18's measurements are in
 
 ## Current state
 
+- **Idle native recheck (2026-11-18, 11:34 Moscow):** cancellation now passes
+  seven phases with user input idle, then refuses fresh inventory in the first
+  tested return phase before posting return-sequence input. The earlier source
+  promotion ran before those counters reset. Movement still lacks visible
+  fixture space. Build **48** relaunched at **11:34:45** with matching live
+  version/UUID; four readbacks find seven hidden owners, 14 menu-row windows,
+  **zero visible**. Saved layout bytes, history prefix, and extended retention
+  survive. Input was released after checks stopped and concealment was verified.
+  No code, build number, or safety guard changed. See the
+  [recheck receipt](evidence/2026-11-18-build48-log-followup.json)
+  (`native_idle_recheck`).
 - **November 18 log follow-up:** the actual running app was **47**, verified by
   its live version and UUID. Since the final November 17 check, 128 local-history
   events show one expected sleep reveal followed by successful automatic recovery,

@@ -2,6 +2,24 @@
 
 ## November 18 follow-up: build 48
 
+**Idle native recheck at 11:34 Moscow:** cancellation now passes queued-down,
+delivered-down/up, queued-motion, queued-up-motion, and motion-down/up. The first
+tested return (`return-motion-down`) then refuses unavailable fresh inventory,
+with **0 down / 0 up / 0 recovery posts** in that return sequence. Selected-source
+promotion completed before those counters reset, so these zeroes do not describe
+all input in the harness. Remaining return and terminal no-space checks stay
+unverified. Movement still refuses its unavailable 36-point visible fixture,
+without moving an item. No guards or product code changed. This supersedes the
+physical-input blocker recorded below. Build **48** relaunched at **11:34:45.870**,
+PID **95356**, with matching live version and UUID. Four native readbacks find
+seven hidden owners, 14 current-row windows, zero visible, with no detected
+races. Saved layout bytes, history prefix/mode `0600`, and extended retention
+survive. Startup has one recurring private Metal Mach-O error and zero
+application Error/Fault messages. Input was released after checks and readbacks.
+Raw evidence is local under `/private/tmp/traynook-idle-native-20261118`; the
+receipt includes `native_idle_recheck`. This check adds no controlled sleep,
+monitor-reconnect, or prolonged-idle acceptance.
+
 Evidence was collected before quitting or rebuilding. The live process was
 **1.0.0 (47)**, PID **35488**, launched November 17 at 17:35:01 Moscow. Its sample
 and package share UUID `570C4AB9-0A2B-39F8-B0C3-6A8F3A4B9323`. Build 45 in the
