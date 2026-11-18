@@ -1,12 +1,28 @@
-# TrayNook: build 47, retained reveal causes and verified concealment
+# TrayNook: build 48, verified log follow-up and concealment
 
-Updated 2026-11-17. Build 18's measurements are in
+Updated 2026-11-18. Build 18's measurements are in
 [MVP_REPORT.md](MVP_REPORT.md); build 19's decisions are in
 [ADR 0009](adr/0009-hidden-pointer-sibling-keys-and-session-image-cache.md) and
 [ADR 0010](adr/0010-geometry-follows-the-active-menu-bar-row.md).
 
 ## Current state
 
+- **November 18 log follow-up:** the actual running app was **47**, verified by
+  its live version and UUID. Since the final November 17 check, 128 local-history
+  events show one expected sleep reveal followed by successful automatic recovery,
+  with no terminal operation failure. Recovery completed 23.2 seconds after wake;
+  dispatch followed the first complete inventory by 0.15 seconds. No new product
+  defect was confirmed, so build **48** retains the verified product code.
+  **292 standard tests**, **87 isolated AppKit checks**, both native-menu variants,
+  boundary, selected placement, and packaged smoke pass. Movement lacks fixture
+  space; cancellation refuses physical input before posting events. Signed
+  `TrayNook Dev` **1.0.0 (48)** launched at **11:23:17 Moscow** with matching live
+  version/UUID. Four readbacks find seven hidden owners, 14 current-row windows,
+  **zero visible**. One private Metal Mach-O error recurs at startup without a
+  proven caller or impact; saved layout completes afterward. Layout contents/order,
+  original history prefix, permissions, and extended local retention are preserved.
+  See [coverage and limits](LOG_REPAIR_PLAN.md#november-18-follow-up-build-48)
+  and the [receipt](evidence/2026-11-18-build48-log-followup.json).
 - **Idle native recheck (2026-11-17, 17:34 Moscow):** with user input idle,
   selected placement passes two show/hide cycles and 142 sentinel samples with
   zero reveals; all 17 original windows survive cleanup. Cancellation passes
@@ -238,10 +254,11 @@ Updated 2026-11-17. Build 18's measurements are in
   WindowServer confirmed the real BroGlow source left of Tunnelblick, matching
   their saved order. The separate disposable `--reorder` check compiled but
   stopped before posting input because its harness lacks Accessibility permission.
-- Development app: `dist/TrayNook Dev.app`, **1.0.0 (47)**, signed with the
+- Development app: `dist/TrayNook Dev.app`, **1.0.0 (48)**, signed with the
   user's `TrayNook Dev` certificate (README "Development signing and
-  permissions"). The unit suite, packaged smoke test, and opt-in GUI preview
-  snapshots pass, including minimum Settings width and row capacities 1/30.
+  permissions"). Current verification is listed above. Earlier opt-in GUI preview
+  snapshots cover minimum Settings width and row capacities 1/30; they were not
+  rerun in the November 18 log follow-up.
 - **Settings responsibilities (2026-10-29):** Layout is the sole home of the
   interactive preview and row capacity. Item details can collapse while retaining
   names, statuses, placement pickers, Retry, Forget, and row handles. Reset Layout
@@ -393,7 +410,7 @@ action. `.optionAll` is required to find offscreen windows.
 
 ```sh
 Scripts/test.sh
-TRAYNOOK_DEV_SIGNING_IDENTITY='TrayNook Dev' TRAYNOOK_BUILD=47 Scripts/build-app.sh
+TRAYNOOK_DEV_SIGNING_IDENTITY='TrayNook Dev' TRAYNOOK_BUILD=48 Scripts/build-app.sh
 Scripts/smoke-test.sh
 Scripts/test-native-cancellation.sh --compile-only
 Scripts/test-native-movement.sh --compile-only
