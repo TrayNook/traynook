@@ -1,3 +1,4 @@
+import Foundation
 import InventoryIdentityCore
 import Testing
 
@@ -54,16 +55,27 @@ struct LayoutFallbackTests {
     #expect(warnings == ["Refusing app: placement failed"])
   }
 
-  @Test("Optional Menu Bar order failure preserves completed concealment")
-  func orderFailureDoesNotBlockConcealment() async throws {
+  @Test("Optional Menu Bar order failure is recorded separately and preserves completed concealment",
+    arguments: [NativeMenuActionError.responseTimedOut, .inventoryUnavailable])
+  func orderFailureDoesNotBlockConcealment(_ error: NativeMenuActionError) async throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent("traynook-order-history-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let history = DiagnosticHistory(url: directory.appendingPathComponent("history.jsonl"))
     var hidden = false
-    let warnings = try await AppModel.applyPlacementsWithFallback([], move: { _ in false },
+    let warnings = try await AppModel.applyPlacementsWithFallback([], diagnosticHistory: history, move: { _ in false },
       refresh: {}, repairBoundary: {}, conceal: { hidden = true }, reorder: {
         #expect(hidden)
-        throw AppError.message("Visible app rejected ordering")
+        throw error
       })
     #expect(hidden)
-    #expect(warnings == ["Visible app rejected ordering"])
+    #expect(warnings == [error.localizedDescription])
+    let events = try await history.read()
+    try #require(events.count == 1)
+    let event = events[0]
+    #expect(event.category == .layout)
+    #expect(event.operation == .menuBarOrder)
+    #expect(event.outcome == (error == .inventoryUnavailable ? .deferred : .failed))
+    #expect(event.reason == (error == .inventoryUnavailable ? .inventoryUnavailable : .responseTimedOut))
   }
 
   @Test("Typed transient or uncertain-delivery errors are never downgraded to source warnings",

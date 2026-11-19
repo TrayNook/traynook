@@ -398,10 +398,21 @@ final class AppModel: ObservableObject {
 
   func handleSlowInventory() async {
     guard scanTask != nil else { return }
-    await verifyConcealmentDuringInventoryFailure(requiringScan: true)
+    await verifyConcealmentDuringInventoryFailure(.discoveryDeadline)
   }
 
-  private func verifyConcealmentDuringInventoryFailure(requiringScan: Bool = false) async {
+  private enum InventoryObservationFailure: String {
+    case discoveryDeadline = "discovery exceeded 3 s"
+    case staleSnapshot = "inventory snapshot older than 3 s"
+    case nativeInspectionUnavailable = "native window inspection unavailable"
+  }
+
+  private static var unverifiedInventoryRevealMessage: String {
+    L("Menu-bar inventory could not be verified. Items are revealed until a fresh scan completes.")
+  }
+
+  private func verifyConcealmentDuringInventoryFailure(_ failure: InventoryObservationFailure) async {
+    let requiringScan = failure == .discoveryDeadline
     guard !Task.isCancelled, (!requiringScan || scanTask != nil), concealed, !busy else { return }
     let generation = scanGeneration
     let revision = observationRevision
@@ -425,14 +436,18 @@ final class AppModel: ObservableObject {
     }
     if granted, Self.canRetainConcealment(lastVerified: baseline, current: current, unsafeScans: unsafeScans) {
       message = NativeMenuActionError.inventoryUnavailable.localizedDescription
-      modelLog.notice("discovery exceeded 3 s with unchanged native sources; keeping items concealed")
+      modelLog.notice("\(failure.rawValue, privacy: .public) with unchanged native sources; keeping items concealed")
       return
     }
     revealForInventoryRecovery()
-    message = granted
-      ? L("Discovery is taking too long. Items are revealed until a fresh scan completes.")
-      : L("Grant Accessibility to discover and organize menu-bar items.")
-    modelLog.error("revealed: discovery exceeded 3 s")
+    if !granted {
+      message = L("Grant Accessibility to discover and organize menu-bar items.")
+    } else if failure == .discoveryDeadline {
+      message = L("Discovery is taking too long. Items are revealed until a fresh scan completes.")
+    } else {
+      message = Self.unverifiedInventoryRevealMessage
+    }
+    modelLog.error("revealed: \(failure.rawValue, privacy: .public)")
   }
 
   static func canRetainConcealment(lastVerified: [StatusWindowState]?, current: [StatusWindowState]?,
@@ -465,7 +480,7 @@ final class AppModel: ObservableObject {
     guard Date().timeIntervalSince(snapshot.capturedAt) <= 3 else {
       recordInventoryDiagnostic(snapshot)
       scanComplete = false
-      if concealed { await verifyConcealmentDuringInventoryFailure() }
+      if concealed { await verifyConcealmentDuringInventoryFailure(.staleSnapshot) }
       else { message = NativeMenuActionError.inventoryUnavailable.localizedDescription }
       return false
     }
@@ -482,13 +497,18 @@ final class AppModel: ObservableObject {
     }
     let geometryUnavailable = L("Menu-bar geometry could not be verified. Items are revealed; the saved layout is applied again shortly.")
     let inventoryUnavailable = NativeMenuActionError.inventoryUnavailable.localizedDescription
-    guard let inspection, Date().timeIntervalSince(snapshot.capturedAt) <= 3 else {
+    let isFresh = Date().timeIntervalSince(snapshot.capturedAt) <= 3
+    guard let inspection, isFresh else {
       scanComplete = false
-      if concealed { await verifyConcealmentDuringInventoryFailure() }
-      else { message = inventoryUnavailable }
+      if concealed {
+        await verifyConcealmentDuringInventoryFailure(isFresh ? .nativeInspectionUnavailable : .staleSnapshot)
+      } else {
+        message = inventoryUnavailable
+      }
       return false
     }
-    if message == geometryUnavailable || message == inventoryUnavailable { message = nil }
+    if message == geometryUnavailable || message == inventoryUnavailable
+      || message == Self.unverifiedInventoryRevealMessage { message = nil }
     applyInventory(prepared, inspection: inspection)
     return true
   }
@@ -1074,7 +1094,8 @@ final class AppModel: ObservableObject {
             var failedSource: ClassifiedSourceItem?
             var deferredWarnings: [String] = []
             let batchWarnings = try await Self.applyIndividualPlacementsWithFallback(
-              requested.items.filter { keys.contains($0.id) }, move: { saved in
+              requested.items.filter { keys.contains($0.id) }, diagnosticHistory: self.diagnosticHistory,
+              move: { saved in
               failedSource = nil
               try Task.checkCancellation()
               guard let item = self.liveItem(saved.id), self.isManageable(item) else { return false }
@@ -1171,10 +1192,12 @@ final class AppModel: ObservableObject {
   }
 
   static func applyIndividualPlacementsWithFallback(_ placements: [SavedItem],
+    diagnosticHistory: DiagnosticHistory = .shared,
     move: (SavedItem) async throws -> Bool, refresh: () async throws -> Void,
     verifyConcealed: () throws -> Void, reorder: () async throws -> Void) async throws -> [String] {
     try verifyConcealed()
-    return try await applyPlacementsWithFallback(placements, move: move, refresh: refresh,
+    return try await applyPlacementsWithFallback(placements, diagnosticHistory: diagnosticHistory,
+      move: move, refresh: refresh,
       repairBoundary: { try verifyConcealed() }, conceal: { try verifyConcealed() }, reorder: reorder)
   }
 
@@ -1260,7 +1283,7 @@ final class AppModel: ObservableObject {
     let placements = layout.items.filter { $0.placement != .menuBar }
       + layout.items.filter { $0.placement == .menuBar }
     var failedSource: ClassifiedSourceItem?
-    let warnings = try await Self.applyPlacementsWithFallback(placements,
+    let warnings = try await Self.applyPlacementsWithFallback(placements, diagnosticHistory: diagnosticHistory,
       move: { saved in
         failedSource = nil
         guard let item = self.liveItem(saved.id), self.isManageable(item) else { return false }
@@ -1317,6 +1340,7 @@ final class AppModel: ObservableObject {
   }
 
   static func applyPlacementsWithFallback(_ placements: [SavedItem],
+    diagnosticHistory: DiagnosticHistory = .shared,
     move: (SavedItem) async throws -> Bool,
     refresh: () async throws -> Void,
     repairBoundary: () async throws -> Void,
@@ -1353,7 +1377,12 @@ final class AppModel: ObservableObject {
     try Task.checkCancellation()
     do { try await reorder() }
     catch is CancellationError { throw CancellationError() }
-    catch { warnings.append(error.localizedDescription) }
+    catch {
+      diagnosticHistory.record(.layout,
+        outcome: NativeMenuBarController.shouldRetrySelectedReturn(after: error) ? .deferred : .failed,
+        reason: NativeMenuBarController.diagnosticReason(error), operation: .menuBarOrder)
+      warnings.append(error.localizedDescription)
+    }
     return warnings
   }
 

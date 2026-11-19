@@ -9,6 +9,9 @@ import Testing
   .enabled(if: ProcessInfo.processInfo.environment["TRAYNOOK_APPKIT_TESTS"] == "1"))
 @MainActor
 struct BackgroundInventoryTests {
+  private let unverifiedInventoryRevealMessage =
+    L("Menu-bar inventory could not be verified. Items are revealed until a fresh scan completes.")
+
   @Test("Metadata timeouts reveal safely, preserve the layout, and allow a later healthy inventory",
     arguments: [false, true])
   func metadataTimeoutRecovers(concealed: Bool) async throws {
@@ -25,8 +28,8 @@ struct BackgroundInventoryTests {
     #expect(!model.scanComplete)
     #expect(!model.canEdit)
     #expect((model.reapplyNotBefore != nil) == concealed)
-    #expect(model.message != nil)
-    if !concealed { #expect(model.message == NativeMenuActionError.inventoryUnavailable.localizedDescription) }
+    #expect(model.message == (concealed ? unverifiedInventoryRevealMessage
+      : NativeMenuActionError.inventoryUnavailable.localizedDescription))
     #expect(model.layout == saved)
     #expect(model.items == originalItems)
 
@@ -50,20 +53,25 @@ struct BackgroundInventoryTests {
     #expect(model.layout.items.first { $0.id == "example.baseline" }?.placement == .dropdown)
   }
 
-  @Test("Expired inventories never request targeted metadata or replace the accepted layout")
-  func expiredInventoryIsDiscardedBeforeInspection() async throws {
+  @Test("Expired inventories never request targeted metadata or replace the accepted layout",
+    arguments: [false, true])
+  func expiredInventoryIsDiscardedBeforeInspection(concealed: Bool) async throws {
     let fixture = try await InventoryFixture()
     defer { fixture.close() }
     let saved = fixture.model.layout
     let originalItems = fixture.model.items
+    fixture.model.concealed = concealed
     let expired = fixture.begin(extra: "example.obsolete", capturedAt: .distantPast)
     #expect(try await finish(expired) == false)
     #expect(fixture.load.calls == 0)
     #expect(fixture.model.items == originalItems)
     #expect(fixture.model.layout == saved)
+    #expect(!fixture.model.concealed)
     #expect(!fixture.model.scanComplete)
     #expect(!fixture.model.canEdit)
-    #expect(fixture.model.reapplyNotBefore == nil)
+    #expect((fixture.model.reapplyNotBefore != nil) == concealed)
+    #expect(fixture.model.message == (concealed ? unverifiedInventoryRevealMessage
+      : NativeMenuActionError.inventoryUnavailable.localizedDescription))
   }
 
   @Test("A delayed read publishes neither new items nor layout until its result is accepted")
