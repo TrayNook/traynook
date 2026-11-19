@@ -1,0 +1,780 @@
+{
+  "reviewed_at": "2026-11-19T22:52:56.460838+03:00",
+  "previous_verified_cutoff": "2026-11-18T11:37:12.628703+03:00",
+  "last_verified_native_readback_at": "2026-11-19T22:50:48+03:00",
+  "source_base_commit": "dfd15a20c1981f91c910a2f99feba391fb819e99",
+  "local_raw_evidence": "/private/tmp/traynook-review-20261119.4NkJk4",
+  "original_running_build": {
+    "version": "1.0.0",
+    "build": 48,
+    "pid": 95356,
+    "launched_at": "2026-11-18T11:34:45+03:00",
+    "uuid": "570C4AB9-0A2B-39F8-B0C3-6A8F3A4B9323",
+    "live_version_and_uuid_matched_package": true
+  },
+  "coverage": {
+    "history_captured_at": "2026-11-19T22:38:49+03:00",
+    "history": {
+      "count": 2163,
+      "first": "2026-11-16T11:48:57.739278+03:00",
+      "last": "2026-11-19T22:23:29.898498+03:00",
+      "bytes": 476075,
+      "file_order_timestamp_inversions": 0,
+      "after_cutoff": {
+        "count": 1354,
+        "first": "2026-11-18T11:38:45.327850+03:00",
+        "last": "2026-11-19T22:23:29.898498+03:00",
+        "counts": [
+          {
+            "category": "display",
+            "outcome": "changed",
+            "count": 969
+          },
+          {
+            "category": "inventory",
+            "outcome": "completed",
+            "count": 188
+          },
+          {
+            "category": "inventory",
+            "outcome": "deferred",
+            "reason": "scanIncomplete",
+            "count": 141
+          },
+          {
+            "category": "layout",
+            "outcome": "started",
+            "operation": "savedLayout",
+            "count": 20
+          },
+          {
+            "category": "layout",
+            "outcome": "completed",
+            "operation": "savedLayout",
+            "count": 14
+          },
+          {
+            "category": "concealment",
+            "outcome": "changed",
+            "reason": "geometryUnavailable",
+            "count": 7
+          },
+          {
+            "category": "concealment",
+            "outcome": "changed",
+            "reason": "inventoryUnavailable",
+            "count": 6
+          },
+          {
+            "category": "layout",
+            "outcome": "deferred",
+            "reason": "inputNotIdle",
+            "operation": "savedLayout",
+            "count": 4
+          },
+          {
+            "category": "layout",
+            "outcome": "deferred",
+            "reason": "inventoryUnavailable",
+            "operation": "savedLayout",
+            "count": 2
+          },
+          {
+            "category": "concealment",
+            "outcome": "changed",
+            "reason": "environmentChange",
+            "count": 1
+          },
+          {
+            "category": "lifecycle",
+            "outcome": "suspended",
+            "count": 1
+          },
+          {
+            "category": "lifecycle",
+            "outcome": "resumed",
+            "count": 1
+          }
+        ],
+        "longest_gap": {
+          "from": "2026-11-19T00:32:15.382383+03:00",
+          "to": "2026-11-19T11:41:11.689611+03:00",
+          "seconds": 40136.307228
+        },
+        "sampled_incomplete_inventories": 141,
+        "inventory_budget_exhaustions": 0,
+        "sampled_scan_failure_kinds": [
+          {
+            "operation": "message",
+            "error_code": -25204,
+            "count": 135
+          },
+          {
+            "operation": "ownerUnavailable",
+            "error_code": null,
+            "count": 24
+          },
+          {
+            "operation": "actions",
+            "error_code": -25201,
+            "count": 2
+          },
+          {
+            "operation": "message",
+            "error_code": -25201,
+            "count": 2
+          },
+          {
+            "operation": "actions",
+            "error_code": -25204,
+            "count": 1
+          }
+        ],
+        "reveals": 14,
+        "nonsleep_reveals": 13,
+        "nonsleep_reveal_to_completion_range_seconds": [
+          4.301069,
+          35.508688
+        ],
+        "operations": {
+          "started": 20,
+          "completed": 14,
+          "input_not_idle": 4,
+          "inventory_unavailable": 2,
+          "activation": 0,
+          "selected_return": 0,
+          "top_level_failed": 0
+        },
+        "sleep_recovery": {
+          "suspended": "2026-11-18T21:09:08.446625+03:00",
+          "resumed": "2026-11-18T22:02:51.937260+03:00",
+          "first_complete_inventory": "2026-11-18T22:03:10.957986+03:00",
+          "dispatch": "2026-11-18T22:03:11.043123+03:00",
+          "completion": "2026-11-18T22:03:12.222369+03:00",
+          "resume_to_completion_seconds": 20.285109,
+          "complete_inventory_to_dispatch_seconds": 0.085137,
+          "power_log": {
+            "display_off": "2026-11-18T21:09:08+03:00",
+            "entered_clamshell_sleep": "2026-11-18T21:09:38+03:00",
+            "lid_wake": "2026-11-18T22:02:51+03:00",
+            "correlation": "Power logs corroborate one organic sleep/wake episode; this was not a controlled cycle."
+          }
+        },
+        "episodes": [
+          {
+            "reveal": "2026-11-18T20:55:10.071637+03:00",
+            "reason": "inventoryUnavailable",
+            "reveal_to_completion_seconds": 27.46572,
+            "first_dispatch": "2026-11-18T20:55:13.170402+03:00",
+            "completed": "2026-11-18T20:55:37.537357+03:00",
+            "attempts": 4,
+            "deferral_reasons": [
+              "inputNotIdle",
+              "inputNotIdle",
+              "inventoryUnavailable"
+            ]
+          },
+          {
+            "reveal": "2026-11-18T21:09:08.444956+03:00",
+            "reason": "environmentChange",
+            "reveal_to_completion_seconds": 3243.777413,
+            "first_dispatch": "2026-11-18T22:03:11.043123+03:00",
+            "completed": "2026-11-18T22:03:12.222369+03:00",
+            "attempts": 1
+          },
+          {
+            "reveal": "2026-11-18T22:49:10.560107+03:00",
+            "reason": "inventoryUnavailable",
+            "reveal_to_completion_seconds": 35.508688,
+            "first_dispatch": "2026-11-18T22:49:44.817909+03:00",
+            "completed": "2026-11-18T22:49:46.068795+03:00",
+            "attempts": 1
+          },
+          {
+            "reveal": "2026-11-19T13:44:41.019606+03:00",
+            "reason": "geometryUnavailable",
+            "reveal_to_completion_seconds": 4.711473,
+            "first_dispatch": "2026-11-19T13:44:44.292233+03:00",
+            "completed": "2026-11-19T13:44:45.731079+03:00",
+            "attempts": 1
+          },
+          {
+            "reveal": "2026-11-19T14:45:44.996849+03:00",
+            "reason": "inventoryUnavailable",
+            "reveal_to_completion_seconds": 4.651073,
+            "first_dispatch": "2026-11-19T14:45:47.798706+03:00",
+            "completed": "2026-11-19T14:45:49.647922+03:00",
+            "attempts": 1
+          },
+          {
+            "reveal": "2026-11-19T17:10:40.716553+03:00",
+            "reason": "inventoryUnavailable",
+            "reveal_to_completion_seconds": 4.301069,
+            "first_dispatch": "2026-11-19T17:10:43.776075+03:00",
+            "completed": "2026-11-19T17:10:45.017622+03:00",
+            "attempts": 1
+          },
+          {
+            "reveal": "2026-11-19T17:25:49.717240+03:00",
+            "reason": "geometryUnavailable",
+            "reveal_to_completion_seconds": 8.293712,
+            "first_dispatch": "2026-11-19T17:25:55.875076+03:00",
+            "completed": "2026-11-19T17:25:58.010952+03:00",
+            "attempts": 1
+          },
+          {
+            "reveal": "2026-11-19T18:30:59.946664+03:00",
+            "reason": "geometryUnavailable",
+            "reveal_to_completion_seconds": 4.533559,
+            "first_dispatch": "2026-11-19T18:31:03.231007+03:00",
+            "completed": "2026-11-19T18:31:04.480223+03:00",
+            "attempts": 1
+          },
+          {
+            "reveal": "2026-11-19T18:31:15.779212+03:00",
+            "reason": "inventoryUnavailable",
+            "reveal_to_completion_seconds": 4.60144,
+            "first_dispatch": "2026-11-19T18:31:19.026646+03:00",
+            "completed": "2026-11-19T18:31:20.380652+03:00",
+            "attempts": 1
+          },
+          {
+            "reveal": "2026-11-19T19:20:44.491332+03:00",
+            "reason": "geometryUnavailable",
+            "reveal_to_completion_seconds": 17.950587,
+            "first_dispatch": "2026-11-19T19:20:47.825632+03:00",
+            "completed": "2026-11-19T19:21:02.441919+03:00",
+            "attempts": 3,
+            "deferral_reasons": [
+              "inputNotIdle",
+              "inputNotIdle"
+            ]
+          },
+          {
+            "reveal": "2026-11-19T19:50:29.563104+03:00",
+            "reason": "geometryUnavailable",
+            "reveal_to_completion_seconds": 10.823304,
+            "first_dispatch": "2026-11-19T19:50:32.710123+03:00",
+            "completed": "2026-11-19T19:50:40.386408+03:00",
+            "attempts": 2,
+            "deferral_reasons": [
+              "inventoryUnavailable"
+            ]
+          },
+          {
+            "reveal": "2026-11-19T21:31:03.725423+03:00",
+            "reason": "geometryUnavailable",
+            "reveal_to_completion_seconds": 4.908564,
+            "first_dispatch": "2026-11-19T21:31:06.828501+03:00",
+            "completed": "2026-11-19T21:31:08.633987+03:00",
+            "attempts": 1
+          },
+          {
+            "reveal": "2026-11-19T21:32:54.486053+03:00",
+            "reason": "geometryUnavailable",
+            "reveal_to_completion_seconds": 5.288103,
+            "first_dispatch": "2026-11-19T21:32:57.768529+03:00",
+            "completed": "2026-11-19T21:32:59.774156+03:00",
+            "attempts": 1
+          },
+          {
+            "reveal": "2026-11-19T21:33:00.780532+03:00",
+            "reason": "inventoryUnavailable",
+            "reveal_to_completion_seconds": 5.132572,
+            "first_dispatch": "2026-11-19T21:33:03.813300+03:00",
+            "completed": "2026-11-19T21:33:05.913104+03:00",
+            "attempts": 1
+          }
+        ],
+        "display_revalidation": {
+          "records": 969,
+          "bytes": 69674,
+          "bursts": [
+            {
+              "count": 123,
+              "first": "2026-11-19T18:34:22.799526+03:00",
+              "last": "2026-11-19T18:34:23.882825+03:00",
+              "bytes": 8847
+            },
+            {
+              "count": 234,
+              "first": "2026-11-19T18:35:14.504491+03:00",
+              "last": "2026-11-19T18:35:16.498731+03:00",
+              "bytes": 16826
+            },
+            {
+              "count": 123,
+              "first": "2026-11-19T18:39:40.633667+03:00",
+              "last": "2026-11-19T18:39:41.733527+03:00",
+              "bytes": 8840
+            },
+            {
+              "count": 232,
+              "first": "2026-11-19T18:39:57.081821+03:00",
+              "last": "2026-11-19T18:39:59.082983+03:00",
+              "bytes": 16682
+            }
+          ],
+          "burst_records": 712,
+          "burst_bytes": 51195,
+          "burst_definition": "Adjacent events less than 50 milliseconds apart.",
+          "limit": "The counter records native display invalidation, including AppKit screen notifications and active menu-bar row changes. The trigger of the four bursts is unverified."
+        }
+      },
+      "limits": [
+        "History stores transitions and sampled failures, and starts November 16. Local retention cannot restore earlier records.",
+        "Sampling gaps leave activity and concealment during the gaps unknown.",
+        "Top-level saved-layout completion omits optional order failures on build 48, as demonstrated by the same-window unified record on November 19 at 21:32:59 Moscow."
+      ]
+    },
+    "unified": {
+      "query": "/usr/bin/log show --last 8d --info with process TrayNook or public/development TrayNook subsystem",
+      "all": {
+        "count": 480,
+        "first": "2026-11-17T17:35:01.530979+03:00",
+        "last": "2026-11-19T22:35:38.392856+03:00"
+      },
+      "all_log_messages": {
+        "count": 276,
+        "first": "2026-11-17T17:35:01.530979+03:00",
+        "last": "2026-11-19T22:35:22.579082+03:00"
+      },
+      "after_cutoff": {
+        "count": 460,
+        "first": "2026-11-18T12:03:58.632172+03:00",
+        "last": "2026-11-19T22:35:38.392856+03:00",
+        "pid": 95356,
+        "log_messages": {
+          "count": 256,
+          "first": "2026-11-18T12:03:58.632172+03:00",
+          "last": "2026-11-19T22:35:22.579082+03:00"
+        },
+        "daily_log_messages": {
+          "2026-11-18": 15,
+          "2026-11-19": 241
+        },
+        "application_log_messages": {
+          "count": 129,
+          "first": "2026-11-19T19:28:40.708101+03:00",
+          "last": "2026-11-19T22:23:26.714923+03:00"
+        },
+        "activity_records": {
+          "count": 204,
+          "first": "2026-11-19T19:21:01.851089+03:00",
+          "last": "2026-11-19T22:35:38.392856+03:00"
+        },
+        "activity_by_framework": {
+          "TCC": 111,
+          "CoreFoundation": 93
+        },
+        "application_errors": {
+          "records": 6,
+          "geometry_safety_reveals": 3,
+          "optional_visible_order_refusals": 1,
+          "optional_visible_order_refusal_log_lines": 2,
+          "optional_visible_order_refusal_timestamps": [
+            "2026-11-19T21:32:59.732932+03:00",
+            "2026-11-19T21:32:59.733704+03:00"
+          ],
+          "inventory_safety_reveals_with_mislabeled_timeout": 1
+        },
+        "system": {
+          "skylight": {
+            "classification": "Invalid display identifier with private payload and one retained framework frame.",
+            "error_messages": 14,
+            "paired_episodes": [
+              [
+                "2026-11-18T12:03:58.632234+03:00",
+                "2026-11-18T12:03:58.640622+03:00"
+              ],
+              [
+                "2026-11-18T12:58:16.532906+03:00",
+                "2026-11-18T12:58:16.540235+03:00"
+              ],
+              [
+                "2026-11-18T12:58:18.086900+03:00",
+                "2026-11-18T12:58:18.100361+03:00"
+              ],
+              [
+                "2026-11-18T13:00:55.327938+03:00",
+                "2026-11-18T13:00:55.333768+03:00"
+              ],
+              [
+                "2026-11-18T14:55:00.429388+03:00",
+                "2026-11-18T14:55:00.437502+03:00"
+              ],
+              [
+                "2026-11-18T18:45:40.507084+03:00",
+                "2026-11-18T18:45:40.520666+03:00"
+              ],
+              [
+                "2026-11-18T21:09:06.543179+03:00",
+                "2026-11-18T21:09:06.575521+03:00"
+              ]
+            ]
+          },
+          "metal": {
+            "classification": "Private Mach-O path reported missing. One retained framework frame.",
+            "error_timestamps": [
+              "2026-11-19T19:49:43.514250+03:00"
+            ]
+          },
+          "replaykit": {
+            "classification": "Default-severity framework connection interruption and recording stop/cleanup sequences.",
+            "messages": 90,
+            "interruptions": [
+              "2026-11-19T19:35:40.333383+03:00",
+              "2026-11-19T19:41:21.240132+03:00",
+              "2026-11-19T20:48:15.173261+03:00",
+              "2026-11-19T20:49:04.521651+03:00",
+              "2026-11-19T21:08:53.517471+03:00",
+              "2026-11-19T21:09:34.703731+03:00",
+              "2026-11-19T21:10:08.881829+03:00"
+            ],
+            "libxpc_reinitialization_messages": 7
+          },
+          "screen_capture_kit": {
+            "classification": "Window image request/reply pairs with no reported error.",
+            "messages": 12,
+            "successful_reply_timestamps": [
+              "2026-11-19T21:31:06.748757+03:00",
+              "2026-11-19T21:31:06.787310+03:00",
+              "2026-11-19T21:32:57.684498+03:00",
+              "2026-11-19T21:32:57.725558+03:00",
+              "2026-11-19T21:33:03.734262+03:00",
+              "2026-11-19T21:33:03.770277+03:00"
+            ]
+          },
+          "limit": "Process attribution and framework-only frames do not establish a particular TrayNook caller or user impact.",
+          "other_messages": {
+            "skylight_breakpoint_advice": 1,
+            "core_foundation_input_source_pasteboard": 2
+          }
+        },
+        "application_safety_observations": {
+          "debounced_unknown_geometry": 38,
+          "incomplete_inventory_with_native_concealment_retained": 8,
+          "slow_inventory_with_native_concealment_retained": 6,
+          "display_change_retaining_concealment_while_inventory_settles": 4
+        }
+      },
+      "gaps": [
+        "Within the requested eight-day window, no matching retained records preceded November 17 17:35:01 Moscow.",
+        "No retained application messages after the cutoff until November 19 19:28:40 Moscow. November 18 system records and later TCC/preferences activity do not supply missing app outcomes.",
+        "The query includes retained default/info, and debug coverage is absent."
+      ]
+    },
+    "crashes": [
+      {
+        "directory": "user DiagnosticReports including archives",
+        "files": 46,
+        "matches": 0,
+        "read_errors": 0,
+        "earliest_file_mtime": "2026-05-28T10:07:26+03:00",
+        "latest_file_mtime": "2026-11-19T18:20:01+03:00"
+      },
+      {
+        "directory": "system DiagnosticReports including archives",
+        "files": 61,
+        "matches": 0,
+        "read_errors": 0,
+        "earliest_file_mtime": "2026-10-07T01:01:36+03:00",
+        "latest_file_mtime": "2026-11-19T20:47:33+03:00"
+      }
+    ],
+    "crash_scan_method": "Looked for TrayNook in filenames and first 8 KiB; mtime range is the available file inventory.",
+    "native_readbacks_before": {
+      "samples": [
+        {
+          "timestamp": "2026-11-19T19:40:03Z",
+          "hidden_owners_observed": 7,
+          "current_row_source_windows": 7,
+          "visible_hidden_source_windows": 0,
+          "raced_windows": 0,
+          "topology_changed_during_readback": false,
+          "saved_hidden_owners": 12,
+          "running_hidden_owners_without_current_row_window": 1,
+          "saved_hidden_owners_not_running": 4,
+          "excluded_off_row_windows": 2,
+          "excluded_oversized_windows": 1,
+          "excluded_windows_onscreen": 0,
+          "mixed_placement_owners": 0,
+          "discriminated_hidden_keys": 0
+        },
+        {
+          "timestamp": "2026-11-19T19:40:03Z",
+          "hidden_owners_observed": 7,
+          "current_row_source_windows": 7,
+          "visible_hidden_source_windows": 0,
+          "raced_windows": 0,
+          "topology_changed_during_readback": false,
+          "saved_hidden_owners": 12,
+          "running_hidden_owners_without_current_row_window": 1,
+          "saved_hidden_owners_not_running": 4,
+          "excluded_off_row_windows": 2,
+          "excluded_oversized_windows": 1,
+          "excluded_windows_onscreen": 0,
+          "mixed_placement_owners": 0,
+          "discriminated_hidden_keys": 0
+        }
+      ],
+      "method": "WindowServer .optionAll bracketing .optionOnScreenOnly on current online menu rows; checks owner, frame, presence and topology stability.",
+      "limit": "The two consecutive samples share a second-resolution timestamp. They witness observed owner/windows and do not identify AX siblings or prove concealment of an unobserved window."
+    }
+  },
+  "repairs": [
+    {
+      "finding": "Build 48 omitted an optional Menu Bar ordering refusal from local history after completed native concealment.",
+      "evidence": {
+        "native_conceal_allocation": "2026-11-19T21:32:59.272303+03:00",
+        "native_order_geometry_refusal": "2026-11-19T21:32:59.732932+03:00",
+        "saved_layout_completion": "2026-11-19T21:32:59.774156+03:00",
+        "expanded_recovery_edge_x": 798,
+        "safe_area_minimum_x": 956
+      },
+      "change": "Both full-layout and individual-placement fallbacks record a nonfatal menuBarOrder refusal with existing fixed reason and failed or deferred outcome. Optional order remains independent of the parent outcome. Standalone order already records its own outcome.",
+      "regression": "LayoutFallbackTests injects failed and deferred order errors after successful concealment and asserts one fixed history record in both cases."
+    },
+    {
+      "finding": "An inventory reveal was incorrectly labeled a three-second discovery timeout about 0.97 seconds after the preceding saved-layout completion started a fresh scan.",
+      "evidence": {
+        "misleading_unified_message": "2026-11-19T21:33:00.741778+03:00",
+        "concealment_history_transition": "2026-11-19T21:33:00.780532+03:00",
+        "next_saved_layout_completion": "2026-11-19T21:33:05.913104+03:00"
+      },
+      "change": "The polling fallback logs actual discovery deadline, stale snapshot, or unavailable native inspection. Non-deadline reveals show inventory-unverified recovery status, which clears when fresh inventory is accepted.",
+      "regression": "BackgroundInventoryTests reproduces old timeout wording with a 100 ms native metadata deadline and with a stale snapshot; checks withheld edits, layout preservation, and recovery status.",
+      "remaining_limit": "The specific cause of the captured unavailable native inspection is unverified."
+    }
+  ],
+  "verification": {
+    "focused": {
+      "tests": 15,
+      "suites": 2,
+      "before": "Both updated cases failed against old behavior.",
+      "after": "Passed."
+    },
+    "standard": {
+      "tests": 292,
+      "suites": 45,
+      "passed": true
+    },
+    "sequential_isolated_appkit": {
+      "checks": 87,
+      "passed": true,
+      "suites": {
+        "AppModelInventoryTests": 19,
+        "BackgroundInventoryTests": 7,
+        "ConcealmentRecoveryTests": 33,
+        "DetailReorderTests": 4,
+        "DisplayChangeTests": 1,
+        "IdleInventoryTests": 2,
+        "LoginItemStatusTests": 5,
+        "MenuBarReorderTests": 6,
+        "SavedPlacementEditingTests": 1,
+        "WindowMetadataReaderTests": 9
+      }
+    },
+    "native_menu": {
+      "variants": 2,
+      "checks_per_variant": 3,
+      "passed": true
+    },
+    "native_boundary": {
+      "cycles": 3,
+      "passed": true
+    },
+    "native_placement": {
+      "passed": true,
+      "show_hide_cycles": 2,
+      "sentinel_samples": 189,
+      "reveals": 0,
+      "unavailable_samples": 0,
+      "max_sample_gap_seconds": 0.017799749970436096,
+      "original_windows": 17,
+      "surviving_windows": 17
+    },
+    "native_movement": {
+      "passed": false,
+      "limit": "The 36-point disposable fixture failed the visible-side precondition. No item moved."
+    },
+    "native_cancellation": {
+      "passed": false,
+      "passed_phases": [
+        "queued-down",
+        "delivered-down",
+        "delivered-up",
+        "queued-motion",
+        "queued-up-motion",
+        "motion-down",
+        "motion-up"
+      ],
+      "stopped_at": "return-motion-down",
+      "reason": "fresh inventory unavailable",
+      "return_sequence_posts": {
+        "down": 0,
+        "up": 0,
+        "recovery": 0
+      },
+      "limit": "Selected promotion took place before return counters reset. Remaining return and no-space phases are unverified. Production wraps this primitive in its existing transient return retry."
+    },
+    "trusted_terminal_diagnose": {
+      "accessibility": "granted",
+      "inventory": "complete",
+      "items": 18,
+      "incomplete_apps": 0,
+      "scan_milliseconds": 235,
+      "screen_recording": "not granted"
+    },
+    "packaged_smoke": {
+      "passed": true,
+      "preserved_layout_and_history_bytes": true
+    },
+    "launched_build": {
+      "version": "1.0.0",
+      "build": 49,
+      "pid": 82558,
+      "launched_at": "2026-11-19T22:49:35.298567+03:00",
+      "signing_authority": "TrayNook Dev",
+      "uuid": "3E131C9F-F799-3C80-B5AB-8DAF4B754280",
+      "strict_deep_signature_verified": true,
+      "designated_requirement_matches_original": true,
+      "live_version_and_uuid_matched_package": true,
+      "startup_logs": {
+        "first": "2026-11-19 22:49:35.367767+0300",
+        "last": "2026-11-19 22:49:46.396367+0300",
+        "messages": 194,
+        "activity": 29,
+        "application_messages": 13,
+        "errors_or_faults": 0,
+        "retained_query_messages": 194
+      },
+      "startup_history": [
+        {
+          "timestamp": "2026-11-19T22:49:36.212978+03:00",
+          "category": "inventory",
+          "outcome": "completed"
+        },
+        {
+          "timestamp": "2026-11-19T22:49:36.433823+03:00",
+          "category": "layout",
+          "operation": "savedLayout",
+          "outcome": "started"
+        },
+        {
+          "timestamp": "2026-11-19T22:49:36.776382+03:00",
+          "category": "inventory",
+          "outcome": "completed"
+        },
+        {
+          "timestamp": "2026-11-19T22:49:37.196490+03:00",
+          "category": "inventory",
+          "outcome": "completed"
+        },
+        {
+          "timestamp": "2026-11-19T22:49:37.561713+03:00",
+          "category": "inventory",
+          "outcome": "completed"
+        },
+        {
+          "timestamp": "2026-11-19T22:49:37.695247+03:00",
+          "category": "layout",
+          "operation": "savedLayout",
+          "outcome": "completed"
+        }
+      ],
+      "native_readbacks": [
+        {
+          "timestamp": "2026-11-19T22:49:38+03:00",
+          "hidden_owners_observed": 7,
+          "current_row_source_windows": 7,
+          "visible_hidden_source_windows": 0,
+          "raced_windows": 0,
+          "topology_changed_during_readback": false,
+          "saved_hidden_owners_not_running": 4,
+          "running_hidden_owners_without_current_row_window": 1,
+          "excluded_off_row_windows": 2,
+          "excluded_oversized_status_windows": 1,
+          "excluded_windows_onscreen": 0
+        },
+        {
+          "timestamp": "2026-11-19T22:49:41+03:00",
+          "hidden_owners_observed": 7,
+          "current_row_source_windows": 7,
+          "visible_hidden_source_windows": 0,
+          "raced_windows": 0,
+          "topology_changed_during_readback": false,
+          "saved_hidden_owners_not_running": 4,
+          "running_hidden_owners_without_current_row_window": 1,
+          "excluded_off_row_windows": 2,
+          "excluded_oversized_status_windows": 1,
+          "excluded_windows_onscreen": 0
+        },
+        {
+          "timestamp": "2026-11-19T22:49:44+03:00",
+          "hidden_owners_observed": 7,
+          "current_row_source_windows": 7,
+          "visible_hidden_source_windows": 0,
+          "raced_windows": 0,
+          "topology_changed_during_readback": false,
+          "saved_hidden_owners_not_running": 4,
+          "running_hidden_owners_without_current_row_window": 1,
+          "excluded_off_row_windows": 2,
+          "excluded_oversized_status_windows": 1,
+          "excluded_windows_onscreen": 0
+        },
+        {
+          "timestamp": "2026-11-19T22:49:47+03:00",
+          "hidden_owners_observed": 7,
+          "current_row_source_windows": 7,
+          "visible_hidden_source_windows": 0,
+          "raced_windows": 0,
+          "topology_changed_during_readback": false,
+          "saved_hidden_owners_not_running": 4,
+          "running_hidden_owners_without_current_row_window": 1,
+          "excluded_off_row_windows": 2,
+          "excluded_oversized_status_windows": 1,
+          "excluded_windows_onscreen": 0
+        }
+      ],
+      "delayed_readback": {
+        "timestamp": "2026-11-19T22:50:48+03:00",
+        "hidden_owners_observed": 7,
+        "current_row_source_windows": 7,
+        "visible_hidden_source_windows": 0,
+        "raced_windows": 0,
+        "topology_changed_during_readback": false,
+        "saved_hidden_owners_not_running": 4,
+        "running_hidden_owners_without_current_row_window": 1,
+        "excluded_off_row_windows": 2,
+        "excluded_oversized_status_windows": 1,
+        "excluded_windows_onscreen": 0
+      },
+      "readback_limit": "WindowServer readbacks cover only observed owner/windows on current online menu rows. They do not establish concealment of unavailable windows or identify AX siblings."
+    }
+  },
+  "preservation": {
+    "layout_bytes_preserved": true,
+    "layout_sha256": "09520cc0e4b3863facaa29f7b96d16baea2c7f3ab8985645e1ee5b534221ce65",
+    "history_prefix_preserved": true,
+    "original_history_bytes": 476075,
+    "post_startup_history_bytes": 477986,
+    "history_mode": "0600",
+    "extended_local_preference_preserved": true,
+    "development_enabled_limits": {
+      "days": 30,
+      "bytes": 33554432
+    },
+    "public_default_limits": {
+      "days": 7,
+      "bytes": 1048576
+    },
+    "system_logging_retention_changed": false,
+    "logs_uploaded": false
+  },
+  "remaining_limits": [
+    "Fixture visibility prevented movement. Fresh inventory refused the first tested cancellation return before posting return input.",
+    "Private SkyLight and Metal messages and the display revalidation bursts have unresolved causes. The native ordering safety refusal remains active.",
+    "Controlled sleep/wake cycles, monitor reconnect, and prolonged build-49 acceptance remain unverified."
+  ]
+}

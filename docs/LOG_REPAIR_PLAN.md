@@ -1,5 +1,108 @@
 # TrayNook log review and repair plan
 
+## November 19 follow-up: build 49
+
+Before quitting or rebuilding, a live sample confirmed **1.0.0 (48)**, PID
+**95356**, and UUID `570C4AB9-0A2B-39F8-B0C3-6A8F3A4B9323` matched its
+package. The comparison cutoff is November 18 **11:37:12.628703 Moscow** from
+the last idle native recheck. Two consecutive WindowServer snapshots found
+seven current-row source windows for seven hidden owners, all offscreen.
+
+### Coverage and classification
+
+- **Local history.** 2,163 events from November 16 **11:48:57** through
+  November 19 **22:23:29** Moscow. The 1,354 events after the cutoff begin
+  November 18 **11:38:45**. History samples inventory and records transitions.
+  Its longest interval between records was November 19 **00:32:15–11:41:11**.
+  No local history predates November 16.
+- **Unified logs.** The eight-day process/subsystem query retained 480 records
+  from November 17 **17:35:01** through November 19 **22:35:38**. After the cutoff,
+  256 log messages and 204 TCC/CoreFoundation activity records all belong to the
+  verified PID. All 129 retained app messages after the cutoff are from
+  November 19 **19:28:40–22:23:26**. November 18 system messages and later
+  activity metadata give no app-level coverage for that gap. The query includes
+  default/info messages. The user and system crash directories, including
+  archives, contained 107 files. Filename and first-8-KiB checks found no
+  TrayNook report and had no read errors.
+- **Safety and input.** All 14 recorded reveals recovered. The 13 geometry or
+  inventory reveals took 4.3–35.5 seconds to recover. Power logs corroborate
+  lid sleep and wake for the fourteenth episode. After recovery resumed, the
+  layout completed in 20.3 seconds. Dispatch followed the first complete
+  inventory by 0.085 seconds. Of 20 layout attempts, 14 completed, four waited
+  for idle input, and two waited for inventory. Zero top-level attempts ended
+  in failure. The 38 first-poll geometry warnings were debounced. Eight
+  incomplete-scan and six slow-scan fallbacks retained concealment after native
+  checks. Four display-change messages also report retaining concealment while
+  inventory settled.
+- **Repeated and private messages.** Four short bursts generated 712 of the 969
+  display-revalidation records. These count invalidations, including row changes.
+  The retained logs do not establish the trigger for the bursts. SkyLight's
+  private invalid-display signature appeared as 14 messages in seven pairs.
+  Metal logged one private missing Mach-O path. ReplayKit logged seven connection
+  interruption sequences and ScreenCaptureKit six request/reply pairs with no
+  reported error. Framework-only evidence establishes no TrayNook call site or
+  demonstrated user impact for the private messages.
+
+### Reproduced issues and fixes
+
+1. At **21:32:59.733**, the optional visible Menu Bar reorder refused unsafe
+   geometry after native concealment. The recovery edge was at x=798, outside
+   the safe area beginning at x=956. History recorded the parent layout
+   completion at **21:32:59.774**, but omitted the order failure. The shared
+   layout fallback now records optional reorder refusals as `menuBarOrder` with
+   the existing fixed outcome and reason codes, independently of the parent's
+   result. The regression covers both a failed and a deferred optional reorder
+   after successful concealment.
+2. At **21:33:00.742**, the next polling fallback reported a three-second
+   discovery timeout less than one second after the operation started a fresh
+   scan. The unavailable native inspection path reused timeout wording. The
+   app now distinguishes the real discovery deadline, stale snapshots, and
+   unavailable native inspection. Settings reports the reveal and recovery when
+   inventory could not be verified. The metadata and stale-snapshot fixtures
+   reproduce the old message and verify the corrected result. The underlying
+   reason for the unavailable native read remains unknown.
+
+Both changes retain the existing layout, permission, and physical-input
+decisions. Local history remains schema v1 with the same retention policy.
+
+### Verification and delivery
+
+The focused before/after run reproduced both issues, then passed all **15**
+tests. The final **292-test** standard run and ten sequential isolated AppKit
+runs totaling **87 checks** passed. Both native-menu variants passed all three
+checks and native boundary passed three cycles. Selected placement passed two
+show/hide cycles, with **189 sentinel samples**, zero reveals or unavailable
+samples, and all **17** original windows present after cleanup.
+
+Movement refused the 36-point disposable fixture before any move. Cancellation
+passed seven phases and stopped at the first tested return when fresh inventory
+was unavailable. It posted **0 down / 0 up / 0 recovery** events for that return
+sequence. Selected promotion happened before those counters reset. Remaining
+return and no-space phases are unverified. Terminal reported Accessibility
+granted, complete inventory with 18 items, and Screen Recording not granted.
+The standalone return harness tests the native primitive. Production retries
+transient refusals through its existing return recovery path.
+
+Signed **1.0.0 (49)** passed packaged smoke, strict signature verification, and
+designated-requirement comparison with build 48. It launched at **22:49:35 Moscow**
+as PID **82558**, and the live sample matched the package's version and UUID.
+Startup captured 194 log messages and 29 activity records with zero errors or
+faults. The saved layout completed at **22:49:37.695**. Four WindowServer
+readbacks three seconds apart and a recheck at **22:50:48** found **seven hidden
+owners, seven current-row windows, zero visible**, with no detected races.
+Four saved owners were closed and one running owner had no
+current-row source window. The check cannot establish concealment for those
+unobserved windows or identify AX siblings.
+
+Smoke left layout and history bytes intact. Launch preserved the original
+layout bytes and appended to the entire original history prefix, with mode
+`0600`. Extended local retention remains enabled at **30 days / 32 MiB**.
+Public defaults remain **seven days / 1 MiB**. Raw captures stay local in
+`/private/tmp/traynook-review-20261119.4NkJk4`.
+The [sanitized receipt](evidence/2026-11-19-build49-log-repair.json) includes
+timestamps, classifications, and verification details. Controlled sleep/wake
+cycles, monitor reconnect, and prolonged build-49 acceptance remain unverified.
+
 ## November 18 follow-up: build 48
 
 **Idle native recheck at 11:34 Moscow:** cancellation now passes queued-down,

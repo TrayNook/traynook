@@ -1,12 +1,30 @@
-# TrayNook: build 48, verified log follow-up and concealment
+# TrayNook: build 49, verified diagnostic repairs and concealment
 
-Updated 2026-11-18. Build 18's measurements are in
+Updated 2026-11-19. Build 18's measurements are in
 [MVP_REPORT.md](MVP_REPORT.md); build 19's decisions are in
 [ADR 0009](adr/0009-hidden-pointer-sibling-keys-and-session-image-cache.md) and
 [ADR 0010](adr/0010-geometry-follows-the-active-menu-bar-row.md).
 
 ## Current state
 
+- **November 19 log follow-up:** the live app was build **48**. Since the last
+  verified run, all 14 recorded safety reveals recovered, including one
+  sleep/wake episode. One optional Menu Bar reorder refused unsafe control
+  geometry after concealment, and the next inventory fallback logged an
+  incorrect discovery timeout. Build **49** records the order outcome separately
+  and gives stale or unavailable native inventory an accurate recovery message.
+  Both regressions failed before the fixes. **292 standard tests**, **87 isolated
+  AppKit checks**, both native-menu variants, native boundary, selected placement,
+  and packaged smoke pass. Movement stopped at fixture visibility. Cancellation
+  passed seven phases, then refused fresh inventory before posting return input.
+  Signed `TrayNook Dev` **1.0.0 (49)** launched at **22:49:35 Moscow**. The live
+  version and UUID match the package. Startup recorded no errors or faults, and
+  four startup readbacks and a later recheck found seven hidden owners and seven
+  windows, all offscreen.
+  Saved layout bytes, the original history prefix, signing requirement, and
+  extended retention remain intact. See the
+  [review](LOG_REPAIR_PLAN.md#november-19-follow-up-build-49) and
+  [receipt](evidence/2026-11-19-build49-log-repair.json).
 - **Idle native recheck (2026-11-18, 11:34 Moscow):** cancellation now passes
   seven phases with user input idle, then refuses fresh inventory in the first
   tested return phase before posting return-sequence input. The earlier source
@@ -421,7 +439,7 @@ action. `.optionAll` is required to find offscreen windows.
 
 ```sh
 Scripts/test.sh
-TRAYNOOK_DEV_SIGNING_IDENTITY='TrayNook Dev' TRAYNOOK_BUILD=48 Scripts/build-app.sh
+TRAYNOOK_DEV_SIGNING_IDENTITY='TrayNook Dev' TRAYNOOK_BUILD=49 Scripts/build-app.sh
 Scripts/smoke-test.sh
 Scripts/test-native-cancellation.sh --compile-only
 Scripts/test-native-movement.sh --compile-only
