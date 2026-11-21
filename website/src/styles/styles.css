@@ -34,12 +34,15 @@ img { max-width: 100%; vertical-align: middle; }
 
 .site-header, .page-links, .header-controls, .header-github, .language-switch, .install-heading, .site-footer, .site-footer nav, .repo-stats { display: flex; align-items: center; }
 .site-header, .install-heading, .site-footer { justify-content: space-between; gap: 16px; }
-.site-header { min-height: 68px; }
+.site-header { min-height: 68px; flex-wrap: wrap; row-gap: 0; }
 .page-links { gap: clamp(16px, 2vw, 32px); }
 .page-links a, .header-github { display: inline-flex; align-items: center; min-height: 36px; text-decoration: none; color: var(--ink); font-size: 14px; }
 .page-links a:hover, .header-github:hover { text-decoration: underline; }
-.header-controls { gap: 18px; color: var(--muted); font-size: 13px; }
+.header-controls { margin-inline-start: auto; flex-wrap: wrap; gap: 0 18px; color: var(--muted); font-size: 13px; }
 .header-github { gap: 7px; }
+.repo-stats { gap: 10px; }
+.repo-stats [data-repo-link] { display: inline-flex; align-items: center; gap: 4px; min-height: 36px; color: inherit; text-decoration: none; white-space: nowrap; }
+.repo-stats [data-repo-link]:hover { text-decoration: underline; }
 .language-switch { border-left: 1px solid var(--line); padding-left: 14px; }
 .language-switch a { display: grid; place-items: center; min-width: 28px; min-height: 32px; color: inherit; text-decoration: none; }
 .language-switch a[aria-current], .language-switch a:hover { color: var(--ink); text-decoration: underline; }
@@ -110,7 +113,7 @@ summary:hover { text-decoration: underline; text-underline-offset: .2em; }
 .faq-answer { max-width: 64ch; padding: 3px 0 18px; font-size: 15px; }
 .faq-answer > * + * { margin-top: 8px; }
 .site-footer { flex-wrap: wrap; border-top: 1px solid var(--line); padding-block: 16px; font-size: 13px; }
-.site-footer nav, .repo-stats { flex-wrap: wrap; gap: 18px; }
+.site-footer nav { flex-wrap: wrap; gap: 18px; }
 .site-footer a { display: inline-flex; align-items: center; gap: 5px; min-height: 32px; color: var(--muted); }
 .repo-count { font-variant-numeric: tabular-nums; }
 
@@ -120,7 +123,10 @@ summary:hover { text-decoration: underline; text-underline-offset: .2em; }
 @media (max-width: 850px) {
   .site-header { min-height: 54px; }
   .page-links a { font-size: 13px; }
-  .header-controls { gap: 8px; }
+  .header-controls { gap: 0 8px; }
+  .repo-stats { gap: 6px; }
+  .repo-stats [data-repo-link] { justify-content: center; min-width: 26px; }
+  .stat-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .language-switch { padding-left: 6px; }
   .overview { grid-template-columns: minmax(0, 1fr); }
   .product { padding: 32px var(--edge) 28px; }

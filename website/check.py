@@ -185,9 +185,14 @@ def check_page(path, locale):
                    ("settings-light.png", "settings-dark.png", "dropdown-light.png", "dropdown-dark.png",
                     "sample data", "демонстрационными данными", "Notes", "Calendar", "Music")), "Do not include invented app examples or generated native assets"
 
-    github = next(attrs for tag, attrs in page.elements if "header-github" in attrs.get("class", "").split())
+    header_start = next(i for i, (tag, _) in enumerate(page.elements) if tag == "header")
+    main_start = next(i for i, (tag, _) in enumerate(page.elements) if tag == "main")
+    header_links = [attrs for tag, attrs in page.elements[header_start:main_start] if tag == "a"]
+    github = next(attrs for attrs in header_links if "header-github" in attrs.get("class", "").split())
     assert github.get("href") == "https://github.com/TrayNook/traynook" and github.get("aria-label"), "Missing accessible header GitHub link"
-    assert {attrs["data-repo-count"] for _, attrs in page.elements if "data-repo-count" in attrs} == {"stars", "forks"}, "Missing repository counters"
+    after_github = header_links.index(github) + 1
+    assert [link.get("data-repo-link") for link in header_links[after_github:after_github + 2]] == ["stars", "forks"], "Stars and Forks must follow GitHub in the header"
+    assert sorted(attrs["data-repo-count"] for _, attrs in page.elements if "data-repo-count" in attrs) == ["forks", "stars"], "Expected one counter for each repository statistic"
     for name, suffix in (("stars", ""), ("forks", "/forks")):
         assert any(tag == "a" and attrs.get("data-repo-link") == name and attrs.get("href") == f"https://github.com/TrayNook/traynook{suffix}" for tag, attrs in page.elements), f"Missing {name} link"
 

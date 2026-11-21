@@ -26,7 +26,7 @@ The Node tests cover language selection, translations, appearance preferences, G
 - Edit the shared layout in `src/components/Landing.astro` and the English and Russian copy in `src/i18n/`. The native app currently ships in English. Keep its controls recognizable in Russian instructions.
 - `/en/` and `/ru/` serve their chosen language. At `/`, a saved language choice takes priority over the browser's supported language, with English as the fallback. Without JavaScript, the root serves English and the language links still work.
 - The appearance selector follows the system by default. Light and Dark persist in `traynook.theme` when storage is available. Without JavaScript, presentation follows the system through CSS.
-- The header links to the GitHub repository. Stars and Forks in the footer link to the repository and fork list. Counts come from a single unauthenticated GitHub API request per page load. The links stay usable when the request fails.
+- The header groups the GitHub repository link with Stars and Forks. Counts come from a single unauthenticated GitHub API request per page load. The links stay usable when the request fails.
 
 ## Product images
 

@@ -65,7 +65,12 @@ const socialImage = new URL(`${assets}social-card${locale === 'ru' ? '-ru' : ''}
       <a href="#questions">{copy.faq.title}</a>
     </nav>
     <div class="header-controls">
-      <a class="header-github" href="https://github.com/TrayNook/traynook" aria-label={copy.nav.github} title={copy.nav.github}><img class="icon" src={`${assets}brand-github.svg`} width="17" height="17" alt="" /><span>{copy.nav.github}</span></a>
+      <div class="repo-stats" data-repo-stats role="group" aria-label={copy.nav.repoStats}>
+        <a class="header-github" href="https://github.com/TrayNook/traynook" aria-label={copy.nav.github} title={copy.nav.github}><img class="icon" src={`${assets}brand-github.svg`} width="17" height="17" alt="" /><span>{copy.nav.github}</span></a>
+        <a data-repo-link="stars" title={copy.nav.stars} href="https://github.com/TrayNook/traynook"><img class="icon" src={`${assets}star.svg`} width="14" height="14" alt="" /><span class="stat-label">{copy.nav.stars}</span><span class="repo-count" data-repo-count="stars" hidden></span></a>
+        <a data-repo-link="forks" title={copy.nav.forks} href="https://github.com/TrayNook/traynook/forks"><img class="icon" src={`${assets}git-fork.svg`} width="14" height="14" alt="" /><span class="stat-label">{copy.nav.forks}</span><span class="repo-count" data-repo-count="forks" hidden></span></a>
+        <span class="visually-hidden" data-stats-unavailable hidden>{copy.nav.statsUnavailable}</span>
+      </div>
       <div class="language-switch" role="group" aria-label={copy.nav.language}>
         <a href={`${base}en/`} lang="en" hreflang="en" data-language="en" aria-label="English" aria-current={locale === 'en' ? 'page' : undefined}>EN</a>
         <a href={`${base}ru/`} lang="ru" hreflang="ru" data-language="ru" aria-label="Русский" aria-current={locale === 'ru' ? 'page' : undefined}>RU</a>
@@ -124,11 +129,6 @@ const socialImage = new URL(`${assets}social-card${locale === 'ru' ? '-ru' : ''}
     </section>
   </main>
   <footer class="site-footer shell">
-    <div class="repo-stats" data-repo-stats role="group" aria-label={copy.nav.repoStats}>
-      <a data-repo-link="stars" href="https://github.com/TrayNook/traynook"><img class="icon" src={`${assets}star.svg`} width="14" height="14" alt="" /><span>{copy.nav.stars}</span><span class="repo-count" data-repo-count="stars" hidden></span></a>
-      <a data-repo-link="forks" href="https://github.com/TrayNook/traynook/forks"><img class="icon" src={`${assets}git-fork.svg`} width="14" height="14" alt="" /><span>{copy.nav.forks}</span><span class="repo-count" data-repo-count="forks" hidden></span></a>
-      <span class="visually-hidden" data-stats-unavailable hidden>{copy.nav.statsUnavailable}</span>
-    </div>
     <nav aria-label={copy.nav.footer}><a href="https://github.com/TrayNook/traynook/issues/new">{copy.nav.issue}</a><a href="https://github.com/TrayNook/traynook/blob/master/LICENSE">{copy.nav.license}</a></nav>
   </footer>
 </body>
