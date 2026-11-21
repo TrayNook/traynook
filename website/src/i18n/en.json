@@ -1,16 +1,13 @@
 {
   "meta": {
-    "title": "TrayNook · A calmer Mac menu bar",
-    "description": "A native macOS menu bar organizer. Keep essentials visible, move icons into a dropdown, and hide the rest. Free and open source.",
-    "socialDescription": "Keep essentials visible, move icons into a dropdown, and hide the rest. A native, free and open source Mac utility.",
-    "imageAlt": "TrayNook's red panda app icon beside the words Your menu bar. A little calmer."
+    "title": "TrayNook · Menu bar organizer for Mac",
+    "description": "A free app for organizing your Mac’s menu bar. Keep icons in view, move them into a dropdown, or hide them.",
+    "socialDescription": "Keep the icons you reach for in the menu bar. Tuck the rest into TrayNook’s dropdown or hide them. Free and open source for macOS.",
+    "imageAlt": "TrayNook’s red panda icon and a screenshot of its open dropdown beside the headline “A little room for your menu bar.”"
   },
   "nav": {
     "skip": "Skip to content",
-    "home": "TrayNook home",
-    "main": "Main navigation",
-    "how": "How it works",
-    "faq": "FAQ",
+    "sections": "On this page",
     "language": "Language",
     "appearance": "Appearance",
     "themeAuto": "Auto",
@@ -19,72 +16,65 @@
     "footer": "Footer navigation",
     "issue": "Report an issue",
     "license": "MIT license",
-    "github": "View TrayNook on GitHub",
+    "github": "Source on GitHub",
     "stars": "Stars",
     "forks": "Forks",
     "repoStats": "GitHub repository statistics",
     "statsUnavailable": "Repository counts are unavailable."
   },
   "hero": {
-    "line1": "Your menu bar.",
-    "line2": "A little calmer.",
-    "description": "A native macOS menu bar organizer. Keep essentials visible, move icons into a dropdown, and hide the rest.",
-    "cta": "View on GitHub",
-    "release": "Free & open source. MIT licensed."
+    "description": "A free app for organizing your Mac’s menu bar. Keep the icons you use every day in view, move others into a dropdown, or hide them."
   },
   "groups": {
-    "label": "Three ways to organize your icons",
-    "menu": "Your everyday essentials, always in view.",
-    "dropdown": "Other icons, one click away.",
-    "hidden": "Out of sight until you choose Show Items.",
-    "note": "Drag icons in <strong lang=\"en\">Settings → Layout</strong>. Your arrangement saves automatically.",
+    "label": "Where icons go",
+    "menu": "Always visible in the menu bar.",
+    "dropdown": "One click on TrayNook brings these into view.",
+    "hidden": "Right-click TrayNook and choose Show Items to see them.",
+    "note": "In <strong lang=\"en\">Settings → Layout</strong>, drag each icon into a group. Your changes are saved automatically.",
     "menuLabel": "Menu Bar",
     "dropdownLabel": "Dropdown",
     "hiddenLabel": "Always Hidden"
   },
   "faq": {
-    "title": "Good to know.",
+    "title": "Questions",
     "items": [
       {
         "id": "download",
         "question": "How do I install TrayNook?",
         "paragraphs": [
-          "Install TrayNook with our <a href=\"https://github.com/TrayNook/homebrew-tap\">Homebrew tap</a>, or download it from <a href=\"https://github.com/TrayNook/traynook/releases\">GitHub Releases</a>.",
-          "Open the app, grant Accessibility permission, and arrange icons in <span lang=\"en\">Settings → Layout</span>.",
-          "Public builds default to ad-hoc signing; Apple notarization is optional. macOS may require <strong>System Settings → Privacy &amp; Security → Open Anyway</strong> after you first try opening the app. Follow <a href=\"https://support.apple.com/en-us/102445\">Apple’s instructions</a>."
+          "You can <a href=\"https://github.com/TrayNook/traynook#build-from-source\">build from source</a> with Xcode and Swift 6. Check <a href=\"https://github.com/TrayNook/traynook/releases\">GitHub Releases</a> or the <a href=\"https://github.com/TrayNook/homebrew-tap\">Homebrew tap</a> for packaged builds.",
+          "Builds use ad hoc signing by default. If macOS blocks the first launch, follow <a href=\"https://support.apple.com/en-us/102445\">Apple’s instructions</a>."
         ]
       },
       {
         "id": "permissions",
-        "question": "What permissions does it need?",
+        "question": "Which permissions does TrayNook need?",
         "paragraphs": [
-          "<strong>Accessibility is required.</strong> Screen Recording is optional, for menu-bar icon previews. Updates may require Accessibility approval again.",
-          "Launch at Login is optional in <span lang=\"en\">Settings → General</span>. The app interface is in English."
+          "<strong>Accessibility</strong> lets TrayNook move icons and open their menus. You may need to grant it again after an update.",
+          "Screen Recording is optional. Grant it to see the same symbols as in the menu bar. Otherwise, the dropdown shows app icons."
         ]
       },
       {
         "id": "compatibility",
         "question": "Will it work on my Mac?",
         "paragraphs": [
-          "Packaged for Apple silicon and Intel. Support targets stable macOS majors receiving Apple security updates, on a best-effort basis.",
-          "The technical minimum is macOS 13.0, not a tested compatibility guarantee."
+          "TrayNook builds for Intel and Apple silicon. It targets versions of macOS that get security updates from Apple. The minimum is macOS 13.0. Check the release notes for tested versions."
         ]
       },
       {
         "id": "items",
-        "question": "Can every menu-bar item be moved?",
+        "question": "Why do some icons stay visible?",
         "paragraphs": [
-          "Some items cannot be moved. Protected system items and items TrayNook cannot safely identify stay visible. Behavior can vary with the app and display setup.",
-          "<a href=\"https://github.com/TrayNook/traynook/issues/new\">Report an issue</a> if something does not behave as expected. Review diagnostics before sharing them."
+          "Protected system icons stay put, as do icons TrayNook can’t reliably identify. Which icons can move depends on the app and your display setup.",
+          "If something looks wrong, <a href=\"https://github.com/TrayNook/traynook/issues/new\">report an issue</a>. You choose whether to share diagnostics."
         ]
       },
       {
         "id": "privacy",
-        "question": "What about privacy and updates?",
+        "question": "What leaves my Mac?",
         "paragraphs": [
-          "Layouts and preferences stay on your Mac. TrayNook sends no analytics, application inventory, or screenshots.",
-          "Update checks and downloads contact GitHub over HTTPS, exposing usual request metadata and your IP address. Automatic checks default on; automatic downloads default off. Disable <strong lang=\"en\">Check for updates automatically</strong> to stop background checks.",
-          "You approve installation with <strong lang=\"en\">Install &amp; Relaunch</strong>."
+          "TrayNook keeps your layout and settings on your Mac. It sends no analytics, list of apps, or screenshots.",
+          "By default, TrayNook checks GitHub for updates. GitHub sees your IP address and request details. You can turn checks off in Settings. Automatic downloads are off by default, and you approve each installation."
         ]
       }
     ]
@@ -92,12 +82,47 @@
   "install": {
     "copy": "Copy commands",
     "copied": "Commands copied.",
-    "failed": "Commands selected. Press ⌘C or choose Copy."
+    "failed": "Commands selected. Press ⌘C or choose Copy.",
+    "title": "Installation",
+    "source": "Build from source",
+    "toolchain": "with Xcode and Swift 6.",
+    "note": "The Homebrew package isn’t available yet."
   },
   "interface": {
-    "caption": "Real TrayNook interface.",
-    "dropdownAlt": "TrayNook’s dropdown open beneath the macOS menu bar, with a Settings button and three app icons.",
-    "openDropdown": "Open the original TrayNook screenshot at full size",
-    "fullSize": "Full size"
+    "caption": "Click TrayNook, then choose an icon to open that app’s menu or panel.",
+    "dropdownAlt": "TrayNook’s open dropdown beneath the macOS menu bar, with a Settings button and four app icons.",
+    "openDropdown": "Open the full-size screenshot",
+    "layoutAlt": "TrayNook’s Layout settings show the saved icon positions in Menu Bar, Dropdown, and Always Hidden.",
+    "openLayout": "View the full Settings window"
+  },
+  "example": {
+    "title": "Interactive TrayNook example",
+    "launcher": "Toggle TrayNook’s dropdown",
+    "dropdown": "Dropdown items",
+    "settings": "Open Layout settings",
+    "open": "Click the tray to close the dropdown. Choose an app, or open the gear to see Layout settings.",
+    "closed": "Click the tray icon in the menu bar to open the dropdown.",
+    "empty": "The dropdown is empty. Choose Arrange icons to add one.",
+    "handoff": "On your Mac, selecting the {item} icon opens its app’s own menu or panel.",
+    "back": "Back to dropdown",
+    "original": "Original screenshot"
+  },
+  "practice": {
+    "title": "Arrange icons",
+    "help": "Drag an icon into a group, or select an icon and choose where to move it.",
+    "done": "Preview dropdown",
+    "reset": "Reset",
+    "moveHere": "Move here",
+    "selected": "You selected the {item} icon. Choose a group.",
+    "moved": "Moved {item} to {group}.",
+    "restored": "Original layout restored.",
+    "earlier": "Move earlier",
+    "later": "Move later",
+    "names": {
+      "blue": "Macs Fan Control",
+      "pink": "Handy",
+      "aqua": "turquoise paper plane",
+      "plane": "blue paper plane"
+    }
   }
 }

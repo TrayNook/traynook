@@ -1,7 +1,7 @@
 ---
 interface Props {
   id: string;
-  labels: { copy: string; copied: string; failed: string };
+  labels: { copy: string; copied: string; failed: string; note: string };
 }
 const { id, labels } = Astro.props;
 const commands = 'brew tap traynook/tap\nbrew install traynook';
@@ -12,6 +12,7 @@ const assets = `${import.meta.env.BASE_URL}assets/`;
     <img class="icon copy-idle" src={`${assets}copy.svg`} width="16" height="16" alt="" />
     <img class="icon copy-success" src={`${assets}check.svg`} width="16" height="16" alt="" />
   </button></div>
+  <p class="install-note" data-install-note>{labels.note}</p>
   <pre tabindex="0"><code id={`${id}-command`} lang="en">{commands}</code></pre>
   <p class="visually-hidden" data-copy-feedback role="status"></p>
 </div>

@@ -1,17 +1,15 @@
 :root {
-  --page: #211e1b;
-  --surface: #2b2723;
-  --soft: #37322d;
-  --ink: #f5ece1;
-  --muted: #c0ac98;
-  --line: #4e4034;
-  --accent: #e6aa79;
-  --accent-hover: #f4c296;
-  --control: #514b44;
-  --control-line: #100d0a80;
-  --control-shadow: 0 1px 2px #100d0a33;
-  --focus: #e6aa79;
+  --page: #232221;
+  --paper: #2c2925;
+  --plate: #303e35;
+  --ink: #f1ede8;
+  --muted: #cbc6bd;
+  --line: #494940;
+  --soft: #302e2b;
+  --link: #e5aa88;
+  --button: #bcd5bc;
+  --button-hover: #d3e5cf;
+  --on-button: #1c3326;
 }
 .icon { filter: invert(1); }
-.button-primary { color: #302117; }
-.button-primary .icon { filter: none; }
+.source-button img { filter: none; }

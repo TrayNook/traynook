@@ -5,13 +5,13 @@ import styles from '../styles/styles.css?url';
 import darkStyles from '../styles/dark.css?url';
 import themeScript from '../scripts/theme.js?raw';
 import HomebrewCommands from './HomebrewCommands.astro';
+import ProductExample from './ProductExample.astro';
 
 interface Props { locale: 'en' | 'ru'; detectLanguage?: boolean }
 const { locale, detectLanguage = false } = Astro.props;
 const copy = locale === 'ru' ? ru : en;
 const base = import.meta.env.BASE_URL;
 const assets = `${base}assets/`;
-const home = `${base}${locale}/`;
 const canonicalURL = new URL(Astro.url.pathname, Astro.site).href;
 const socialImage = new URL(`${assets}social-card${locale === 'ru' ? '-ru' : ''}.png`, Astro.site).href;
 ---
@@ -23,8 +23,8 @@ const socialImage = new URL(`${assets}social-card${locale === 'ru' ? '-ru' : ''}
   <title>{copy.meta.title}</title>
   <meta name="description" content={copy.meta.description} />
   <link rel="canonical" href={canonicalURL} />
-  <meta name="theme-color" data-theme-color="light" content="#faf8f5" media="(prefers-color-scheme: light)" />
-  <meta name="theme-color" data-theme-color="dark" content="#211e1b" media="(prefers-color-scheme: dark)" />
+  <meta name="theme-color" data-theme-color="light" content="#fcfaf7" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" data-theme-color="dark" content="#232221" media="(prefers-color-scheme: dark)" />
   <meta name="color-scheme" content="light dark" />
   <link rel="stylesheet" href={styles} />
   <link rel="stylesheet" id="dark-theme" href={darkStyles} media="(prefers-color-scheme: dark)" />
@@ -58,11 +58,14 @@ const socialImage = new URL(`${assets}social-card${locale === 'ru' ? '-ru' : ''}
 </head>
 <body>
   <a class="skip-link" href="#main">{copy.nav.skip}</a>
-  <header class="site-header wrap">
-    <a class="wordmark" href={home} aria-label={copy.nav.home}><img src={`${assets}app-icon-64.png`} srcset={`${assets}app-icon-128.png 2x`} width="38" height="38" alt="" /><span>TrayNook</span></a>
+  <header class="site-header shell">
+    <nav class="page-links" aria-label={copy.nav.sections}>
+      <a href="#install">{copy.install.title}</a>
+      <a href="#how-it-works">{copy.groups.label}</a>
+      <a href="#questions">{copy.faq.title}</a>
+    </nav>
     <div class="header-controls">
-      <nav aria-label={copy.nav.main}><a href="#how-it-works">{copy.nav.how}</a><a href="#questions">{copy.nav.faq}</a></nav>
-      <a class="header-github" href="https://github.com/TrayNook/traynook" aria-label={copy.nav.github} title={copy.nav.github}><img class="icon" src={`${assets}brand-github.svg`} width="20" height="20" alt="" /></a>
+      <a class="header-github" href="https://github.com/TrayNook/traynook" aria-label={copy.nav.github} title={copy.nav.github}><img class="icon" src={`${assets}brand-github.svg`} width="17" height="17" alt="" /><span>{copy.nav.github}</span></a>
       <div class="language-switch" role="group" aria-label={copy.nav.language}>
         <a href={`${base}en/`} lang="en" hreflang="en" data-language="en" aria-label="English" aria-current={locale === 'en' ? 'page' : undefined}>EN</a>
         <a href={`${base}ru/`} lang="ru" hreflang="ru" data-language="ru" aria-label="Русский" aria-current={locale === 'ru' ? 'page' : undefined}>RU</a>
@@ -79,44 +82,33 @@ const socialImage = new URL(`${assets}social-card${locale === 'ru' ? '-ru' : ''}
   </header>
 
   <main id="main" tabindex="-1">
-    <section class="hero wrap" aria-labelledby="hero-title">
-      <div class="hero-copy">
-        <h1 id="hero-title">{copy.hero.line1}<br /><span>{copy.hero.line2}</span></h1>
-        <p class="hero-description">{copy.hero.description}</p>
-        <a class="button button-primary" href="https://github.com/TrayNook/traynook"><img class="icon" src={`${assets}brand-github.svg`} width="19" height="19" alt="" />{copy.hero.cta}<img class="icon" src={`${assets}arrow-up-right.svg`} width="17" height="17" alt="" /></a>
-        <p class="release-note">{copy.hero.release}</p>
-        <div class="repo-stats" data-repo-stats role="group" aria-label={copy.nav.repoStats}>
-          <a data-repo-link="stars" href="https://github.com/TrayNook/traynook"><img class="icon" src={`${assets}star.svg`} width="14" height="14" alt="" /><span>{copy.nav.stars}</span><span class="repo-count" data-repo-count="stars" hidden></span></a>
-          <a data-repo-link="forks" href="https://github.com/TrayNook/traynook/forks"><img class="icon" src={`${assets}git-fork.svg`} width="14" height="14" alt="" /><span>{copy.nav.forks}</span><span class="repo-count" data-repo-count="forks" hidden></span></a>
-          <span class="visually-hidden" data-stats-unavailable hidden>{copy.nav.statsUnavailable}</span>
-        </div>
+    <div class="overview">
+      <div class="product">
+        <h1><img src={`${assets}app-icon-128.png`} srcset={`${assets}app-icon-256.png 2x`} width="88" height="88" alt="" />TrayNook</h1>
+        <p class="intro">{copy.hero.description}</p>
+        <a class="source-button" href="https://github.com/TrayNook/traynook#build-from-source">{copy.install.source}<img src={`${assets}arrow-up-right.svg`} width="16" height="16" alt="" /></a>
       </div>
+      <ProductExample copy={copy} />
+    </div>
 
-      <div class="product-column">
-      <div class="native-gallery" aria-describedby="native-caption">
-        <figure class="native-view">
-          <a class="native-image" data-native-capture="dropdown"
-            href={`${assets}native-ui/dropdown.png`} aria-label={copy.interface.openDropdown}>
-            <img src={`${assets}native-ui/dropdown.png`} width="438" height="242"
-              alt={copy.interface.dropdownAlt} fetchpriority="high" />
-            <span class="native-image-label"><span lang="en">Dropdown</span><span>{copy.interface.fullSize}<img class="icon" src={`${assets}arrow-up-right.svg`} width="13" height="13" alt="" /></span></span>
-          </a>
-        </figure>
-        <p class="native-caption" id="native-caption">{copy.interface.caption}</p>
-      </div>
-      <HomebrewCommands id="demo-install" labels={copy.install} />
-      </div>
-    </section>
+    <div class="guides shell">
+      <section id="install" aria-labelledby="install-title">
+        <h2 id="install-title">{copy.install.title}</h2>
+        <p class="build-path"><a href="https://github.com/TrayNook/traynook#build-from-source">{copy.install.source}</a> {copy.install.toolchain}</p>
+        <HomebrewCommands id="demo-install" labels={copy.install} />
+      </section>
 
-    <section class="organization wrap" id="how-it-works" aria-label={copy.groups.label}>
-      <div class="group-explanations">
-        <article><h2 lang="en">{copy.groups.menuLabel}</h2><p>{copy.groups.menu}</p></article>
-        <article><h2 lang="en">{copy.groups.dropdownLabel}</h2><p>{copy.groups.dropdown}</p></article>
-        <article><h2 lang="en">{copy.groups.hiddenLabel}</h2><p>{copy.groups.hidden}</p></article>
-      </div>
-      <p class="layout-note" set:html={copy.groups.note}></p>
-    </section>
-    <section class="questions wrap" id="questions" aria-labelledby="questions-title">
+      <section id="how-it-works" aria-labelledby="layout-title">
+        <h2 id="layout-title">{copy.groups.label}</h2>
+        <p class="layout-note" set:html={copy.groups.note}></p>
+        <dl class="group-explanations">
+          <div><dt lang="en">{copy.groups.menuLabel}</dt><dd>{copy.groups.menu}</dd></div>
+          <div><dt lang="en">{copy.groups.dropdownLabel}</dt><dd>{copy.groups.dropdown}</dd></div>
+          <div><dt lang="en">{copy.groups.hiddenLabel}</dt><dd>{copy.groups.hidden}</dd></div>
+        </dl>
+      </section>
+    </div>
+    <section class="shell" id="questions" aria-labelledby="questions-title">
       <h2 id="questions-title">{copy.faq.title}</h2>
       <div class="faq-list">
         {copy.faq.items.map(item => <details>
@@ -131,6 +123,13 @@ const socialImage = new URL(`${assets}social-card${locale === 'ru' ? '-ru' : ''}
       </div>
     </section>
   </main>
-  <footer class="site-footer wrap"><a class="wordmark" href={home} aria-label={copy.nav.home}><img src={`${assets}app-icon-64.png`} width="28" height="28" alt="" loading="lazy" /><span>TrayNook</span></a><nav aria-label={copy.nav.footer}><a href="https://github.com/TrayNook/traynook">GitHub</a><a href="https://github.com/TrayNook/traynook/issues/new">{copy.nav.issue}</a><a href="https://github.com/TrayNook/traynook/blob/master/LICENSE">{copy.nav.license}</a></nav></footer>
+  <footer class="site-footer shell">
+    <div class="repo-stats" data-repo-stats role="group" aria-label={copy.nav.repoStats}>
+      <a data-repo-link="stars" href="https://github.com/TrayNook/traynook"><img class="icon" src={`${assets}star.svg`} width="14" height="14" alt="" /><span>{copy.nav.stars}</span><span class="repo-count" data-repo-count="stars" hidden></span></a>
+      <a data-repo-link="forks" href="https://github.com/TrayNook/traynook/forks"><img class="icon" src={`${assets}git-fork.svg`} width="14" height="14" alt="" /><span>{copy.nav.forks}</span><span class="repo-count" data-repo-count="forks" hidden></span></a>
+      <span class="visually-hidden" data-stats-unavailable hidden>{copy.nav.statsUnavailable}</span>
+    </div>
+    <nav aria-label={copy.nav.footer}><a href="https://github.com/TrayNook/traynook/issues/new">{copy.nav.issue}</a><a href="https://github.com/TrayNook/traynook/blob/master/LICENSE">{copy.nav.license}</a></nav>
+  </footer>
 </body>
 </html>

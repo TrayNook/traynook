@@ -12,7 +12,9 @@ const matches = (text, pattern) => [...text.matchAll(pattern)].map(match => matc
 
 test('catalogues have identical keys, FAQ order, and nonempty strings', () => {
   assert.deepEqual(Object.keys(russian).sort(), Object.keys(english).sort());
-  for (const [key, value] of Object.entries(russian)) assert.ok(value.trim(), key);
+  for (const catalog of [english, russian]) {
+    for (const [key, value] of Object.entries(catalog)) assert.ok(value.trim(), key);
+  }
   assert.deepEqual(ru.faq.items.map(item => item.id), en.faq.items.map(item => item.id));
 });
 test('dynamic message placeholders are preserved', () => {
@@ -32,17 +34,13 @@ test('native app group names stay accurate while image descriptions and links ar
     assert.equal(en.groups[key], label, key);
     assert.equal(ru.groups[key], label, key);
   }
-  assert.equal('demo' in en, false);
-  assert.equal('demo' in ru, false);
-  for (const key of ['meta.title', 'hero.line1', 'hero.description', 'nav.skip', ...Object.keys(en.interface).map(key => `interface.${key}`)]) {
+  for (const key of ['meta.title', 'hero.description', 'nav.github', 'nav.skip', 'install.title', 'install.source', 'install.note', 'interface.caption', 'interface.dropdownAlt', 'interface.openDropdown', 'interface.layoutAlt', 'interface.openLayout', 'example.launcher', 'example.settings', 'example.back', 'example.handoff', 'practice.title', 'practice.help']) {
     assert.match(russian[`.${key}`], /[А-Яа-яЁё]/, key);
   }
-  assert.deepEqual(Object.keys(en.interface).sort(), ['caption', 'dropdownAlt', 'fullSize', 'openDropdown']);
-  assert.match(en.interface.caption, /Real TrayNook interface/);
-  assert.match(ru.interface.caption, /Настоящий интерфейс TrayNook/);
-  assert.match(en.interface.openDropdown, /original.+full size/);
-  assert.match(ru.interface.openDropdown, /оригинальный.+полном размере/);
-  for (const copy of [en.interface, ru.interface]) {
-    assert.doesNotMatch(Object.values(copy).join(' '), /Notes|Calendar|Music|sample|демонстрационн|Settings → Layout/);
+});
+test('installation FAQ links directly to the build instructions in both languages', () => {
+  for (const catalog of [en, ru]) {
+    const installFAQ = catalog.faq.items.find(item => item.id === 'download');
+    assert.match(installFAQ.paragraphs.join(' '), /href="https:\/\/github\.com\/TrayNook\/traynook#build-from-source"/);
   }
 });

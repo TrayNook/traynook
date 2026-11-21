@@ -1,17 +1,23 @@
 {
   "product": "TrayNook",
-  "source": "User-provided screenshot of the real TrayNook menu bar and open dropdown.",
-  "view": "Menu bar launcher and native dropdown with Settings and three application icons.",
+  "source": "Owner-supplied screenshots of the TrayNook menu bar, open dropdown, and Settings window.",
+  "view": "The native dropdown with four app icons and the Settings → Layout window.",
   "version": null,
   "build": null,
   "versionNote": "App version and build are not encoded in the supplied screenshot and have not been independently verified.",
-  "processing": "Copied byte-for-byte from the user attachment. No fabricated items, recoloring, theme variants, compositing, or upscaling.",
+  "processing": "PNG files copied byte-for-byte from the owner's attachments. The Layout preview uses a CSS crop and links to the complete window.",
   "images": [
     {
       "file": "dropdown.png",
-      "pixelWidth": 438,
-      "pixelHeight": 242,
-      "sha256": "9a0e2f9f03ff312ee143d7bcc02326c0bc3d83975ad5472dc44bea0e1c440d39"
+      "pixelWidth": 532,
+      "pixelHeight": 234,
+      "sha256": "55c75c83b12559615ae26c98f771b344d5bcd1f1d0049b188e3cadc59990fb8f"
+    },
+    {
+      "file": "layout.png",
+      "pixelWidth": 1597,
+      "pixelHeight": 2000,
+      "sha256": "6dae42ae6cd241cf4d90093741a3dd59a42aca1b0f36bbf604ead47840cea2c6"
     }
   ]
 }

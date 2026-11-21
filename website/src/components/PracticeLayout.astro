@@ -1,0 +1,44 @@
+---
+import '../styles/practice-layout.css';
+import { initialLayout } from '../scripts/practice-layout.mjs';
+
+interface Props {
+  labels: {
+    title: string; help: string; done: string; reset: string; moveHere: string;
+    earlier: string; later: string; names: Record<string, string>;
+  };
+  groups: { menuLabel: string; dropdownLabel: string; hiddenLabel: string };
+}
+const { labels, groups } = Astro.props;
+const groupLabels = { menu: groups.menuLabel, dropdown: groups.dropdownLabel, hidden: groups.hiddenLabel };
+const initial = initialLayout();
+---
+<section class="practice" data-layout-practice hidden aria-label={labels.title}>
+  <div class="practice-heading">
+    <h2 data-practice-title tabindex="-1">{labels.title}</h2>
+    <button type="button" data-practice-done>{labels.done}</button>
+  </div>
+  <p class="practice-help">{labels.help}</p>
+  <div class="practice-zones">
+    {Object.entries(groupLabels).map(([group, name]) => (
+      <div class="practice-zone" role="group" aria-label={name} data-practice-group={group}>
+        <div class="practice-row">
+          <span class="practice-label" lang="en">{name}</span>
+          <button type="button" data-move-here disabled>{labels.moveHere}</button>
+        </div>
+        <div class="practice-icons" data-practice-icons>
+          {initial[group].map(id => (
+            <button type="button" class="practice-item" draggable="true" data-practice-item={id}
+              aria-pressed="false" title={labels.names[id]} aria-label={labels.names[id]}></button>
+          ))}
+        </div>
+      </div>
+    ))}
+  </div>
+  <div class="practice-actions">
+    <button type="button" data-practice-shift="earlier" disabled>{labels.earlier}</button>
+    <button type="button" data-practice-shift="later" disabled>{labels.later}</button>
+    <button type="button" data-practice-reset disabled>{labels.reset}</button>
+  </div>
+  <p class="practice-status" data-practice-status role="status"></p>
+</section>

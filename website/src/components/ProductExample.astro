@@ -1,0 +1,48 @@
+---
+import PracticeLayout from './PracticeLayout.astro';
+import type en from '../i18n/en.json';
+
+interface Props { copy: typeof en }
+const { copy } = Astro.props;
+const photo = `${import.meta.env.BASE_URL}assets/native-ui/dropdown.png`;
+const layoutPhoto = `${import.meta.env.BASE_URL}assets/native-ui/layout.png`;
+---
+<figure class="native-view" data-product-example data-messages={JSON.stringify(copy.example)}
+  data-practice-labels={JSON.stringify(copy.practice)}>
+  <div class="capture-stage" data-capture-stage role="group" aria-label={copy.example.title}>
+    <a data-native-capture="dropdown" href={photo}
+      aria-label={copy.interface.openDropdown} title={copy.interface.openDropdown}>
+      <img src={photo} width="532" height="234" alt={copy.interface.dropdownAlt} fetchpriority="high" />
+    </a>
+    <canvas width="532" height="234" hidden aria-hidden="true"></canvas>
+    <button type="button" class="capture-hit tray-hit" data-tray-toggle hidden
+      aria-label={copy.example.launcher} title={copy.example.launcher}
+      aria-expanded="true" aria-controls="capture-slots"></button>
+    <div id="capture-slots" role="group" aria-label={copy.example.dropdown} hidden></div>
+  </div>
+  <section class="layout-photo" data-layout-photo hidden aria-labelledby="layout-photo-title">
+    <h2 id="layout-photo-title" lang="en" tabindex="-1">Settings → Layout</h2>
+    <a data-native-capture="layout" href={layoutPhoto} aria-label={copy.interface.openLayout}>
+      <span class="layout-crop"><img src={layoutPhoto} width="1597" height="2000"
+        loading="lazy" alt={copy.interface.layoutAlt} /></span>
+      {copy.interface.openLayout}
+    </a>
+    <div class="example-actions layout-actions">
+      <button type="button" data-demo-action="practice">{copy.practice.title}</button>
+      <button type="button" data-demo-action="back-from-layout">{copy.example.back}</button>
+    </div>
+  </section>
+  <PracticeLayout labels={copy.practice} groups={copy.groups} />
+  <figcaption id="native-caption">
+    <p data-instruction aria-live="polite">{copy.interface.caption}</p>
+    <a data-layout-fallback href={layoutPhoto}>{copy.interface.openLayout}</a>
+    <div class="example-actions" data-example-actions hidden>
+      <button type="button" data-demo-action="return" hidden>{copy.example.back}</button>
+      <button type="button" data-demo-action="arrange">{copy.practice.title}</button>
+      <a href={photo}>{copy.example.original}</a>
+    </div>
+  </figcaption>
+</figure>
+<script>
+  import '../scripts/product-example.mjs';
+</script>

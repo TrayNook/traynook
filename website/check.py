@@ -27,6 +27,8 @@ class Page(HTMLParser):
         self.in_title = False
         self.install_commands = {}
         self.install_code_id = None
+        self.install_notes = {}
+        self.install_note_index = None
         self.feed(path.read_text(encoding="utf-8"))
         self.ids = [attrs["id"] for _, attrs in self.elements if "id" in attrs]
 
@@ -38,18 +40,27 @@ class Page(HTMLParser):
         if tag == "code" and attrs.get("id") in ("demo-install-command", "faq-install-command"):
             self.install_code_id = attrs["id"]
             self.install_commands[self.install_code_id] = ""
+        if "data-install-note" in attrs:
+            assert (tag == "p" and "hidden" not in attrs and attrs.get("aria-hidden") != "true"
+                    and "visually-hidden" not in attrs.get("class", "").split()), "Display the installation status alongside the commands"
+            self.install_note_index = len(self.elements) - 1
+            self.install_notes[self.install_note_index] = ""
 
     def handle_endtag(self, tag):
         if tag == "title":
             self.in_title = False
         if tag == "code":
             self.install_code_id = None
+        if tag == "p":
+            self.install_note_index = None
 
     def handle_data(self, data):
         if self.in_title:
             self.title += data
         if self.install_code_id:
             self.install_commands[self.install_code_id] += data
+        if self.install_note_index is not None:
+            self.install_notes[self.install_note_index] += data
 
 
 @cache
@@ -150,15 +161,25 @@ def check_page(path, locale):
                     if tag == "a" and "data-native-capture" in attrs]
     native_images = [attrs for tag, attrs in page.elements
                      if tag == "img" and "/assets/native-ui/" in attrs.get("src", "")]
-    assert len(native_links) == len(native_images) == 1, "Use only the original native screenshot and one full-size link"
-    link, image = native_links[0], native_images[0]
-    original_url = "/assets/native-ui/dropdown.png"
-    assert link.get("href") == image.get("src") == original_url, "Native screenshot and full-size link must use the original asset"
-    assert link.get("data-native-capture") == "dropdown" and link.get("aria-label"), "Native image link needs an accessible label"
-    assert png_dimensions(check_reference(original_url, path)) == (438, 242), "Incorrect original screenshot dimensions"
-    assert tuple(int(image[size]) for size in ("width", "height")) == (438, 242), "Native image dimensions do not match the original"
-    assert image.get("alt", "").strip() and "icon" not in image.get("class", "").split(), "Native image needs descriptive alt text and must not receive icon filters"
-    assert not {"interactive-demo", "demo-copy", "native-settings", "try-layout"}.intersection(ids), "Remove the recreated interface"
+    expected_captures = {"dropdown": (532, 234), "layout": (1597, 2000)}
+    assert len(native_links) == len(native_images) == len(expected_captures), "Both product screenshots need a full-size link"
+    for name, dimensions in expected_captures.items():
+        url = f"/assets/native-ui/{name}.png"
+        link = next(attrs for attrs in native_links if attrs.get("data-native-capture") == name)
+        image = next(attrs for attrs in native_images if attrs.get("src") == url)
+        assert link.get("href") == url and link.get("aria-label"), f"Missing full-size {name} link or accessible label"
+        assert png_dimensions(check_reference(url, path)) == dimensions, f"Incorrect {name} PNG"
+        assert tuple(int(image[size]) for size in ("width", "height")) == dimensions, f"Incorrect {name} image dimensions"
+        assert image.get("alt", "").strip() and "icon" not in image.get("class", "").split(), f"Missing native {name} description or unexpected filter"
+    dropdown_link = next(attrs for attrs in native_links if attrs.get("data-native-capture") == "dropdown")
+    dropdown_image = next(attrs for attrs in native_images if attrs.get("src") == dropdown_link["href"])
+    assert sum("data-product-example" in attrs for _, attrs in page.elements) == 1, "Missing product example"
+    for name in ("data-tray-toggle", "data-layout-practice", "data-example-actions"):
+        matches = [attrs for _, attrs in page.elements if name in attrs]
+        assert len(matches) == 1 and "hidden" in matches[0], f"Reveal {name} only after the example is ready"
+    assert "hidden" not in dropdown_image and "hidden" not in dropdown_link, "Show the original photograph without JavaScript"
+    assert any(tag == "a" and "data-layout-fallback" in attrs and "hidden" not in attrs
+               and attrs.get("href") == "/assets/native-ui/layout.png" for tag, attrs in page.elements), "Layout needs a no-JavaScript full-size link"
     assert "native-caption" in ids, "Describe the real screenshot"
     assert not any(old in path.read_text(encoding="utf-8") for old in
                    ("settings-light.png", "settings-dark.png", "dropdown-light.png", "dropdown-dark.png",
@@ -179,7 +200,17 @@ def check_page(path, locale):
                if "data-copy-command" in attrs), "Copy icons need accessible labels"
     assert sum("data-copy-feedback" in attrs and attrs.get("role") == "status" and "visually-hidden" in attrs.get("class", "").split()
                for _, attrs in page.elements) == 2, "Missing copy feedback"
-    assert ids.index("native-caption") < ids.index("demo-install-command") < ids.index("how-it-works"), "Keep Homebrew installation immediately below the screenshot"
+    positions = {attrs["id"]: i for i, (_, attrs) in enumerate(page.elements) if "id" in attrs}
+    assert "install" in positions, "Missing installation section"
+    assert positions["native-caption"] < positions["install"] < positions["demo-install-command"] < positions["how-it-works"], "Keep installation below the screenshot and above the layout guide"
+    install_section = page.elements[positions["install"]:positions["how-it-works"]]
+    assert any(tag == "a" and attrs.get("href") == "https://github.com/TrayNook/traynook#build-from-source"
+               for tag, attrs in install_section), "Link the available source build instructions from the install section"
+    labels = json.loads((ROOT.parent / "src" / "i18n" / f"{locale}.json").read_text(encoding="utf-8"))
+    note = labels["install"]["note"].strip()
+    assert note and [value.strip() for value in page.install_notes.values()] == [note, note], "Both Homebrew blocks need the localized availability note"
+    first_note, faq_note = page.install_notes
+    assert positions["install"] < first_note < positions["how-it-works"] and positions["questions"] < faq_note, "Explain Homebrew availability in the install section and the FAQ"
 
     assert metadata["twitter:image"] == metadata["og:image"], "Social images differ"
     expected_image = f"{SITE}/assets/social-card{'-ru' if locale == 'ru' else ''}.png"
@@ -197,19 +228,17 @@ results = {locale: check_page(ROOT / route, locale)
 assert results["en"] != results["ru"], "Use separate localized social cards"
 native_dir = ROOT / "assets/native-ui"
 provenance = json.loads((native_dir / "provenance.json").read_text(encoding="utf-8"))
-assert len(provenance["images"]) == 1 and provenance["images"][0]["file"] == "dropdown.png", "Native provenance must describe only the original screenshot"
-assert {image.name for image in native_dir.glob("*.png")} == {"dropdown.png"}, "Remove synthetic native images from the build"
+expected_files = {"dropdown.png", "layout.png"}
+assert {entry["file"] for entry in provenance["images"]} == expected_files, "Describe both native screenshots"
+assert {image.name for image in native_dir.glob("*.png")} == expected_files, "Build must include the two owner-supplied captures"
 for entry in provenance["images"]:
     image = native_dir / entry["file"]
     assert hashlib.sha256(image.read_bytes()).hexdigest() == entry["sha256"], f"Native image differs from original provenance: {image.name}"
     assert png_dimensions(image) == (entry["pixelWidth"], entry["pixelHeight"]), "Native provenance dimensions differ"
-for script in ROOT.rglob("*.js"):
-    assert not any(selector in script.read_text(encoding="utf-8") for selector in
-                   ("interactive-demo", "demo-copy", "try-layout", "demo-announcement")), "Remove recreated UI scripts from the build"
 for css in ROOT.rglob("*.css"):
     content = css.read_text(encoding="utf-8")
     references = re.findall(r"url\(\s*['\"]?([^'\")]+)['\"]?\s*\)", content)
     references += re.findall(r"@import\s+['\"]([^'\"]+)['\"]", content)
     for value in references:
         check_reference(value.strip(), css)
-print("Passed: 3 built pages, original native PNG/hash/full-size link, no synthetic interface, custom domain, local links/assets, accessibility references, canonical/social metadata, EN/RU routes, theme controls, GitHub widgets, and Homebrew commands.")
+print("Passed: 3 built pages, both native PNGs, hashes and full-size links, interactive example fallback, custom domain, local links/assets, accessibility references, canonical/social metadata, EN/RU routes, theme controls, GitHub widgets, source build link, and Homebrew commands with localized availability.")
