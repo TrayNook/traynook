@@ -333,12 +333,15 @@ final class NativeMenuBarController: NSObject {
 
   /// AppKit restores this position when autosave visibility is attached. Keep
   /// the undocumented defaults key isolated to our own two status items.
+  private static func preferredPositionKey(_ name: String) -> String {
+    "NSStatusItem Preferred Position \(name)"
+  }
+
   private static func restorePosition(of item: NSStatusItem, name: String, fallback: Double, force: Bool = false,
     visible: Bool = true) {
-    let key = "NSStatusItem Preferred Position \(name)"
-    let saved = UserDefaults.standard.object(forKey: key) as? NSNumber
-    let position = !force && saved?.doubleValue.isFinite == true && saved!.doubleValue >= 0
-      ? saved!.doubleValue : fallback
+    let key = preferredPositionKey(name)
+    let saved = (UserDefaults.standard.object(forKey: key) as? NSNumber)?.doubleValue
+    let position = !force ? saved.flatMap { $0.isFinite && $0 >= 0 ? $0 : nil } ?? fallback : fallback
     item.isVisible = false
     UserDefaults.standard.set(position, forKey: key)
     item.autosaveName = name
@@ -349,7 +352,7 @@ final class NativeMenuBarController: NSObject {
   private static func setVisiblePreservingPosition(_ item: NSStatusItem, visible: Bool) {
     guard item.isVisible != visible else { return }
     guard let name = item.autosaveName else { item.isVisible = visible; return }
-    let key = "NSStatusItem Preferred Position \(name)"
+    let key = preferredPositionKey(name)
     let position = UserDefaults.standard.object(forKey: key)
     item.isVisible = visible
     if let position { UserDefaults.standard.set(position, forKey: key) }
@@ -360,7 +363,7 @@ final class NativeMenuBarController: NSObject {
       NSStatusBar.system.removeStatusItem(item)
       return
     }
-    let key = "NSStatusItem Preferred Position \(name)"
+    let key = preferredPositionKey(name)
     let position = UserDefaults.standard.object(forKey: key)
     NSStatusBar.system.removeStatusItem(item)
     if let position { UserDefaults.standard.set(position, forKey: key) }
@@ -372,8 +375,18 @@ final class NativeMenuBarController: NSObject {
     return min(600, max(1, width - 64))
   }
 
+  static func nextBoundaryPosition(from position: Double, shortfall: Double, clippedAt: Double?) -> Double? {
+    if let clippedAt {
+      guard clippedAt - position > 1 else { return nil }
+      return (position + clippedAt) / 2
+    }
+    // macOS rounds preferred positions to native slots. Account for the measured
+    // gap as well as slot rounding when the last request fell short.
+    return position + max(24, shortfall + 8)
+  }
+
   /// Establish our controls without asking the user to drag an offscreen item.
-  /// Only TrayNook's own status items are repositioned here.
+  /// Preserve the launcher slot while looking for a safe place for the separator.
   func prepareLayout(keepingVisible: Set<String> = []) async throws {
     guard !isBusy else { throw MenuBarFailure(L("Another menu-bar action is in progress.")) }
     isBusy = true
@@ -386,63 +399,110 @@ final class NativeMenuBarController: NSObject {
       didReveal = true
       token = generation
       try await pause(0.25, token: token)
-      if setupMessage != nil, let separator {
-        Self.restorePosition(of: launcher, name: "TrayNookLauncher", fallback: 0, force: true)
-        Self.restorePosition(of: separator, name: "TrayNook.HiddenBoundary", fallback: initialBoundaryPosition, force: true)
+      guard let separator else { throw NativeMenuActionError.inventoryUnavailable }
+      var snapshot = try await freshInventory(token: token)
+      let boundaryName = "TrayNook.HiddenBoundary"
+      func positionBoundary(_ position: Double) async throws {
+        try requireIdleInput(checkingKeys: false)
+        Self.restorePosition(of: separator, name: boundaryName, fallback: position, force: true)
         try await pause(0.25, token: token)
       }
-      let snapshot = try await freshInventory(token: token)
-      let environment = try checkedEnvironment()
-      // Items that stay visible: protected ones are never dragged, so they
-      // must end up right of the separator here. Menu Bar items are only a
-      // preference for the position; Apply drags any left behind to the right.
-      func keptVisible(_ snapshot: InventorySnapshot, _ environment: MenuBarEnvironment)
-        -> [(name: String, frame: ItemFrame, fixed: Bool)] {
-        snapshot.items.compactMap { item in
-          guard item.observation.processIdentifier != ProcessInfo.processInfo.processIdentifier,
-            item.observation.isOnscreen != false,
-            let frame = item.observation.frame, environment.safeFrame.contains(frame) else { return nil }
-          let fixed = item.manageability.status == .protected || item.identity.persistentKey == nil
-          guard fixed || keepingVisible.contains(item.identity.persistentKey ?? "") else { return nil }
-          return (item.observation.applicationName ?? item.observation.bundleIdentifier ?? "?", frame, fixed)
-        }
+      func compactEnvironment() -> MenuBarEnvironment? {
+        guard let current = environment(), current.safeFrame.contains(current.boundary),
+          current.safeFrame.contains(current.launcher) else { return nil }
+        return current
       }
-      let kept = keptVisible(snapshot, environment)
-      if let leftmost = kept.map(\.frame).min(by: { $0.minX < $1.minX }),
-        leftmost.minX < environment.boundary.maxX, let separator {
-        let firstPosition = environment.safeFrame.maxX - leftmost.minX + compactWidth / 2 + 16
-        var position = firstPosition
-        var blocking: [String] = []
-        var placed = false
-        for attempt in 0..<3 {
-          Self.restorePosition(of: separator, name: "TrayNook.HiddenBoundary", fallback: position, force: true)
-          try await pause(0.25, token: token)
-          // Items shift when the separator is inserted; judge fresh frames.
-          let positioned: MenuBarEnvironment
-          do { positioned = try checkedEnvironment() }
-          catch let error as NativeMenuActionError { throw error }
-          catch {
-            // Shifted off the safe area (under the notch): put it back and report.
-            if attempt > 0 {
-              Self.restorePosition(of: separator, name: "TrayNook.HiddenBoundary", fallback: firstPosition, force: true)
-              try await pause(0.25, token: token)
+      var position = (UserDefaults.standard.object(forKey: Self.preferredPositionKey(boundaryName)) as? NSNumber)?
+        .doubleValue ?? initialBoundaryPosition
+      if compactEnvironment() == nil {
+        // A stale separator slot can clip either control. Test the launcher on
+        // its own before using a fallback for a genuinely offscreen launcher.
+        Self.setVisiblePreservingPosition(separator, visible: false)
+        try await pause(0.25, token: token)
+        if let window = launcher.button?.window, let id = UInt32(exactly: window.windowNumber),
+          WindowMetadata.read(ids: [id]).first?.isVisible == false {
+          try requireIdleInput(checkingKeys: false)
+          Self.restorePosition(of: launcher, name: "TrayNookLauncher", fallback: 0, force: true)
+        }
+        position = 0
+        try await positionBoundary(position)
+        snapshot = try await freshInventory(token: token)
+      }
+      var clippedAt: Double?
+      var lastMeasured: (position: Double, shortfall: Double)?
+      var usableBeforePreferredMove: Double?
+      var blocking: [String] = []
+      var previousBoundaryEdge: Double?
+      var unchangedRequests = 0
+      var triedNativePlacement = false
+      for attempt in 0..<8 {
+        if let current = compactEnvironment() {
+          var firstRequired = current.launcher.minX
+          var firstPreferred = firstRequired
+          var firstRequiredSource: RawSourceItemObservation?
+          blocking = []
+          for item in snapshot.items {
+            let source = item.observation
+            guard source.processIdentifier != ProcessInfo.processInfo.processIdentifier,
+              source.isOnscreen != false, let frame = source.frame,
+              Self.visibleSideIsSafe(frame, safeFrame: current.safeFrame),
+              frame.minX < current.boundary.maxX - 1 else { continue }
+            if item.manageability.status == .protected || item.identity.persistentKey == nil {
+              if frame.minX < firstRequired {
+                firstRequired = frame.minX
+                firstRequiredSource = source
+              }
+              blocking.append(source.applicationName ?? source.bundleIdentifier ?? "?")
+            } else if attempt == 0, keepingVisible.contains(item.identity.persistentKey ?? "") {
+              firstPreferred = min(firstPreferred, frame.minX)
             }
-            break
           }
-          let now = try await freshInventory(token: token)
-          blocking = keptVisible(now, positioned)
-            .filter { $0.fixed && $0.frame.minX < positioned.boundary.maxX - 1 }.map(\.name)
-          nativeLog.notice("prepareLayout leftmost=\(String(describing: leftmost), privacy: .public) position=\(position, privacy: .public) boundary=\(String(describing: positioned.boundary), privacy: .public) kept=\(kept.count) blocking=\(blocking.count)")
-          if blocking.isEmpty { placed = true; break }
-          // A crowded bar can land the separator one slot right of the
-          // requested position. Ask for a slot further left and retry.
-          position += 24
+          let requiredFits = blocking.isEmpty && Self.launcherIsSafe(current.launcher,
+            boundary: current.boundary, safeFrame: current.safeFrame, expanded: false)
+          let target = min(firstRequired, firstPreferred)
+          if requiredFits && target >= current.boundary.maxX - 1 { return }
+          if requiredFits { usableBeforePreferredMove = position }
+          unchangedRequests = previousBoundaryEdge == current.boundary.maxX ? unchangedRequests + 1 : 0
+          previousBoundaryEdge = current.boundary.maxX
+          if !requiredFits, unchangedRequests >= 2, !triedNativePlacement {
+            triedNativePlacement = true
+            let pid = ProcessInfo.processInfo.processIdentifier
+            let bundle = Bundle.main.bundleIdentifier
+            let control = StatusWindowBinding(id: current.boundaryWindowID, pid: pid, bundle: bundle)
+            let anchor = try firstRequiredSource.map { try statusWindow(for: $0, requiringOnscreen: true) }
+              ?? StatusWindowBinding(id: current.launcherWindowID, pid: pid, bundle: bundle)
+            // AppKit can clamp preferred positions at the edge of its slots.
+            // Command-drag only our separator, using the fixed item as an anchor.
+            try await waitForIdleInput(token: token)
+            guard environment() == current else { throw NativeMenuActionError.inventoryUnavailable }
+            try await moveTargeted(source: control, before: anchor, fallbackBefore: control, token: token)
+            try await pause(0.25, token: token)
+            snapshot = try await freshInventory(token: token)
+            continue
+          }
+          lastMeasured = (position, current.boundary.maxX - target)
+          nativeLog.notice("prepareLayout position=\(position) boundary=\(current.boundary.maxX) target=\(target) blocking=\(blocking.count)")
+        } else {
+          clippedAt = position
         }
-        guard placed else {
-          let names = Set(blocking).sorted().joined(separator: ", ")
-          throw MenuBarFailure(String(format: L("macOS could not keep %@ visible. Command-drag these items to the right of TrayNook's tray icon, then choose Apply Saved Layout."), names), reason: .controlPlacementRefused)
+        guard attempt < 7, let lastMeasured,
+          let next = Self.nextBoundaryPosition(from: lastMeasured.position,
+            shortfall: lastMeasured.shortfall, clippedAt: clippedAt) else { break }
+        // If only an optional move clipped, return to the known usable slot.
+        position = clippedAt == nil ? next : usableBeforePreferredMove ?? next
+        try await positionBoundary(position)
+        snapshot = try await freshInventory(token: token)
+      }
+      if !blocking.isEmpty {
+        let names = Set(blocking).sorted().joined(separator: ", ")
+        throw MenuBarFailure(String(format: L("macOS could not keep %@ visible. Command-drag these items to the right of TrayNook's tray icon, then choose Apply Saved Layout."), names), reason: .controlPlacementRefused)
+      }
+      if let current = environment() {
+        if let message = setupMessage(in: current) {
+          throw MenuBarFailure(message, reason: .unsafeControlGeometry)
         }
       }
+      throw NativeMenuActionError.inventoryUnavailable
     } catch {
       if (token == generation || !isConcealed),
         didReveal || !isConcealed || (error as? NativeMenuActionError) != .inputNotIdle { reveal() }

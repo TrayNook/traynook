@@ -11,6 +11,24 @@ struct NativeGeometryTests {
   private let boundary = ItemFrame(x: 1222, y: 0, width: 18, height: 24)
   private let launcher = ItemFrame(x: 1240, y: 0, width: 24, height: 24)
 
+  @Test("A login separator request accounts for the observed gap to protected items")
+  func separatorPositionClosesLoginGap() {
+    // At login, the last of the old three attempts left the separator at
+    // x=1168 with a protected item to its left at x=1120.
+    #expect(NativeMenuBarController.nextBoundaryPosition(from: 673, shortfall: 1168 - 1120,
+      clippedAt: nil) == 729)
+    #expect(NativeMenuBarController.nextBoundaryPosition(from: 729, shortfall: 4,
+      clippedAt: nil) == 753)
+  }
+
+  @Test("A clipped separator request searches back toward the last visible slot")
+  func separatorPositionBacksOffFromClipping() {
+    #expect(NativeMenuBarController.nextBoundaryPosition(from: 673, shortfall: 48,
+      clippedAt: 729) == 701)
+    #expect(NativeMenuBarController.nextBoundaryPosition(from: 728, shortfall: 4,
+      clippedAt: 729) == nil)
+  }
+
   @Test("Display attachment grows concealment and removal never shrinks it")
   func concealmentLengthRetainsDisplayCoverage() {
     let initial = NativeMenuBarController.concealmentLength(current: 2, displayWidths: [1728])
