@@ -60,7 +60,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     launcher = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-    if !smokeTest { launcher.autosaveName = "TrayNookLauncher" }
     launcher.behavior = []
     launcher.button?.image = NSImage(systemSymbolName: "tray.full", accessibilityDescription: L("TrayNook"))
     launcher.button?.image?.isTemplate = true
