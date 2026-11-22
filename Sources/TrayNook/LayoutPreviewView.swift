@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-/// A schematic of saved homes; dragging edits a local draft until the drop.
+/// Observed menu-bar order and saved homes; dragging edits a local draft until the drop.
 struct LayoutPreviewView: View {
   @ObservedObject var model: AppModel
   @StateObject private var drag = PreviewDragSession()
@@ -16,7 +16,7 @@ struct LayoutPreviewView: View {
     _drag = StateObject(wrappedValue: drag)
   }
 
-  private var layout: SavedLayout { drag.draft ?? model.layout }
+  private var layout: SavedLayout { drag.draft ?? model.previewLayout }
   func items(in placement: Placement) -> [SavedItem] {
     layout.items.filter { saved in
       guard let live = model.liveItem(saved.id) else { return false }
@@ -39,7 +39,7 @@ struct LayoutPreviewView: View {
     let rows = (controlCount + columns - 1) / columns
     return VStack(alignment: .leading, spacing: 10) {
       HStack {
-        Text(L("Saved layout preview")).font(.headline)
+        Text(L("Layout preview")).font(.headline)
         Spacer()
         Stepper(value: Binding(get: { model.layout.rowCapacity }, set: { model.setRowCapacity($0) }), in: 1...30) {
           Text(L("Controls per dropdown row") + ": \(model.layout.rowCapacity)").font(.caption)
@@ -55,7 +55,7 @@ struct LayoutPreviewView: View {
       alwaysHidden(hiddenItems)
       VStack(alignment: .leading, spacing: 4) {
         Text(L("Drag icons to reorder or move between zones. Escape cancels."))
-        Text(L("Application icons; protected item positions and spacing may differ."))
+        Text(L("Menu Bar follows observed order. Hidden sections show saved placements."))
           .fixedSize(horizontal: false, vertical: true)
       }
       .font(.caption).foregroundStyle(.secondary)
@@ -74,28 +74,29 @@ struct LayoutPreviewView: View {
     .onPreferenceChange(PreviewIconFrames.self) { iconFrames = $0 }
     .onPreferenceChange(PreviewZoneFrames.self) { zoneFrames = $0 }
     .onChange(of: model.layout) { _ in drag.cancel() }
+    .onChange(of: model.menuBarPreviewOrder) { _ in drag.cancel() }
     .onChange(of: model.canEdit) { editable in if !editable { drag.cancel() } }
     .onDisappear { drag.cancel() }
   }
 
   private func menuBar(_ items: [SavedItem]) -> some View {
-    HStack(spacing: 12) {
+    let launcherIndex = model.menuBarPreviewOrder?.launcherIndex(in: items.map(\.id)) ?? items.endIndex
+    return HStack(spacing: 12) {
       Text(L("Menu Bar")).font(.caption.weight(.medium)).foregroundStyle(.secondary)
       Spacer(minLength: 0)
-      HStack(spacing: 12) {
-        ScrollView(.horizontal) {
-          HStack(spacing: 4) {
-            ForEach(items) { item in previewIcon(item, in: .menuBar, size: 20, cell: 32) }
-          }.frame(maxWidth: .infinity, alignment: .trailing).padding(.vertical, 3)
+      ScrollView(.horizontal) {
+        HStack(spacing: 4) {
+          ForEach(items[..<launcherIndex]) { item in previewIcon(item, in: .menuBar, size: 20, cell: 32) }
+          Image(systemName: "tray.full").font(.system(size: 20))
+            .frame(width: 32, height: 30)
+            .background(.quaternary, in: RoundedRectangle(cornerRadius: 5))
+            .accessibilityLabel(L("TrayNook launcher preview"))
+          ForEach(items[launcherIndex...]) { item in previewIcon(item, in: .menuBar, size: 20, cell: 32) }
         }
-        .frame(width: min(CGFloat(items.count * 36), max(0, availableWidth - 152)))
-        .scrollIndicators(.hidden)
-        Divider().frame(height: 20)
-        Image(systemName: "tray.full").font(.system(size: 20))
-          .frame(width: 32, height: 30)
-          .background(.quaternary, in: RoundedRectangle(cornerRadius: 5))
-          .accessibilityLabel(L("TrayNook launcher preview"))
+        .padding(.vertical, 3)
       }
+      .frame(width: min(CGFloat((items.count + 1) * 36), max(32, availableWidth - 100)))
+      .scrollIndicators(.hidden)
       // The physical menu-bar order is left-to-right in every interface language.
       .environment(\.layoutDirection, .leftToRight)
     }
@@ -110,23 +111,19 @@ struct LayoutPreviewView: View {
         Text(L("Dropdown")).font(.caption.weight(.medium)).foregroundStyle(.secondary)
           .padding(.top, 17)
         Spacer(minLength: 12)
-        VStack(alignment: .trailing, spacing: 0) {
-          Image(systemName: "arrowtriangle.up.fill").font(.system(size: 10))
-            .foregroundStyle(.quaternary).padding(.trailing, 23).accessibilityHidden(true)
-          ScrollView {
-            LazyVGrid(columns: Array(repeating: GridItem(.fixed(36), spacing: 8), count: columns),
-              alignment: .center, spacing: 8) {
-              Image(systemName: "gearshape").font(.system(size: 21)).frame(width: 36, height: 36)
-                .accessibilityLabel(L("Settings preview"))
-              ForEach(items) { item in
-                previewIcon(item, in: .dropdown, size: 26, cell: 36)
-              }
-            }.padding(12)
-          }
-          .frame(width: DropdownView.contentWidth(columns: columns, hasFooter: false))
-          .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 9))
-          .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(Color(nsColor: .separatorColor).opacity(0.35)))
+        ScrollView {
+          LazyVGrid(columns: Array(repeating: GridItem(.fixed(36), spacing: 8), count: columns),
+            alignment: .center, spacing: 8) {
+            Image(systemName: "gearshape").font(.system(size: 21)).frame(width: 36, height: 36)
+              .accessibilityLabel(L("Settings preview"))
+            ForEach(items) { item in
+              previewIcon(item, in: .dropdown, size: 26, cell: 36)
+            }
+          }.padding(12)
         }
+        .frame(width: DropdownView.contentWidth(columns: columns, hasFooter: false))
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 9))
+        .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(Color(nsColor: .separatorColor).opacity(0.35)))
       }
       .modifier(PreviewDropZone(placement: .dropdown, drag: drag, outlineAtRest: false))
       .onAppear { availableWidth = geometry.size.width }
@@ -188,10 +185,10 @@ struct LayoutPreviewView: View {
         if !protected && model.canEdit {
           PreviewDragSource(key: item.id, toolTip: help) { down, event in
             guard model.canEdit, let original = model.liveItem(item.id), let frame = iconFrames[item.id] else { return }
-            guard drag.begin(item.id, layout: model.layout, commit: { key, zone, anchor in
+            guard drag.begin(item.id, layout: model.previewLayout, commit: { key, zone, anchor in
               guard let current = model.liveItem(key),
                 NativeMenuBarController.preservesSourceIdentity(original: original, current: current) else { return false }
-              return model.commitPreviewMove(key, to: zone, before: anchor)
+              return model.commitPreviewMove(key, to: zone, before: anchor, usingDisplayedOrder: true)
             }) else { return }
             _ = drag.track(from: down, event: event, image: image, cell: frame) { point in
               if let zone = Placement.allCases.first(where: { zoneFrames[$0]?.contains(point) == true }) {

@@ -66,6 +66,20 @@ struct SavedLayout: Codable, Equatable {
       items.filter { $0.placement == zone }.map { SavedItem(id: $0.id) }
     }
   }
+
+  /// Reorder only the supplied identities, leaving the other saved slots intact.
+  func reordering(_ keys: [String]) -> Self? {
+    let lane = Set(keys)
+    let byKey = Dictionary(items.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+    guard lane.count == keys.count, keys.allSatisfy({ byKey[$0] != nil }) else { return nil }
+    var cursor = keys.makeIterator()
+    var next = self
+    next.items = items.map { item in
+      guard lane.contains(item.id), let key = cursor.next(), let replacement = byKey[key] else { return item }
+      return replacement
+    }
+    return next
+  }
 }
 
 enum LayoutError: LocalizedError {

@@ -45,6 +45,7 @@ final class AppModel: ObservableObject {
   @Published var concealed = false
   @Published private(set) var nativeSetupMessage: String?
   @Published private var nativeItemStates: [String: NativeMenuBarController.ItemInspection] = [:]
+  @Published private(set) var menuBarPreviewOrder: NativeMenuBarController.PreviewMenuBarOrder?
   @Published var message: String?
   @Published var recoveryRequired = false {
     didSet { if recoveryRequired != oldValue { observationRevision &+= 1 } }
@@ -561,6 +562,7 @@ final class AppModel: ObservableObject {
     }
     if nativeSetupMessage != inspection.setupMessage { nativeSetupMessage = inspection.setupMessage }
     if nativeItemStates != inspection.items { nativeItemStates = inspection.items }
+    if let order = inspection.menuBarOrder, menuBarPreviewOrder != order { menuBarPreviewOrder = order }
     // Polling diff: hidden sources rebind, other additions reconcile, and
     // ambiguous identities stop for review, including during recovery.
     if prepared.watchingLayout {
@@ -917,6 +919,7 @@ final class AppModel: ObservableObject {
     pendingMenuBarOrder = nil
     lastCompleteStatusWindows = nil
     nativeItemStates = [:]
+    menuBarPreviewOrder = nil
     nativeSetupMessage = nil
     unsafeScans = 0
     incompleteScans = 0
@@ -1645,14 +1648,14 @@ final class AppModel: ObservableObject {
 
   /// Reorder one lane's keys, keeping the rest of the layout in place.
   func setOrder(_ keys: [String], undoable: Bool) {
-    guard canEdit else { return }
-    let byKey = Dictionary(layout.items.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-    let lane = Set(keys)
-    var cursor = keys.makeIterator()
-    var next = layout
-    next.items = next.items.compactMap { lane.contains($0.id) ? cursor.next().flatMap { byKey[$0] } : $0 }
-    guard next.items.count == layout.items.count else { return }
+    guard canEdit, let next = layout.reordering(keys) else { return }
     replaceLayout(next, undoable: undoable, applyingMenuBarOrder: true)
+  }
+
+  var previewLayout: SavedLayout {
+    guard !busy, let order = menuBarPreviewOrder else { return layout }
+    let menuBarKeys = Set(layout.items.lazy.filter { $0.placement == .menuBar }.map(\.id))
+    return layout.reordering(order.keys.filter { menuBarKeys.contains($0) }) ?? layout
   }
 
   private func menuBarItems(in layout: SavedLayout) -> [ClassifiedSourceItem] {
@@ -1685,7 +1688,8 @@ final class AppModel: ObservableObject {
   }
 
   /// Mouse movement edits a local preview; persist one final drop and one Undo.
-  @discardableResult func commitPreviewMove(_ key: String, to placement: Placement, before anchor: String? = nil) -> Bool {
+  @discardableResult func commitPreviewMove(_ key: String, to placement: Placement, before anchor: String? = nil,
+    usingDisplayedOrder: Bool = false) -> Bool {
     guard canEdit, let source = liveItem(key), isManageable(source),
       let previousPlacement = layout.items.first(where: { $0.id == key })?.placement else { return false }
     if let anchor {
@@ -1693,7 +1697,9 @@ final class AppModel: ObservableObject {
         layout.items.contains(where: { $0.id == anchor && $0.placement == placement }),
         placement == .menuBar || isManageable(destination) else { return false }
     }
-    guard let next = layout.moving(key, to: placement, before: anchor) else { return false }
+    let baseline = usingDisplayedOrder && (previousPlacement == .menuBar || placement == .menuBar)
+      ? previewLayout : layout
+    guard let next = baseline.moving(key, to: placement, before: anchor) else { return false }
     guard next != layout else { return true }
     guard replaceLayout(next, undoable: true,
       applyingMenuBarOrder: previousPlacement == placement && placement == .menuBar) else { return false }

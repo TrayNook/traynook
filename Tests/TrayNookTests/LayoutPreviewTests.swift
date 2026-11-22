@@ -8,6 +8,35 @@ import Testing
 @Suite("Saved layout preview")
 @MainActor
 struct LayoutPreviewTests {
+  @Test("The preview puts the launcher between the observed app and system items")
+  func followsNativeMenuBarOrder() throws {
+    let observations = [
+      item("com.apple.controlcenter", name: "Control Center", x: 350, isOnscreen: true),
+      item("example.second", name: "Second", x: 170, isOnscreen: true),
+      item("com.apple.KerberosMenuExtra", name: "Kerberos", x: 220, isOnscreen: true),
+      item("example.first", name: "First", x: 120, isOnscreen: true),
+      item("example.clipped", name: "Clipped", x: 90, isOnscreen: false),
+      item("example.otherDisplay", name: "Other display", x: 210, y: 300, isOnscreen: true),
+    ]
+    let order = try #require(NativeMenuBarController.previewMenuBarOrder(IdentityAssessor().classify(observations),
+      launcher: ItemFrame(x: 270, y: 0, width: 24, height: 24),
+      safeFrame: ItemFrame(x: 80, y: 0, width: 420, height: 24)))
+    #expect(order.beforeLauncher == ["example.first", "example.second", "com.apple.KerberosMenuExtra"])
+    #expect(order.afterLauncher == ["com.apple.controlcenter"])
+    #expect(order.launcherIndex(in: order.keys) == 3)
+  }
+
+  @Test("Projecting observed order keeps hidden placements and unobserved slots")
+  func preservesSavedHomes() throws {
+    let layout = SavedLayout(items: [SavedItem(id: "example.right"),
+      SavedItem(id: "example.hidden", placement: .dropdown),
+      SavedItem(id: "example.offscreen"), SavedItem(id: "example.left")])
+    let projection = try #require(layout.reordering(["example.left", "example.right"]))
+    #expect(projection.items.map(\.id) == ["example.left", "example.hidden", "example.offscreen", "example.right"])
+    #expect(projection.items[1].placement == .dropdown)
+    #expect(layout.items.first?.id == "example.right")
+  }
+
   @Test("Dropdown fits its controls instead of reserving empty columns")
   func compactColumns() {
     #expect(DropdownView.columnCount(rowCapacity: 10, controlCount: 6, maximumWidth: 700) == 6)
@@ -50,6 +79,7 @@ struct LayoutPreviewTests {
       defaults.object(forKey: key).map { (key, $0) }
     })
     let launcher = NSStatusBar.system.statusItem(withLength: 24)
+    launcher.button?.image = NSImage(systemSymbolName: "tray.full", accessibilityDescription: nil)
     let native = NativeMenuBarController(launcher: launcher)
     defer {
       native.remove()
@@ -121,6 +151,28 @@ struct LayoutPreviewTests {
     #expect(model.layout == originalLayout)
     // A lane order with an unknown key or a missing key changes nothing.
     model.setOrder(["example.unknown"] + applications.map(\.id), undoable: false)
+    #expect(model.layout == originalLayout)
+
+    // Feed a fresh scan around a real launcher window with the separator absent.
+    RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.25))
+    let launcherWindow = try #require(launcher.button?.window)
+    let launcherID = try #require(UInt32(exactly: launcherWindow.windowNumber))
+    let launcherFrame = try #require(WindowMetadata.read(ids: [launcherID]).first?.frame)
+    let replaced = ["example.timer", "example.weather", "example.multiple"]
+    let observed = model.items.filter { !replaced.contains($0.observation.bundleIdentifier ?? "") }
+      + IdentityAssessor().classify([
+        item("example.weather", name: "Weather", x: launcherFrame.minX - 30,
+          y: launcherFrame.midY - 12, isOnscreen: true),
+        item("example.timer", name: "Timer", x: launcherFrame.maxX + 3,
+          y: launcherFrame.midY - 12, isOnscreen: true),
+      ])
+    model.accept(InventorySnapshot(capturedAt: Date(), permission: .granted, items: observed, warnings: [],
+      metrics: ScanMetrics(durationMilliseconds: 0, inspectedApplicationCount: 0,
+        sourceItemCount: observed.count, messagingTimeoutMilliseconds: 0)))
+    let nativeOrder = try #require(model.menuBarPreviewOrder)
+    #expect(nativeOrder.beforeLauncher == ["example.weather"])
+    #expect(nativeOrder.afterLauncher == ["example.timer"])
+    #expect(preview.items(in: .menuBar).map(\.id) == ["example.weather", "com.apple.controlcenter", "example.timer"])
     #expect(model.layout == originalLayout)
 
     let columns = DropdownView.columnCount(rowCapacity: model.layout.rowCapacity,
@@ -226,10 +278,12 @@ struct LayoutPreviewTests {
     return current + view.subviews.flatMap { previewSurfaces(in: $0) }
   }
 
-  private func item(_ bundle: String, name: String, index: Int = 0) -> RawSourceItemObservation {
+  private func item(_ bundle: String, name: String, index: Int = 0, x: Double = 1200, y: Double = 0,
+    isOnscreen: Bool? = nil) -> RawSourceItemObservation {
     RawSourceItemObservation(runtimeID: "\(bundle):\(index)", processIdentifier: 100,
       bundleIdentifier: bundle, applicationName: name, role: "AXMenuBarItem",
-      frame: ItemFrame(x: 1200, y: 0, width: 24, height: 24), actions: ["AXPress"],
-      metadata: LiveAccessibilityMetadata(identifierCandidate: index == 0 ? "fixture" : nil), observedOrder: index)
+      frame: ItemFrame(x: x, y: y, width: 24, height: 24), actions: ["AXPress"],
+      metadata: LiveAccessibilityMetadata(identifierCandidate: index == 0 ? "fixture" : nil), observedOrder: index,
+      isOnscreen: isOnscreen)
   }
 }
