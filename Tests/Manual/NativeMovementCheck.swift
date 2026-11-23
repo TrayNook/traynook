@@ -17,7 +17,7 @@ private final class MovementCheck: NSObject, NSApplicationDelegate, NSMenuDelega
   private let directory = URL(fileURLWithPath: CommandLine.arguments[1])
   private var eventsURL: URL { directory.appendingPathComponent("events.txt") }
   private var controlURL: URL { directory.appendingPathComponent("control.txt") }
-  private let fixtureBundle = "io.github.mahenzon.TrayNook.NativeCheck.Fixture"
+  private var fixtureBundle: String { "io.github.mahenzon.TrayNook.NativeCheck.Fixture.\(directory.pathExtension)" }
   private var lostPlacementFocus = false
 
   @objc private func placementResignedActive(_ notification: Notification) {
@@ -33,27 +33,17 @@ private final class MovementCheck: NSObject, NSApplicationDelegate, NSMenuDelega
   }
 
   private func createFixture() {
-    UserDefaults.standard.set(2, forKey: "NSStatusItem Preferred Position Fixture")
-    let item = NSStatusBar.system.statusItem(withLength: 36)
-    item.autosaveName = "Fixture"
-    item.button?.title = "F"
-    item.button?.setAccessibilityIdentifier("TrayNookNativeMovementFixture")
-    item.button?.target = self
-    item.button?.action = #selector(clicked)
-    item.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
-    fixtureItem = item
-    if CommandLine.arguments.contains("--reorder") {
-      for index in 1...2 {
-        let name = "FixtureOrder\(index)"
-        UserDefaults.standard.set(2 + index, forKey: "NSStatusItem Preferred Position \(name)")
-        let extra = NSStatusBar.system.statusItem(withLength: 28)
-        extra.autosaveName = name
-        extra.button?.title = "\(index)"
-        extra.button?.setAccessibilityIdentifier("TrayNookNativeOrderFixture\(index)")
-        extra.button?.target = self
-        extra.button?.action = #selector(clicked)
-        extra.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
-        reorderFixtureItems.append(extra)
+    let reordering = CommandLine.arguments.contains("--reorder")
+    let relaunching = CommandLine.arguments.contains("--relaunch-pair")
+    if !relaunching {
+      fixtureItem = makeStatusItem("Fixture", title: "F", identifier: "TrayNookNativeMovementFixture",
+        width: reordering ? 20 : 36, position: 2)
+    }
+    if reordering || relaunching {
+      let creationOrder = CommandLine.arguments.contains("--reverse-creation") ? [2, 1] : [1, 2]
+      for index in creationOrder {
+        reorderFixtureItems.append(makeStatusItem("FixtureOrder\(index)", title: "\(index)",
+          identifier: "TrayNookNativeOrderFixture\(index)", width: 20, position: 2 + index))
       }
     }
     Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
@@ -72,6 +62,19 @@ private final class MovementCheck: NSObject, NSApplicationDelegate, NSMenuDelega
     Timer.scheduledTimer(withTimeInterval: 90, repeats: false) { _ in
       MainActor.assumeIsolated { NSApp.terminate(nil) }
     }
+  }
+
+  private func makeStatusItem(_ name: String, title: String, identifier: String, width: CGFloat,
+    position: Int) -> NSStatusItem {
+    UserDefaults.standard.set(position, forKey: "NSStatusItem Preferred Position \(name)")
+    let item = NSStatusBar.system.statusItem(withLength: width)
+    item.autosaveName = name
+    item.button?.title = title
+    item.button?.setAccessibilityIdentifier(identifier)
+    item.button?.target = self
+    item.button?.action = #selector(clicked)
+    item.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
+    return item
   }
 
   @objc private func clicked() {
@@ -113,15 +116,22 @@ private final class MovementCheck: NSObject, NSApplicationDelegate, NSMenuDelega
       print("FAILED: Accessibility is denied; no input was posted.")
       return 1
     }
+    if CommandLine.arguments.contains("--relaunch-pair") {
+      do {
+        try await checkRelaunchedPair()
+        print("NATIVE_RELAUNCH_PAIR_CHECK_PASSED")
+        return 0
+      } catch {
+        print("FAILED: \(error.localizedDescription)")
+        return 1
+      }
+    }
     UserDefaults.standard.set(600, forKey: "NSStatusItem Preferred Position TrayNook.HiddenBoundary")
     let launcher = NSStatusBar.system.statusItem(withLength: 24)
     launcher.button?.title = "T"
     let native = NativeMenuBarController(launcher: launcher)
-    let fixture = Process()
-    fixture.executableURL = directory.appendingPathComponent("Fixture.app/Contents/MacOS/NativeMovementCheck")
-    fixture.arguments = [directory.path, "--source"]
-    if CommandLine.arguments.contains("--reorder") { fixture.arguments?.append("--reorder") }
-    fixture.standardOutput = FileHandle.nullDevice
+    let reordering = CommandLine.arguments.contains("--reorder")
+    let fixture = fixtureProcess(arguments: reordering ? ["--reorder"] : [])
     defer {
       native.remove()
       NSStatusBar.system.removeStatusItem(launcher)
@@ -131,15 +141,19 @@ private final class MovementCheck: NSObject, NSApplicationDelegate, NSMenuDelega
     }
     do {
       try "".write(to: eventsURL, atomically: true, encoding: .utf8)
-      try await native.prepareLayout()
       try fixture.run()
       try await Task.sleep(for: .seconds(1))
-      if CommandLine.arguments.contains("--reorder") {
+      if reordering {
         try await checkReordering(processIdentifier: fixture.processIdentifier, native: native)
         print("NATIVE_REORDER_CHECK_PASSED")
         return 0
       }
       var source = try await readFixture(processIdentifier: fixture.processIdentifier)
+      guard source.observation.isOnscreen == true else {
+        throw CheckFailure("The 36-point disposable fixture does not fit; no item was moved.")
+      }
+      try await native.prepareLayout()
+      source = try await readFixture(processIdentifier: fixture.processIdentifier)
       guard let frame = source.observation.frame, abs(frame.width - 36) < 0.01,
         source.observation.isOnscreen == true, native.isBehindBoundary(source) == false else {
         throw CheckFailure("The 36-point disposable fixture is not visible beside the launcher; no item was moved.")
@@ -175,6 +189,50 @@ private final class MovementCheck: NSObject, NSApplicationDelegate, NSMenuDelega
     }
   }
 
+  private func fixtureProcess(arguments: [String]) -> Process {
+    let process = Process()
+    process.executableURL = directory.appendingPathComponent("Fixture.app/Contents/MacOS/NativeMovementCheck")
+    process.arguments = [directory.path, "--source"] + arguments
+    process.standardOutput = FileHandle.nullDevice
+    return process
+  }
+
+  private func checkRelaunchedPair() async throws {
+    func readPair(reversed: Bool) async throws -> (creationOrder: [String], windowIDs: [UInt32], pid: Int32) {
+      var arguments = ["--relaunch-pair"]
+      if reversed { arguments.append("--reverse-creation") }
+      let process = fixtureProcess(arguments: arguments)
+      defer {
+        if process.isRunning { process.terminate(); process.waitUntilExit() }
+        UserDefaults.standard.removePersistentDomain(forName: fixtureBundle)
+      }
+      try process.run()
+      for _ in 0..<5 {
+        try await Task.sleep(for: .milliseconds(350))
+        let snapshot = await Task.detached { AccessibilityInventoryScanner().scan() }.value
+        let pair = snapshot.items.filter { $0.observation.processIdentifier == process.processIdentifier
+          && $0.observation.bundleIdentifier == fixtureBundle }
+        let bound = pair.compactMap { item -> (id: UInt32, key: String)? in
+          guard item.observation.isOnscreen == true, let id = item.observation.statusWindowIdentifier,
+            let key = item.identity.persistentKey, key.hasPrefix(fixtureBundle + "#ax:") else { return nil }
+          return (id, key)
+        }.sorted { $0.id < $1.id }
+        if snapshot.completeness == .complete, pair.count == 2, bound.count == 2 {
+          return (bound.map(\.key), bound.map(\.id), process.processIdentifier)
+        }
+      }
+      throw CheckFailure("Two visible disposable status items with distinct AX identities are required.")
+    }
+
+    let first = try await readPair(reversed: false)
+    let second = try await readPair(reversed: true)
+    guard Set(first.creationOrder).count == 2, first.creationOrder == Array(second.creationOrder.reversed()),
+      first.pid != second.pid, Set(first.windowIDs).isDisjoint(with: second.windowIDs) else {
+      throw CheckFailure("Reversing same-app item creation did not preserve both keys across new native bindings.")
+    }
+    print("PASS: both owned sibling AX keys survived relaunch with reversed native window creation order")
+  }
+
   private func checkReordering(processIdentifier: Int32, native: NativeMenuBarController) async throws {
     func read() async throws -> (snapshot: InventorySnapshot, fixtures: [ClassifiedSourceItem]) {
       let snapshot = await Task.detached { AccessibilityInventoryScanner().scan() }.value
@@ -189,6 +247,9 @@ private final class MovementCheck: NSObject, NSApplicationDelegate, NSMenuDelega
     }
 
     var observed = try await read()
+    guard observed.fixtures.allSatisfy({ $0.observation.isOnscreen == true }) else {
+      throw CheckFailure("The disposable pair and sentinel do not fit; no item was moved.")
+    }
     // Keep every existing source visible; only the disposable sentinel may be concealed.
     try await native.prepareLayout(keepingVisible: Set(observed.snapshot.items.compactMap(\.identity.persistentKey)))
     observed = try await read()
@@ -236,6 +297,15 @@ private final class MovementCheck: NSObject, NSApplicationDelegate, NSMenuDelega
           RunLoop.main.add(witness, forMode: .common)
         }
         defer { monitor?.invalidate() }
+        if concealed && requested != pairKeys {
+          try await checkCancelledReorder(pair, native: native)
+          observed = try await read()
+          let unchanged = observed.fixtures.compactMap(\.identity.persistentKey).filter { pairKeys.contains($0) }
+          guard unchanged == pairKeys, native.isConcealed, !hiddenSentinelViolation else {
+            throw CheckFailure("Cancelling reorder during validation changed order or revealed the sentinel.")
+          }
+          print("PASS: in-flight concealed reorder cancellation preserved the pair and sentinel")
+        }
         try await native.reorderMenuBarItems(pair)
         monitor?.invalidate()
         observed = try await read()
@@ -251,6 +321,25 @@ private final class MovementCheck: NSObject, NSApplicationDelegate, NSMenuDelega
           }
         }
         print("PASS: fixture order reversed/restored while \(concealed ? "concealed (sentinel stays hidden)" : "revealed"), no activation")
+      }
+    }
+  }
+
+  private func checkCancelledReorder(_ pair: [ClassifiedSourceItem], native: NativeMenuBarController) async throws {
+    let task = Task { try await native.reorderMenuBarItems(pair) }
+    defer { task.cancel() }
+    // The controller becomes busy before its first asynchronous inventory read.
+    // Cancel during that validation, before any physical move is allowed.
+    let deadline = ContinuousClock.now.advanced(by: .milliseconds(250))
+    while !native.isBusy && ContinuousClock.now < deadline { await Task.yield() }
+    guard native.isBusy else { throw CheckFailure("Reorder did not enter cancellable validation.") }
+    task.cancel()
+    do {
+      try await task.value
+      throw CheckFailure("Reorder completed despite cancellation during validation.")
+    } catch is CancellationError {
+      guard !native.isBusy, !CGEventSource.buttonState(.combinedSessionState, button: .left) else {
+        throw CheckFailure("Cancelling reorder left input held or the controller busy.")
       }
     }
   }

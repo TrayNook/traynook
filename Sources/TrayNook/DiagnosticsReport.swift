@@ -27,6 +27,7 @@ struct DiagnosticsReport: Equatable {
   var recoveryRequired = false
   var concealed = false
   var screenRecordingGranted = false
+  var proxyGlyphsEnabled = false
   var lastReveal: Event?
   var reapplyNotBefore: Date?
   var recoveringLayout = false
@@ -68,7 +69,7 @@ struct DiagnosticsReport: Equatable {
     Native section concealed: \(concealed)
     Private APIs: none
     Screen Recording: \(screenRecordingGranted)
-    Proxy imagery: \(screenRecordingGranted ? "captured menu-bar items" : "app icons")
+    Proxy imagery: \(screenRecordingGranted && proxyGlyphsEnabled ? "captured menu-bar items" : "app icons")
     Last reveal/recovery reason: \(lastReveal?.reason.rawValue ?? "none")
     Last reveal/recovery at: \(timestamp(lastReveal?.timestamp))
     Last failure: \(lastReveal?.failure ?? "none")

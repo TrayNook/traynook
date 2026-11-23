@@ -23,14 +23,15 @@ struct WindowMetadataTests {
     #expect(WindowMetadata.read(ids: []).isEmpty)
   }
 
-  @Test("A vanished or reassigned source window invalidates a snapshot; uncaptured sources remain valid")
+  @Test("A changed source window or visibility invalidates the snapshot")
   @MainActor
   func sourceWindowBindings() {
-    func source(window: UInt32?) -> ClassifiedSourceItem {
+    func source(window: UInt32?, onscreen: Bool? = nil) -> ClassifiedSourceItem {
       IdentityAssessor().classify([RawSourceItemObservation(runtimeID: "100:fixture", processIdentifier: 100,
         bundleIdentifier: "example.fixture", applicationName: "Fixture", role: "AXMenuBarItem",
         frame: ItemFrame(x: -100, y: 0, width: 24, height: 24), actions: ["AXPress"],
-        metadata: LiveAccessibilityMetadata(), observedOrder: 0, statusWindowIdentifier: window)])[0]
+        metadata: LiveAccessibilityMetadata(), observedOrder: 0, isOnscreen: onscreen,
+        statusWindowIdentifier: window)])[0]
     }
     let frame = CGRect(x: -100, y: 0, width: 24, height: 24)
     let original = WindowMetadata(id: 10, pid: 100, frame: frame, isVisible: false)
@@ -40,6 +41,10 @@ struct WindowMetadataTests {
     #expect(!NativeMenuBarController.preservesWindowBindings(of: [source(window: 10)],
       in: [WindowMetadata(id: 10, pid: 200, frame: frame, isVisible: false)]))
     #expect(!NativeMenuBarController.preservesWindowBindings(of: [source(window: 10)], in: [original, original]))
+    let visible = WindowMetadata(id: 10, pid: 100, frame: frame.insetBy(dx: -8, dy: -4), isVisible: true)
+    #expect(NativeMenuBarController.preservesWindowBindings(of: [source(window: 10, onscreen: true)], in: [visible]))
+    #expect(!NativeMenuBarController.preservesWindowBindings(of: [source(window: 10, onscreen: true)], in: [original]))
+    #expect(!NativeMenuBarController.preservesWindowBindings(of: [source(window: 10, onscreen: false)], in: [visible]))
   }
 
   private func dictionary(id: UInt32, frame: CGRect, visible: Bool) -> [String: Any] {
@@ -236,8 +241,8 @@ private final class BlockingWindowLoad: @unchecked Sendable {
   .enabled(if: ProcessInfo.processInfo.environment["TRAYNOOK_APPKIT_TESTS"] == "1"))
 @MainActor
 struct LatestNativeInspectionTests {
-  @Test("A control resize or Reveal while a query runs discards its result")
-  func staleControlsNeverProduceInspection() async throws {
+  @Test("Control or source visibility changes discard outdated inspections")
+  func outdatedReadsNeverProduceInspection() async throws {
     for id in ["io.github.mahenzon.TrayNook", "io.github.mahenzon.TrayNook.dev"] {
       try #require(NSRunningApplication.runningApplications(withBundleIdentifier: id).isEmpty,
         "Quit TrayNook before creating the isolated visible controls.")
@@ -280,8 +285,20 @@ struct LatestNativeInspectionTests {
     probe.release()
     #expect(await resized.value == nil)
 
-    let revealed = Task { await native.inspectLatest([]) }
+    let sourceID = UInt32.max
+    let sources = IdentityAssessor().classify([RawSourceItemObservation(runtimeID: "100:fixture",
+      processIdentifier: 100, bundleIdentifier: "example.fixture", applicationName: "Fixture",
+      role: "AXMenuBarItem", frame: ItemFrame(x: -100, y: 0, width: 24, height: 24),
+      actions: ["AXPress"], metadata: LiveAccessibilityMetadata(), observedOrder: 0,
+      isOnscreen: false, statusWindowIdentifier: sourceID)])
+    let visibilityChanged = Task { await native.inspectLatest(sources) }
     try await waitUntil { probe.calls.count == 3 }
+    #expect(probe.calls.last?.contains(sourceID) == true)
+    probe.release()  // The fresh window metadata reports it visible.
+    #expect(await visibilityChanged.value == nil)
+
+    let revealed = Task { await native.inspectLatest([]) }
+    try await waitUntil { probe.calls.count == 4 }
     native.reveal()
     #expect(await revealed.value == nil)
     probe.release()

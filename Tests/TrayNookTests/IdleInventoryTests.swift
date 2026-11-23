@@ -76,6 +76,55 @@ struct IdleInventoryTests {
     #expect(publications == 2)
   }
 
+  @Test("App changes during discovery share one fresh scan", arguments: [false, true])
+  func appChangesQueueFreshScan(manualRequest: Bool) async throws {
+    let scanner = HeldInventoryScanner()
+    defer { scanner.release(4) }
+    let fixture = try IdleInventoryFixture(scanner: scanner)
+    defer { fixture.close() }
+    let model = fixture.model
+    model.accept(fixture.snapshot(bundles: []))
+
+    model.refresh(showProgress: false)
+    try await waitUntil { scanner.calls == 1 }
+    if manualRequest { model.refresh(invalidateIcons: true) }
+    for _ in 0..<3 { model.runningApplicationsChanged(bundles: ["example.accessory"]) }
+    #expect(!model.scanning)
+    #expect(scanner.calls == 1)
+
+    scanner.release()
+    try await waitUntil { scanner.calls == 2 }
+    #expect(fixture.permission.reads == 0, "The superseded scan should not reach inventory acceptance.")
+    #expect(model.scanning == manualRequest)
+    scanner.release()
+    try await waitUntil { fixture.permission.reads == 1 && !model.scanning }
+    #expect(scanner.calls == 2)
+  }
+
+  @Test("Suspension discards queued lifecycle scans and resumes with one fresh scan")
+  func suspensionDiscardsQueuedRefresh() async throws {
+    let scanner = HeldInventoryScanner()
+    defer { scanner.release(4) }
+    let fixture = try IdleInventoryFixture(scanner: scanner)
+    defer { fixture.close() }
+    let model = fixture.model
+    model.accept(fixture.snapshot(bundles: []))
+
+    model.refresh(showProgress: false)
+    try await waitUntil { scanner.calls == 1 }
+    model.runningApplicationsChanged()
+    model.environmentChanged(NSWorkspace.willSleepNotification.rawValue)
+    model.runningApplicationsChanged()
+    #expect(!model.scanComplete)
+
+    scanner.release()
+    model.environmentChanged(NSWorkspace.didWakeNotification.rawValue)
+    try await waitUntil { scanner.calls == 2 }
+    scanner.release()
+    try await waitUntil { fixture.permission.reads == 1 && model.scanComplete }
+    #expect(scanner.calls == 2)
+  }
+
   private func waitUntil(_ condition: () -> Bool) async throws {
     let deadline = ContinuousClock.now.advanced(by: .seconds(2))
     while !condition(), ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(1)) }

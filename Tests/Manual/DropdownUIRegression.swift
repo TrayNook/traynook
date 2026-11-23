@@ -29,8 +29,15 @@ private struct PointerWitness: Codable {
   var maximumExcursionSeconds: Double = 0
 }
 
+private struct StatusWindowIdentity: Hashable {
+  let pid: Int32
+  let id: UInt32
+  let display: CGDirectDisplayID
+}
+
 @MainActor
 private final class DropdownCheck: NSObject, NSApplicationDelegate, NSMenuDelegate {
+  private static let deadlineSeconds: TimeInterval = 200
   let directory: URL
   let token: String
   var fixtureItem: NSStatusItem?
@@ -43,7 +50,8 @@ private final class DropdownCheck: NSObject, NSApplicationDelegate, NSMenuDelega
   private var excursionStarted: TimeInterval?
   private var controlSnapshots: [String] = []
   private var sourceLayout: (url: URL, data: Data)?
-  private var sourceWindowOrder: [UInt32: CGFloat] = [:]
+  private var sourceWindowOrder: [StatusWindowIdentity: CGFloat]?
+  private var expectedMovedBundles: Set<String> = []
   var appID: String { "io.github.mahenzon.TrayNook.UIRegression.App.\(token)" }
   var fixtureID: String { "io.github.mahenzon.TrayNook.UIRegression.Fixture.\(token)" }
   var sentinelID: String { "io.github.mahenzon.TrayNook.UIRegression.Sentinel.\(token)" }
@@ -71,8 +79,8 @@ private final class DropdownCheck: NSObject, NSApplicationDelegate, NSMenuDelega
       exit(result == 0 && preserved ? 0 : 1)
     }
     Task {
-      try? await Task.sleep(for: .seconds(200))
-      print("FAILED: UI regression exceeded its 200 second deadline.")
+      try? await Task.sleep(for: .seconds(Self.deadlineSeconds))
+      print("FAILED: UI regression exceeded its \(Int(Self.deadlineSeconds)) second deadline.")
       await cleanup()
       exit(1)
     }
@@ -92,7 +100,7 @@ private final class DropdownCheck: NSObject, NSApplicationDelegate, NSMenuDelega
     // calls. Common-mode sampling continues through native menu tracking.
     RunLoop.main.add(Timer(timeInterval: 1.0 / 120, target: self,
       selector: #selector(sampleHandoff), userInfo: nil, repeats: true), forMode: .common)
-    Timer.scheduledTimer(withTimeInterval: 110, repeats: false) { _ in
+    Timer.scheduledTimer(withTimeInterval: Self.deadlineSeconds + 5, repeats: false) { _ in
       MainActor.assumeIsolated { NSApp.terminate(nil) }
     }
   }
@@ -222,7 +230,6 @@ private final class DropdownCheck: NSObject, NSApplicationDelegate, NSMenuDelega
       guard AXIsProcessTrusted() else {
         throw CheckFailure("Accessibility is denied for the invoking terminal; no input was posted.")
       }
-      sourceWindowOrder = visibleStatusWindowPositions()
       try FileManager.default.createDirectory(at: supportURL, withIntermediateDirectories: true)
       var layout: [String: Any] = ["version": 1, "rowCapacity": 10,
         "items": [["id": fixtureID, "placement": "menuBar"],
@@ -236,12 +243,17 @@ private final class DropdownCheck: NSObject, NSApplicationDelegate, NSMenuDelega
           throw CheckFailure("The supplied layout is not a TrayNook layout object.")
         }
         sourceLayout = (url, data)
+        expectedMovedBundles = Set(items.compactMap { item in
+          (item["id"] as? String)?.split(separator: "#", maxSplits: 1).first.map(String.init)
+        })
         items.append(["id": fixtureID, "placement": "menuBar"])
         items.append(["id": sentinelID, "placement": "alwaysHidden"])
         copied["items"] = items
         layout = copied
         print("Copied existing placements read-only into the isolated test layout.")
       }
+      sourceWindowOrder = visibleStatusWindowPositions()
+      guard sourceWindowOrder != nil else { throw CheckFailure("The original menu-bar order could not be read.") }
       try JSONSerialization.data(withJSONObject: layout).write(
         to: supportURL.appendingPathComponent("layout.json"), options: .atomic)
       if CommandLine.arguments.contains("--invalid-positions") {
@@ -254,25 +266,39 @@ private final class DropdownCheck: NSObject, NSApplicationDelegate, NSMenuDelega
       fixture = try launch("Fixture.app/Contents/MacOS/DropdownUIRegression", arguments: [directory.path, token, "--source"])
       try await wait("fixture launch", seconds: 5) { self.events().contains("ready\n") }
       guard let fixture else { throw CheckFailure("Fixture process was not created.") }
-      try await wait("fixture status window", seconds: 5) {
-        self.fixtureOnscreen(pid: fixture.processIdentifier) != nil
-      }
       sentinel = try launch("Sentinel.app/Contents/MacOS/DropdownUIRegression",
         arguments: [directory.path, token, "--source", "--sentinel"])
       guard let sentinel else { throw CheckFailure("Sentinel process was not created.") }
       try await wait("hidden sentinel launch", seconds: 5) {
         (try? String(contentsOf: self.signal("sentinel-events.txt"), encoding: .utf8))?.contains("ready\n") == true
-          && self.fixtureOnscreen(pid: sentinel.processIdentifier) != nil
       }
+      try await checkFixtureCapacity(fixture: fixture, sentinel: sentinel)
+      print("PASS: visible owned fixture and sentinel preflight")
       production = try launch("App.app/Contents/MacOS/TrayNook", arguments: [])
       guard let production else { throw CheckFailure("Production process was not created.") }
       let application = AXUIElementCreateApplication(production.processIdentifier)
       AXUIElementSetMessagingTimeout(application, 1)
       try await wait("production launch and automatic concealment", seconds: 120) {
         self.recordControlWindows(pid: production.processIdentifier)
-        return self.button("Show Items", in: application) != nil
+        let controls = self.ownControlFrames(application)
+        return (controls["TrayNook hidden section separator"]?.width ?? 0) > CGDisplayBounds(CGMainDisplayID()).width
           && self.fixtureOnscreen(pid: fixture.processIdentifier) == true
           && self.fixtureOnscreen(pid: sentinel.processIdentifier) == false
+      }
+      // A tray click waits for the launch operation to finish before opening the dropdown.
+      guard let initialLauncher = find("Open TrayNook", in: application) else {
+        throw CheckFailure("Production launcher is not accessible after concealment.")
+      }
+      try press(initialLauncher, description: "open dropdown after startup")
+      try await wait("dropdown Settings button after startup", seconds: 8) {
+        self.button("Open Settings", in: application) != nil
+      }
+      guard let initialSettings = button("Open Settings", in: application) else {
+        throw CheckFailure("Dropdown Settings button disappeared after startup.")
+      }
+      try press(initialSettings, description: "open Settings after startup")
+      try await wait("Settings to reflect successful concealment", seconds: 6) {
+        self.button("Show Items", in: application) != nil
       }
       print("PASS: packaged production AppModel kept the Menu Bar fixture visible and concealed the sentinel")
       if CommandLine.arguments.contains("--invalid-positions") {
@@ -405,13 +431,7 @@ private final class DropdownCheck: NSObject, NSApplicationDelegate, NSMenuDelega
       if let settings = find("Open Settings", in: application, role: kAXMenuItemRole as String) {
         try press(settings, description: "production Open Settings menu item during handoff")
       } else {
-        let configuration = NSWorkspace.OpenConfiguration()
-        configuration.createsNewApplicationInstance = false
-        let reopened = try await NSWorkspace.shared.openApplication(
-          at: directory.appendingPathComponent("App.app"), configuration: configuration)
-        guard reopened.processIdentifier == production.processIdentifier else {
-          throw CheckFailure("Reopening Settings created a second production process.")
-        }
+        try await reopenSettings(for: production)
       }
       try await wait("Settings cancelled the active native handoff", seconds: 6) {
         guard let hide = self.button("Hide Items", in: application) else { return false }
@@ -491,6 +511,42 @@ private final class DropdownCheck: NSObject, NSApplicationDelegate, NSMenuDelega
         print("Fixture menu geometry: source=\(NSStringFromRect(geometry.source)), menu=\(NSStringFromRect(geometry.menu)), safe-status=\(NSStringFromRect(geometry.safeStatusArea)), display=\(NSStringFromRect(geometry.display))")
       }
       return 1
+    }
+  }
+
+  private func reopenSettings(for production: Process) async throws {
+    let configuration = NSWorkspace.OpenConfiguration()
+    configuration.createsNewApplicationInstance = false
+    let reopened = try await NSWorkspace.shared.openApplication(
+      at: directory.appendingPathComponent("App.app"), configuration: configuration)
+    guard reopened.processIdentifier == production.processIdentifier else {
+      throw CheckFailure("Reopening Settings created a second production process.")
+    }
+  }
+
+  private func checkFixtureCapacity(fixture: Process, sentinel: Process) async throws {
+    // Reserve room for the launcher's square item and compact separator before
+    // the copied app can start applying any placements.
+    let name = "FixtureCapacity"
+    let positionKey = "NSStatusItem Preferred Position \(name)"
+    UserDefaults.standard.set(0, forKey: positionKey)
+    let controlSpace = NSStatusBar.system.statusItem(withLength: NSStatusBar.system.thickness + 2)
+    controlSpace.autosaveName = name
+    controlSpace.button?.title = "T"
+    defer {
+      NSStatusBar.system.removeStatusItem(controlSpace)
+      UserDefaults.standard.removeObject(forKey: positionKey)
+    }
+    let pid = ProcessInfo.processInfo.processIdentifier
+    do {
+      try await wait("both disposable icons and TrayNook controls to fit before applying placements", seconds: 5) {
+        self.fixtureOnscreen(pid: fixture.processIdentifier) == true
+          && self.fixtureOnscreen(pid: sentinel.processIdentifier) == true
+          && self.fixtureOnscreen(pid: pid) == true
+      }
+    } catch {
+      print("Reserved TrayNook control status windows: \(statusWindowSummary(pid: pid))")
+      throw error
     }
   }
 
@@ -653,12 +709,13 @@ private final class DropdownCheck: NSObject, NSApplicationDelegate, NSMenuDelega
     // One status window per display; judge the main display's menu bar only.
     // Concealed windows keep their row, so the vertical range identifies it.
     let mainDisplay = CGDisplayBounds(CGMainDisplayID())
+    let rowHeight = max(NSStatusBar.system.thickness, NSScreen.screens.first?.safeAreaInsets.top ?? 0)
     let owned = windows.filter {
       guard ($0[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value == pid,
         ($0[kCGWindowLayer as String] as? NSNumber)?.intValue == statusLevel,
         let bounds = $0[kCGWindowBounds as String] as? [String: Any],
         let frame = CGRect(dictionaryRepresentation: bounds as CFDictionary) else { return false }
-      return frame.midY >= mainDisplay.minY && frame.midY < mainDisplay.maxY
+      return frame.midY >= mainDisplay.minY && frame.midY < mainDisplay.minY + rowHeight
     }
     guard owned.count == 1, let window = owned.first else { return nil }
     return (window[kCGWindowIsOnscreen as String] as? NSNumber)?.boolValue ?? false
@@ -681,26 +738,41 @@ private final class DropdownCheck: NSObject, NSApplicationDelegate, NSMenuDelega
     return AXUIElementCopyAttributeValue(element, key as CFString, &value) == .success ? value : nil
   }
 
-  private func visibleStatusWindowPositions() -> [UInt32: CGFloat] {
+  private func visibleStatusWindowPositions() -> [StatusWindowIdentity: CGFloat]? {
     guard let windows = CGWindowListCopyWindowInfo([.optionAll, .excludeDesktopElements], kCGNullWindowID)
-      as? [[String: Any]] else { return [:] }
-    var positions: [UInt32: CGFloat] = [:]
+      as? [[String: Any]] else { return nil }
+    let displays = NSScreen.screens.compactMap { screen -> (id: CGDirectDisplayID, row: CGRect)? in
+      guard let id = (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value
+      else { return nil }
+      let frame = CGDisplayBounds(id)
+      let height = max(NSStatusBar.system.thickness, screen.safeAreaInsets.top)
+      return (id, CGRect(x: frame.minX, y: frame.minY, width: frame.width, height: height))
+    }
+    guard !displays.isEmpty else { return nil }
+    let requestedPIDs = Set(NSWorkspace.shared.runningApplications.compactMap { app -> pid_t? in
+      guard let bundle = app.bundleIdentifier, expectedMovedBundles.contains(bundle) else { return nil }
+      return app.processIdentifier
+    })
+    var positions: [StatusWindowIdentity: CGFloat] = [:]
     for window in windows {
       guard (window[kCGWindowLayer as String] as? NSNumber)?.intValue == Int(CGWindowLevelForKey(.statusWindow)),
         (window[kCGWindowIsOnscreen as String] as? NSNumber)?.boolValue == true,
+        let pid = (window[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value,
+        !requestedPIDs.contains(pid),
         let id = (window[kCGWindowNumber as String] as? NSNumber)?.uint32Value,
         let bounds = window[kCGWindowBounds as String] as? [String: Any],
-        let frame = CGRect(dictionaryRepresentation: bounds as CFDictionary) else { continue }
-      positions[id] = frame.minX
+        let frame = CGRect(dictionaryRepresentation: bounds as CFDictionary),
+        let display = displays.first(where: { $0.row.intersects(frame) && frame.height <= 2 * $0.row.height })
+      else { continue }
+      positions[StatusWindowIdentity(pid: pid, id: id, display: display.id)] = frame.minX
     }
     return positions
   }
 
   private func verifyOriginalState() -> Bool {
     var preserved = true
-    if [appID, fixtureID, sentinelID].contains(where: {
-      !NSRunningApplication.runningApplications(withBundleIdentifier: $0).isEmpty
-    }) || FileManager.default.fileExists(atPath: supportURL.path) {
+    if disposableBundles.contains(where: { !disposableApplications(id: $0.id, name: $0.name).isEmpty })
+      || FileManager.default.fileExists(atPath: supportURL.path) {
       print("FAILED: disposable processes or the isolated layout directory survived cleanup.")
       preserved = false
     }
@@ -712,24 +784,30 @@ private final class DropdownCheck: NSObject, NSApplicationDelegate, NSMenuDelega
         preserved = false
       }
     }
-    // Compare only surviving source windows visible before and after cleanup.
-    // WindowServer's clipped windows do not expose a reliable native order.
-    let after = visibleStatusWindowPositions()
-    let shared = Set(sourceWindowOrder.keys).intersection(after.keys)
-    if shared.count > 1 {
-      let beforeOrder = shared.sorted {
-        sourceWindowOrder[$0] == sourceWindowOrder[$1] ? $0 < $1 : sourceWindowOrder[$0]! < sourceWindowOrder[$1]!
+    // Compare surviving, visible windows on the same row and exclude sources
+    // that the explicitly supplied layout allowed Apply to rearrange.
+    if let before = sourceWindowOrder {
+      guard let after = visibleStatusWindowPositions() else {
+        print("FAILED: the final menu-bar order could not be read.")
+        return false
       }
-      let afterOrder = shared.sorted { after[$0] == after[$1] ? $0 < $1 : after[$0]! < after[$1]! }
-      if beforeOrder == afterOrder {
-        print("PASS: relative native order preserved for all \(shared.count) source windows visible before and after cleanup")
-      } else {
-        print("FAILED: relative native order changed for pre-existing visible source windows.")
+      let windowsByDisplay = Dictionary(grouping: Set(before.keys).intersection(after.keys), by: \.display)
+      var compared = 0
+      for windows in windowsByDisplay.values where windows.count > 1 {
+        let first = windows.sorted { (before[$0]!, $0.id) < (before[$1]!, $1.id) }
+        let last = windows.sorted { (after[$0]!, $0.id) < (after[$1]!, $1.id) }
+        if first != last {
+          print("FAILED: relative native order changed for untouched visible source windows.")
+          preserved = false
+        }
+        compared += windows.count
+      }
+      let baselineRows = Dictionary(grouping: before.keys, by: \.display)
+      if compared == 0, baselineRows.values.contains(where: { $0.count > 1 }) {
+        print("FAILED: no untouched visible row retained enough windows to verify order.")
         preserved = false
       }
-    } else if !sourceWindowOrder.isEmpty {
-      print("FAILED: insufficient surviving visible source windows to verify native order.")
-      preserved = false
+      if preserved { print("Untouched status windows compared for relative order: \(compared)") }
     }
     return preserved
   }
@@ -825,9 +903,20 @@ private final class DropdownCheck: NSObject, NSApplicationDelegate, NSMenuDelega
     (attribute(element, kAXEnabledAttribute as String) as? NSNumber)?.boolValue == true
   }
 
+  private var disposableBundles: [(id: String, name: String)] {
+    [(appID, "App"), (fixtureID, "Fixture"), (sentinelID, "Sentinel")]
+  }
+
+  private func disposableApplications(id: String, name: String) -> [NSRunningApplication] {
+    let expected = directory.appendingPathComponent(name + ".app").resolvingSymlinksInPath().path
+    return NSRunningApplication.runningApplications(withBundleIdentifier: id).filter {
+      $0.bundleURL?.resolvingSymlinksInPath().path == expected
+    }
+  }
+
   func cleanup() async {
-    for id in [appID, fixtureID, sentinelID] {
-      let applications = NSRunningApplication.runningApplications(withBundleIdentifier: id)
+    for (id, name) in disposableBundles {
+      let applications = disposableApplications(id: id, name: name)
       applications.forEach { $0.terminate() }
       for _ in 0..<40 {
         if applications.allSatisfy(\.isTerminated) { break }

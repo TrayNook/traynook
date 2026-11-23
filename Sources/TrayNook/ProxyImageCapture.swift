@@ -6,6 +6,8 @@ import InventoryIdentityCore
 /// onscreen, so hidden items show their last image from when they were visible.
 struct ProxyImage {
   let image: NSImage
+  let pixelWidth: Int
+  let pixels: [UInt8]
   /// Light glyphs mean the source draws for a dark menu bar.
   let hasLightGlyphs: Bool
   /// Monochrome glyphs (template icons) are drawn in the label color, like
@@ -14,6 +16,8 @@ struct ProxyImage {
 }
 
 enum ProxyImageCapture {
+  static let preferenceKey = "dropdownGlyphs"
+  static var prefersGlyphs: Bool { UserDefaults.standard.bool(forKey: preferenceKey) }
   static var isAuthorized: Bool { CGPreflightScreenCaptureAccess() }
 
   /// Shows the system prompt once per process; later calls only open System Settings.
@@ -30,18 +34,27 @@ enum ProxyImageCapture {
   /// One onscreen status window. Returns nil without Screen Recording, and
   /// nil for offscreen windows: the public API does not composite those
   /// (verified on macOS 15.7; Ice needs a private SkyLight call for that).
-  static func capture(windowID: UInt32, frame: ItemFrame) -> ProxyImage? {
+  static func capture(windowID: UInt32, frame: ItemFrame, previous: ProxyImage? = nil) -> ProxyImage? {
     guard isAuthorized, frame.isUsable,
       let cgImage = CGWindowListCreateImage(.null, .optionIncludingWindow, CGWindowID(windowID),
-        [.boundsIgnoreFraming, .bestResolution]),
-      cgImage.width > 1, cgImage.height > 1,
-      let pixels = rgba(of: cgImage),
-      let light = glyphsAreLight(rgba: pixels, width: cgImage.width, height: cgImage.height)
+        [.boundsIgnoreFraming, .bestResolution])
     else { return nil }
-    let image = NSImage(cgImage: cgImage, size: NSSize(width: frame.width, height: frame.height))
+    return prepare(cgImage, frame: frame, previous: previous)
+  }
+
+  /// Preserve the previous glyph for empty samples and skip unchanged samples before classification.
+  static func prepare(_ cgImage: CGImage, frame: ItemFrame, previous: ProxyImage?) -> ProxyImage? {
+    let size = NSSize(width: frame.width, height: frame.height)
+    guard cgImage.width > 1, cgImage.height > 1, let pixels = rgba(of: cgImage) else { return nil }
+    if let previous, previous.image.size == size, previous.pixelWidth == cgImage.width,
+      previous.pixels == pixels { return nil }
+    guard let light = glyphsAreLight(rgba: pixels, width: cgImage.width, height: cgImage.height)
+    else { return nil }
+    let image = NSImage(cgImage: cgImage, size: size)
     let monochrome = glyphsAreMonochrome(rgba: pixels)
     image.isTemplate = monochrome
-    return ProxyImage(image: image, hasLightGlyphs: light, isMonochrome: monochrome)
+    return ProxyImage(image: image, pixelWidth: cgImage.width, pixels: pixels,
+      hasLightGlyphs: light, isMonochrome: monochrome)
   }
 
   private static func rgba(of image: CGImage) -> [UInt8]? {

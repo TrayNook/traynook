@@ -6,10 +6,12 @@ set -euo pipefail
 # Quit TrayNook first so its inventory watcher does not save the test fixture.
 # --pointer-motion checks AXPress while mouse-motion events remain active.
 # It posts moves at the current position, without displacing the pointer.
-# --reorder reverses/restores a disposable pair with a hidden sentinel witness.
+# --reorder reverses/restores a disposable pair and checks cancellation with a hidden sentinel witness.
+# --relaunch-pair verifies stable identity when one app recreates two status items in the opposite order.
 # --compile-only verifies the harness without launching it or posting input.
 repo_dir="$(cd "$(dirname "$0")/.." && pwd)"
 check_dir="$(mktemp -d "${TMPDIR:-/tmp}/traynook-movement-check.XXXXXX")"
+token=${check_dir##*.}
 trap 'rm -rf "$check_dir"' EXIT
 export CLANG_MODULE_CACHE_PATH="$check_dir/modules"
 
@@ -38,7 +40,7 @@ for role in Harness Fixture; do
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
 <key>CFBundleExecutable</key><string>NativeMovementCheck</string>
-<key>CFBundleIdentifier</key><string>io.github.mahenzon.TrayNook.NativeCheck.$role</string>
+<key>CFBundleIdentifier</key><string>io.github.mahenzon.TrayNook.NativeCheck.$role.$token</string>
 <key>CFBundleName</key><string>TrayNook $role Check</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>LSUIElement</key><true/>

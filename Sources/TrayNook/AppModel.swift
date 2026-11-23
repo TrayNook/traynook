@@ -63,7 +63,7 @@ final class AppModel: ObservableObject {
   @Published var loginEnabled: Bool
   @Published var screenRecordingGranted = ProxyImageCapture.isAuthorized
   /// Keyed by persistent identity. Session-only cache of each dropdown item's
-  /// last onscreen capture; cleared when Screen Recording is unavailable.
+  /// last onscreen capture while menu-bar glyphs are enabled and authorized.
   @Published var proxyImages: [String: ProxyImage] = [:]
   let native: NativeMenuBarController
   let undoManager = UndoManager()
@@ -72,9 +72,11 @@ final class AppModel: ObservableObject {
   private let store: LayoutStore?
   private let loginItemStatus: LoginItemStatus
   private let applicationIcons = ApplicationIconCache()
+  private var runningApplicationsObservation: NSKeyValueObservation?
   private var applicationObservers: [NSObjectProtocol] = []
   private let applyMenuBarOrder: (@MainActor ([ClassifiedSourceItem]) async throws -> Void)?
   private var scanTask: Task<Void, Never>?
+  private var pendingRefreshShowsProgress: Bool?
   private var pollTask: Task<Void, Never>?
   private var operationTask: Task<Void, Never>?
   private(set) var pendingMenuBarOrder: [ClassifiedSourceItem]?
@@ -260,10 +262,12 @@ final class AppModel: ObservableObject {
   /// right now: at launch and during Apply (all revealed), and while one item
   /// is promoted. Hidden items keep their last capture. Without Screen
   /// Recording the cache is cleared and views fall back to app icons.
-  func refreshProxyImages() {
-    let authorized = ProxyImageCapture.isAuthorized
+  func refreshProxyImages(showGlyphs: Bool = ProxyImageCapture.prefersGlyphs,
+    authorized: Bool = ProxyImageCapture.isAuthorized,
+    readWindows: (() -> [NativeMenuBarController.StatusWindow])? = nil,
+    capture: (UInt32, ItemFrame, ProxyImage?) -> ProxyImage? = ProxyImageCapture.capture) {
     if authorized != screenRecordingGranted { screenRecordingGranted = authorized }
-    guard authorized else {
+    guard showGlyphs, authorized else {
       if !proxyImages.isEmpty { proxyImages = [:] }
       return
     }
@@ -272,10 +276,8 @@ final class AppModel: ObservableObject {
     let dropdownKeys = Set(layout.items.filter { $0.placement == .dropdown }.map(\.id))
     var next = proxyImages.filter { dropdownKeys.contains($0.key) }
     var changed = next.count != proxyImages.count
-    for item in dropdownItems where item.observation.isOnscreen == true {
-      guard let key = item.identity.persistentKey,
-        let window = native.statusWindowGeometry(for: item.observation),
-        let captured = ProxyImageCapture.capture(windowID: window.id, frame: window.frame)
+    for (key, window) in native.proxyCaptureWindows(for: dropdownItems, readWindows: readWindows) {
+      guard let captured = capture(window.binding.id, window.frame, next[key])
       else { continue }
       next[key] = captured
       changed = true
@@ -339,14 +341,27 @@ final class AppModel: ObservableObject {
     pendingMenuBarOrder = nil
     pollTask?.cancel(); cancelScan(); operationTask?.cancel(); cancelPanelWatch()
     sourceStatusReader.shutdown()
+    runningApplicationsObservation = nil
     for observer in applicationObservers { NSWorkspace.shared.notificationCenter.removeObserver(observer) }
     applicationObservers.removeAll()
     native.remove()
   }
 
   func refresh(invalidateIcons: Bool = false, showProgress: Bool = true) {
-    if invalidateIcons { invalidateApplicationIcons() }
-    guard scanTask == nil, !scanning, !busy, !sessionSuspended else { return }
+    if invalidateIcons {
+      observationRevision &+= 1
+      invalidateApplicationIcons()
+    }
+    refreshInventory(showProgress: showProgress, followUpIfRunning: invalidateIcons)
+  }
+
+  private func refreshInventory(showProgress: Bool, followUpIfRunning: Bool) {
+    guard !busy, !sessionSuspended else { return }
+    if scanTask != nil || scanning {
+      // A lifecycle or manual request needs a scan that started after the request.
+      if followUpIfRunning { pendingRefreshShowsProgress = (pendingRefreshShowsProgress ?? false) || showProgress }
+      return
+    }
     if showProgress { scanning = true }
     scanGeneration += 1
     let generation = scanGeneration
@@ -356,6 +371,10 @@ final class AppModel: ObservableObject {
         if let self, self.scanGeneration == generation {
           if self.scanning { self.scanning = false }
           self.scanTask = nil
+          if let showProgress = self.pendingRefreshShowsProgress {
+            self.pendingRefreshShowsProgress = nil
+            self.refresh(showProgress: showProgress)
+          }
         }
       }
       let deadline = Task { @MainActor [weak self] in
@@ -368,11 +387,11 @@ final class AppModel: ObservableObject {
       let snapshot = await Task.detached(priority: .utility) {
         scanner.scan(promptForPermission: false)
       }.value
-      guard !Task.isCancelled, let self else { return }
+      guard !Task.isCancelled, let self, self.pendingRefreshShowsProgress == nil else { return }
       let accepted = await self.acceptLatest(snapshot)
       guard !Task.isCancelled, self.scanGeneration == generation else { return }
       if self.scanning { self.scanning = false }
-      guard accepted else { return }
+      guard accepted, self.pendingRefreshShowsProgress == nil else { return }
       if self.takeLayoutRecovery() {
         modelLog.notice("re-applying the saved layout after a temporary reveal")
         self.applySavedLayout(recovering: true)
@@ -392,6 +411,7 @@ final class AppModel: ObservableObject {
   private func cancelScan() {
     scanGeneration += 1
     scanTask?.cancel()
+    pendingRefreshShowsProgress = nil
     sourceStatusReader.cancelAll()
     scanTask = nil
     if scanning { scanning = false }
@@ -1627,7 +1647,7 @@ final class AppModel: ObservableObject {
       busy = false
       operationInitialReveal = nil
       operationTask = nil
-      if !Task.isCancelled { applyPendingMenuBarOrder() }
+      applyPendingMenuBarOrder()
       if deactivateApp && restoreSettingsFocus && wasActive { NSApp.activate(ignoringOtherApps: true) }
       refresh()
       if failed && showSettingsOnFailure && !Task.isCancelled {
@@ -1646,9 +1666,16 @@ final class AppModel: ObservableObject {
     guard !busy, !recoveryRequired else { return }
     reveal()
     var next = layout; next.restoreAll()
-    if replaceLayout(next, undoable: true) {
-      message = L("All items are revealed. Saved placements are now Menu Bar.")
+    if replaceLayout(next, undoable: true, restoringAll: true) { applyRestoredMenuBarOrder() }
+  }
+
+  private func applyRestoredMenuBarOrder() {
+    let ordered = menuBarItems(in: layout)
+    if ordered.count > 1 {
+      pendingMenuBarOrder = ordered
+      applyPendingMenuBarOrder()
     }
+    message = L("All items are revealed. Saved placements are now Menu Bar.")
   }
 
   /// Reorder one lane's keys, keeping the rest of the layout in place.
@@ -1671,6 +1698,7 @@ final class AppModel: ObservableObject {
   private func applyPendingMenuBarOrder() {
     guard !busy, let ordered = pendingMenuBarOrder else { return }
     pendingMenuBarOrder = nil
+    guard canEdit else { return }
     attemptedLaunchRestore = true
     message = nil
     runOperation(revealOnFailure: false, deactivateApp: false, diagnosticContext: "menuBarOrder") {
@@ -1739,7 +1767,7 @@ final class AppModel: ObservableObject {
   }
 
   @discardableResult private func replaceLayout(_ next: SavedLayout, undoable: Bool,
-    applyingMenuBarOrder: Bool = false) -> Bool {
+    applyingMenuBarOrder: Bool = false, restoringAll: Bool = false) -> Bool {
     let previous = layout
     guard previous != next else { return true }
     layout = next
@@ -1748,9 +1776,14 @@ final class AppModel: ObservableObject {
       undoManager.registerUndo(withTarget: self) { target in
         MainActor.assumeIsolated {
           if !applyingMenuBarOrder { target.reveal() }
-          if target.replaceLayout(previous, undoable: true, applyingMenuBarOrder: applyingMenuBarOrder),
+          if target.replaceLayout(previous, undoable: true, applyingMenuBarOrder: applyingMenuBarOrder,
+            restoringAll: restoringAll),
             !applyingMenuBarOrder {
-            target.message = L("Layout restored. Apply Saved Layout to update native positions.")
+            if restoringAll && previous.items.allSatisfy({ $0.placement == .menuBar }) {
+              target.applyRestoredMenuBarOrder()
+            } else {
+              target.message = L("Layout restored. Apply Saved Layout to update native positions.")
+            }
           }
         }
       }
@@ -1807,26 +1840,36 @@ final class AppModel: ObservableObject {
   }
 
   private func observeApplicationChanges() {
-    guard applicationObservers.isEmpty else { return }
-    let center = NSWorkspace.shared.notificationCenter
-    for name in [NSWorkspace.didLaunchApplicationNotification, NSWorkspace.didTerminateApplicationNotification] {
-      applicationObservers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] notification in
-        let bundle = (notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?.bundleIdentifier
-        MainActor.assumeIsolated {
-          guard let self else { return }
-          self.observationRevision &+= 1
-          if let bundle { self.applicationIcons.invalidate(bundle: bundle) }
-          else { self.applicationIcons.invalidateAll() }
-          self.objectWillChange.send()
-        }
-      })
+    guard runningApplicationsObservation == nil else { return }
+    let workspace = NSWorkspace.shared
+    // Launch and termination notifications omit accessory apps.
+    runningApplicationsObservation = workspace.observe(\.runningApplications, options: [.old, .new]) { [weak self] _, change in
+      let changed = Set(change.oldValue ?? []).symmetricDifference(Set(change.newValue ?? []))
+      let bundles = changed.compactMap(\.bundleIdentifier)
+      let affected = !changed.isEmpty && bundles.count == changed.count ? Set(bundles) : nil
+      Task { @MainActor [weak self] in
+        guard let self, self.runningApplicationsObservation != nil else { return }
+        self.runningApplicationsChanged(bundles: affected)
+      }
     }
+    let center = workspace.notificationCenter
     for name in [NSWorkspace.didMountNotification, NSWorkspace.didUnmountNotification,
       NSWorkspace.didRenameVolumeNotification] {
       applicationObservers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
         MainActor.assumeIsolated { self?.invalidateApplicationIcons() }
       })
     }
+  }
+
+  func runningApplicationsChanged(bundles: Set<String>? = nil) {
+    observationRevision &+= 1
+    if let bundles {
+      for bundle in bundles { applicationIcons.invalidate(bundle: bundle) }
+      objectWillChange.send()
+    } else {
+      invalidateApplicationIcons()
+    }
+    refreshInventory(showProgress: false, followUpIfRunning: true)
   }
 
   func diagnosticsReport() -> DiagnosticsReport {
@@ -1836,7 +1879,8 @@ final class AppModel: ObservableObject {
       macOS: ProcessInfo.processInfo.operatingSystemVersionString,
       permissionGranted: permissionGranted, scanComplete: scanComplete, sessionSuspended: sessionSuspended,
       recoveryRequired: recoveryRequired,
-      concealed: concealed, screenRecordingGranted: screenRecordingGranted, lastReveal: lastReveal,
+      concealed: concealed, screenRecordingGranted: screenRecordingGranted,
+      proxyGlyphsEnabled: ProxyImageCapture.prefersGlyphs, lastReveal: lastReveal,
       reapplyNotBefore: reapplyNotBefore, recoveringLayout: recoveringLayout, busy: busy, scanning: scanning,
       nativeBusy: native.isBusy, incompleteScans: incompleteScans, unsafeScans: unsafeScans,
       hasPendingActivation: native.hasPendingActivation,

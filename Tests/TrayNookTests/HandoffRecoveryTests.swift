@@ -157,6 +157,38 @@ struct HandoffRecoveryTests {
       boundary: ItemFrame(x: -599, y: 7.5, width: 1730, height: 22), originalGap: nil))
   }
 
+  @Test("A missing or moved right neighbor falls back to the validated left neighbor",
+    arguments: [false, true])
+  func alternateNeighborPreservesSlot(rightStillPresent: Bool) throws {
+    let alternate = NativeMenuBarController.StatusWindowBinding(id: 40, pid: 400, bundle: "example.alternate")
+    let current = [source, alternate, boundary] + (rightStillPresent ? [original] : [])
+    #expect(try NativeMenuBarController.restorationAnchor(source: source, preferred: original,
+      boundary: boundary, current: current, preferredIsHidden: false,
+      alternate: alternate, alternateIsInSection: { $0 == alternate }) == alternate)
+    #expect(try NativeMenuBarController.restorationAnchor(source: source, preferred: original,
+      boundary: boundary, current: current, preferredIsHidden: false,
+      alternate: alternate, alternateIsInSection: { _ in false }) == boundary)
+    let reused = NativeMenuBarController.StatusWindowBinding(id: alternate.id, pid: alternate.pid,
+      bundle: "example.replacement")
+    #expect(try NativeMenuBarController.restorationAnchor(source: source, preferred: original,
+      boundary: boundary, current: [source, reused, boundary],
+      alternate: alternate, alternateIsInSection: { _ in true }) == boundary)
+  }
+
+  @Test("A left-neighbor return must land to its right at the original gap and stay hidden")
+  func verifiesTheLeftNeighborSlot() {
+    let neighbor = ItemFrame(x: -800, y: 0, width: 30, height: 24)
+    let boundary = ItemFrame(x: -709, y: 0, width: 1700, height: 24)
+    func verified(x: Double) -> Bool {
+      NativeMenuBarController.restorationVerified(source: ItemFrame(x: x, y: 0, width: 30, height: 24),
+        destination: neighbor, boundary: boundary, originalGap: 0, afterDestination: true)
+    }
+    #expect(verified(x: -770))
+    #expect(!verified(x: -740))
+    #expect(!verified(x: -830))
+    #expect(!verified(x: 991))
+  }
+
   @Test("Confirmed owner termination retires an open-menu handoff without moving its replacement")
   func terminatedOwnerReleasesPendingHandoff() throws {
     var state = NativeMenuInteraction.DismissalState(windowsBefore: [])

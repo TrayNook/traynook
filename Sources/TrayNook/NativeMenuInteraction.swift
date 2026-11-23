@@ -67,7 +67,7 @@ final class NativeMenuInteraction {
     guard !cancelled else { return false }
     let snapshot = Self.windowSnapshot(of: processIdentifier)
     return dismissalState.dismissed(currentWindows: snapshot?.visibleIDs,
-      candidatePanels: snapshot?.panelIDs,
+      candidatePanels: snapshot?.panelIDs, candidateNormalWindows: snapshot?.normalWindowIDs ?? [],
       ownerTerminated: ownerApplication?.isTerminated == true, at: now)
   }
 
@@ -106,6 +106,7 @@ final class NativeMenuInteraction {
   struct WindowSnapshot {
     let visibleIDs: Set<UInt32>
     let panelIDs: Set<UInt32>
+    let normalWindowIDs: Set<UInt32>
   }
 
   static func windowSnapshot(in windows: [[String: Any]]?, owner pid: Int32,
@@ -113,6 +114,7 @@ final class NativeMenuInteraction {
     guard let windows else { return nil }
     var visible: Set<UInt32> = []
     var panels: Set<UInt32> = []
+    var normalWindows: Set<UInt32> = []
     for window in windows {
       guard let owner = (window[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value else { return nil }
       guard owner == pid else { continue }
@@ -123,9 +125,13 @@ final class NativeMenuInteraction {
         let bounds = window[kCGWindowBounds as String] as? [String: Any],
         let frame = CGRect(dictionaryRepresentation: bounds as CFDictionary),
         isPanelWindow(frame: frame, layer: layer, menuBarRows: menuBarRows) else { continue }
-      panels.insert(id)
+      if layer == Int(CGWindowLevelForKey(.normalWindow)) {
+        normalWindows.insert(id)
+      } else {
+        panels.insert(id)
+      }
     }
-    return WindowSnapshot(visibleIDs: visible, panelIDs: panels)
+    return WindowSnapshot(visibleIDs: visible, panelIDs: panels, normalWindowIDs: normalWindows)
   }
 
   static func isPanelWindow(frame: CGRect, layer: Int, menuBarRows: [CGRect]) -> Bool {
@@ -152,13 +158,20 @@ final class NativeMenuInteraction {
 
   struct DismissalState {
     let windowsBefore: Set<UInt32>?
-    private(set) var observedWindowIDs: Set<UInt32> = []
+    private var observedPanels: Set<UInt32> = []
+    private var observedNormalWindows: Set<UInt32> = []
     private var observedMenu = false
     private var menuIsOpen = false
     private var lastMenuClose: ContinuousClock.Instant?
     private var lastWindowClose: ContinuousClock.Instant?
 
     init(windowsBefore: Set<UInt32>?) { self.windowsBefore = windowsBefore }
+
+    // A normal-level window can be a custom panel or an ordinary app window.
+    // A native menu or panel supersedes that fallback for this handoff.
+    var observedWindowIDs: Set<UInt32> {
+      observedMenu || !observedPanels.isEmpty ? observedPanels : observedNormalWindows
+    }
 
     var observedInterface: Bool { observedMenu || !observedWindowIDs.isEmpty }
 
@@ -174,10 +187,14 @@ final class NativeMenuInteraction {
     }
 
     mutating func dismissed(currentWindows: Set<UInt32>?, candidatePanels: Set<UInt32>? = nil,
+      candidateNormalWindows: Set<UInt32> = [],
       ownerTerminated: Bool = false, at now: ContinuousClock.Instant) -> Bool {
       if ownerTerminated { return true }
       if let windowsBefore, let currentWindows {
-        observedWindowIDs.formUnion((candidatePanels ?? currentWindows).subtracting(windowsBefore))
+        observedPanels.formUnion((candidatePanels ?? currentWindows).subtracting(windowsBefore))
+        if !observedMenu, observedPanels.isEmpty {
+          observedNormalWindows.formUnion(candidateNormalWindows.subtracting(windowsBefore))
+        }
         if !observedWindowIDs.isEmpty, currentWindows.isDisjoint(with: observedWindowIDs) {
           if lastWindowClose == nil { lastWindowClose = now }
         } else { lastWindowClose = nil }

@@ -61,9 +61,16 @@ import ApplicationServices
         if FileManager.default.fileExists(atPath: signal.appendingPathExtension("ready").path) { break }
         try await Task.sleep(for: .milliseconds(50))
       }
-      guard let windowID = UInt32(try String(contentsOf: signal.appendingPathExtension("window"), encoding: .utf8)),
-        ordinaryWindowIsVisible(windowID, owner: child.processIdentifier) else {
-        print("FAILED: Preexisting ordinary window was not visible."); return
+      guard let windowID = UInt32(try String(contentsOf: signal.appendingPathExtension("window"), encoding: .utf8)) else {
+        print("FAILED: The ordinary window did not report an identifier."); return
+      }
+      // The source writes its marker after ordering the window, before WindowServer necessarily lists it.
+      let visibilityDeadline = ContinuousClock.now.advanced(by: .seconds(2))
+      while !ordinaryWindowIsVisible(windowID, owner: child.processIdentifier) {
+        guard child.isRunning, ContinuousClock.now < visibilityDeadline else {
+          print("FAILED: Preexisting ordinary window was not visible."); return
+        }
+        try await Task.sleep(for: .milliseconds(50))
       }
       guard let interaction = NativeMenuInteraction(processIdentifier: child.processIdentifier) else {
         print("FAILED: Menu notification registration."); return

@@ -6,7 +6,7 @@ struct SettingsView: View {
   @ObservedObject var model: AppModel
   @ObservedObject var updates = UpdateController()
   @State private var confirmReset = false
-  @AppStorage("dropdownGlyphs") private var showGlyphs = false
+  @AppStorage(ProxyImageCapture.preferenceKey) private var showGlyphs = false
   @State private var showItemDetails = true
 
   var body: some View {
@@ -152,6 +152,7 @@ struct SettingsView: View {
           VStack(alignment: .leading, spacing: 10) {
             Toggle(L("Show menu-bar glyphs instead of app icons in the dropdown"), isOn: $showGlyphs)
               .disabled(!model.screenRecordingGranted)
+              .onChange(of: showGlyphs) { model.refreshProxyImages(showGlyphs: $0) }
             Text(L("App icons are used by default. Menu-bar glyphs show each item's appearance as last seen while it was visible."))
               .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             if !model.screenRecordingGranted {
@@ -373,7 +374,7 @@ struct DropdownView: View {
 
 struct DropdownIcons: View {
   @ObservedObject var model: AppModel
-  @AppStorage("dropdownGlyphs") private var showGlyphs = false
+  @AppStorage(ProxyImageCapture.preferenceKey) private var showGlyphs = false
   @FocusState private var settingsFocused: Bool
   @AccessibilityFocusState private var settingsAccessibilityFocused: Bool
   let columns: Int
@@ -404,7 +405,7 @@ struct DropdownIcons: View {
             proxy(item, bundle: bundle)
           }
           .disabled(!model.canEdit || !model.isManageable(item))
-          .help(model.proxyImages[bundle] != nil && item.observation.isOnscreen != true
+          .help(showGlyphs && model.proxyImages[bundle] != nil && item.observation.isOnscreen != true
             ? model.name(for: bundle) + " — " + L("as last seen in the menu bar") : model.name(for: bundle))
           .accessibilityLabel(model.name(for: bundle))
           .contextMenu {
@@ -419,8 +420,8 @@ struct DropdownIcons: View {
         }
       }
     }.buttonStyle(.borderless).padding(2)
-    .task(id: interactive) {
-      guard interactive else { return }
+    .task(id: interactive && showGlyphs) {
+      guard interactive, showGlyphs else { return }
       while !Task.isCancelled {
         model.refreshProxyImages()
         try? await Task.sleep(for: .seconds(1))

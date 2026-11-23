@@ -127,7 +127,7 @@ struct DiagnosticsReportTests {
   func stableAffectedSources() {
     let event = DiagnosticsReport.Event(reason: .operationFailure, timestamp: occurredAt,
       failure: "responseTimedOut", affectedBundles: ["example.z", "example.a", "example.z", ""])
-    let report = DiagnosticsReport(screenRecordingGranted: true, lastReveal: event,
+    let report = DiagnosticsReport(screenRecordingGranted: true, proxyGlyphsEnabled: true, lastReveal: event,
       pendingPlacementBundles: ["example.z", "example.a", "example.z"],
       automaticPlacementBundles: ["example.z", "example.z"])
     #expect(report.text.contains("Affected sources: example.a, example.z"))
@@ -136,5 +136,10 @@ struct DiagnosticsReportTests {
     #expect(report.text.contains("Last failure: responseTimedOut"))
     #expect(report.text.contains("Proxy imagery: captured menu-bar items"))
     #expect(report.lastReveal == event)
+  }
+
+  @Test("Capture permission alone does not change the reported icon mode")
+  func permissionWithoutGlyphMode() {
+    #expect(DiagnosticsReport(screenRecordingGranted: true).text.contains("Proxy imagery: app icons"))
   }
 }

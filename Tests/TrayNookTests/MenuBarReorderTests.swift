@@ -4,10 +4,73 @@ import Testing
 
 @testable import TrayNook
 
+@MainActor
+@Test("Reorder binds an entire row from one read and rejects a replacement in the next phase")
+func reorderReadbackUsesOneSnapshot() throws {
+  let row = ItemFrame(x: 0, y: 0, width: 1200, height: 24)
+  let observations = (1...12).map { index in
+    RawSourceItemObservation(runtimeID: "100:\(index)", processIdentifier: 100,
+      bundleIdentifier: "example.siblings", applicationName: "Siblings", role: "AXMenuBarItem",
+      frame: ItemFrame(x: Double(index * 30), y: 0, width: 24, height: 24),
+      actions: ["AXPress"], metadata: LiveAccessibilityMetadata(), observedOrder: index,
+      isOnscreen: true, statusWindowIdentifier: UInt32(index))
+  }
+  let items = IdentityAssessor().classify(observations)
+  let visibleKeys = Set(items.compactMap(\.identity.persistentKey))
+  #expect(visibleKeys.count == observations.count)
+  let windows: [NativeMenuBarController.StatusWindow] = try observations.map { observation in
+    (.init(id: try #require(observation.statusWindowIdentifier), pid: observation.processIdentifier,
+      bundle: observation.bundleIdentifier), try #require(observation.frame), true)
+  }
+  var reads = 0
+  let before = NativeMenuBarController.ReorderWindowSnapshot(row: row) {
+    reads += 1
+    return windows
+  }
+  #expect(before.bindings(for: items, visibleKeys: visibleKeys)?.count == windows.count)
+  #expect(reads == 1)
+  let after = NativeMenuBarController.ReorderWindowSnapshot(row: row) {
+    reads += 1
+    var current = windows
+    current[0].binding = .init(id: 1000, pid: 100, bundle: "example.siblings")
+    return current
+  }
+  #expect(after.rowBindings != before.rowBindings)
+  #expect(after.bindings(for: items, visibleKeys: visibleKeys) == nil)
+  #expect(reads == 2)
+}
+
 @Suite("Menu Bar reorder application", .serialized,
   .enabled(if: ProcessInfo.processInfo.environment["TRAYNOOK_APPKIT_TESTS"] == "1"))
 @MainActor
 struct MenuBarReorderTests {
+  @Test("Closing Settings immediately after a preview drop preserves the saved order")
+  func dropSurvivesSettingsClose() async throws {
+    let fixture = try Fixture()
+    defer { fixture.recorder.release(); fixture.close() }
+    let model = fixture.model
+    let drag = PreviewDragSession()
+    fixture.recorder.holdNextRequest = true
+    try #require(drag.begin(Fixture.tunnelblick, layout: model.layout) { key, placement, anchor in
+      model.commitPreviewMove(key, to: placement, before: anchor)
+    })
+    drag.move(to: .menuBar, before: Fixture.broglow)
+    model.undoManager.beginUndoGrouping()
+    let dropped = drag.drop()
+    drag.cancel() // LayoutPreviewView.onDisappear when Settings closes.
+    model.undoManager.endUndoGrouping()
+    try #require(dropped)
+
+    let expected = [Fixture.tunnelblick, Fixture.broglow]
+    #expect(try fixture.store.load().items.prefix(2).map(\.id) == expected)
+    await fixture.waitForRequestCount(1)
+    #expect(model.busy)
+    fixture.recorder.release()
+    await fixture.settle()
+    #expect(fixture.recorder.requests == [expected])
+    #expect(try fixture.store.load() == model.layout)
+  }
+
   @Test("A preview reorder applies native order, including Undo and Redo")
   func previewAppliesOrder() async throws {
     let fixture = try Fixture()
@@ -108,6 +171,61 @@ struct MenuBarReorderTests {
     #expect(!model.busy)
   }
 
+  @Test("Restore All orders the merged lanes, and only a current Redo replays that order",
+    arguments: [false, true])
+  func restoreAllAndRedoOrder(externalReveal: Bool) async throws {
+    let fixture = try Fixture(restoreLayout: true)
+    defer { fixture.recorder.release(); fixture.close() }
+    let model = fixture.model
+    let original = model.layout
+    let merged = [Fixture.broglow, Fixture.tunnelblick, Fixture.dropdownFirst, Fixture.dropdownSecond]
+    fixture.recorder.holdNextRequest = true
+    model.undoManager.beginUndoGrouping()
+    model.restoreAll()
+    model.undoManager.endUndoGrouping()
+    await fixture.waitForRequestCount(1)
+    #expect(fixture.recorder.requests == [merged])
+    #expect(model.layout.items.map(\.id) == [
+      Fixture.broglow, Fixture.tunnelblick, Fixture.missing, Fixture.protected,
+      Fixture.dropdownFirst, Fixture.dropdownSecond,
+    ])
+    #expect(model.layout.items.allSatisfy { $0.placement == .menuBar })
+    #expect(try fixture.store.load() == model.layout)
+
+    model.undoManager.undo()
+    #expect(model.layout == original)
+    #expect(try fixture.store.load() == original)
+    model.undoManager.redo()
+    #expect(model.pendingMenuBarOrder?.compactMap(\.identity.persistentKey) == merged)
+    if externalReveal { fixture.notifyExternalReveal() }
+    fixture.recorder.release()
+    await fixture.settle()
+    #expect(fixture.recorder.requests == (externalReveal ? [merged] : [merged, merged]))
+    #expect(model.pendingMenuBarOrder == nil)
+    #expect(model.layout.items.allSatisfy { $0.placement == .menuBar })
+    #expect(try fixture.store.load() == model.layout)
+    #expect(!model.concealed)
+  }
+
+  @Test("Restore All stays revealed and keeps saved placements when ordering is deferred")
+  func restoreAllRetainsPlacementOnNativeFailure() async throws {
+    let fixture = try Fixture(restoreLayout: true)
+    defer { fixture.close() }
+    let model = fixture.model
+    fixture.recorder.failure = NativeMenuActionError.inputNotIdle
+    model.undoManager.beginUndoGrouping()
+    model.restoreAll()
+    model.undoManager.endUndoGrouping()
+    await fixture.settle()
+    #expect(fixture.recorder.requests == [[
+      Fixture.broglow, Fixture.tunnelblick, Fixture.dropdownFirst, Fixture.dropdownSecond,
+    ]])
+    #expect(model.layout.items.allSatisfy { $0.placement == .menuBar })
+    #expect(try fixture.store.load() == model.layout)
+    #expect(model.message == NativeMenuActionError.inputNotIdle.localizedDescription)
+    #expect(!model.concealed)
+  }
+
   @Test("Undo during a native move applies the restored order after the in-flight request")
   func undoQueuesLatestOrder() async throws {
     let fixture = try Fixture()
@@ -203,7 +321,7 @@ private final class Fixture {
   private let preferenceKeys: [String]
   private let previousPreferences: [String: Any]
 
-  init() throws {
+  init(restoreLayout: Bool = false) throws {
     NSApplication.shared.setActivationPolicy(.accessory)
     preferenceKeys = ["TrayNookLauncher", "TrayNook.HiddenBoundary"].flatMap { name in
       ["NSStatusItem Preferred Position \(name)", "NSStatusItem Visible \(name)",
@@ -215,11 +333,15 @@ private final class Fixture {
     })
     directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     store = LayoutStore(url: directory.appendingPathComponent("layout.json"))
-    let layout = SavedLayout(items: [
+    var layout = SavedLayout(items: [
       SavedItem(id: Self.broglow), SavedItem(id: Self.tunnelblick), SavedItem(id: Self.missing),
       SavedItem(id: Self.protected), SavedItem(id: Self.dropdownFirst, placement: .dropdown),
       SavedItem(id: Self.dropdownSecond, placement: .dropdown),
     ])
+    if restoreLayout {
+      layout.items.removeLast()
+      layout.items.insert(SavedItem(id: Self.dropdownSecond, placement: .alwaysHidden), at: 0)
+    }
     try store.save(layout)
     launcher = NSStatusBar.system.statusItem(withLength: 0)
     launcher.isVisible = false
