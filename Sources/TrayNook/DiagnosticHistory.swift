@@ -19,6 +19,9 @@ final class DiagnosticHistory: @unchecked Sendable {
     case controlPlacementRefused, unsafeConcealment, unsafeControlGeometry, sourceWindowUnavailable
     case userReveal, environmentChange, geometryUnavailable, identityReview, operationFailure
   }
+  enum InventoryFailure: String, Codable, Sendable {
+    case discoveryDeadline, staleSnapshot, nativeInspectionUnavailable, permissionDenied
+  }
   enum StorageError: Error { case unavailable, malformed, newerSchema, oversized }
 
   struct Event: Codable, Equatable, Sendable {
@@ -31,6 +34,7 @@ final class DiagnosticHistory: @unchecked Sendable {
     let operationID: UUID?
     let metrics: ScanMetrics?
     let scanAgeMilliseconds: Double?
+    let inventoryFailure: InventoryFailure?
   }
 
   static let shared: DiagnosticHistory = {
@@ -79,13 +83,13 @@ final class DiagnosticHistory: @unchecked Sendable {
 
   func record(_ category: Category, outcome: Outcome, reason: Reason? = nil, operation: Operation? = nil,
     bundleIdentifier: String? = nil, operationID: UUID? = nil, metrics: ScanMetrics? = nil,
-    scanAgeMilliseconds: Double? = nil) {
+    scanAgeMilliseconds: Double? = nil, inventoryFailure: InventoryFailure? = nil) {
     guard url != nil else { return }
     let event = Event(timestamp: now(), category: category, outcome: outcome, reason: reason, operation: operation,
       bundleIdentifier: Self.bundleIdentifier(bundleIdentifier), operationID: operationID,
       metrics: metrics.map(Self.sanitized), scanAgeMilliseconds: scanAgeMilliseconds.flatMap {
         $0.isFinite && $0 >= 0 ? $0 : nil
-      })
+      }, inventoryFailure: inventoryFailure)
     queue.async { self.append(event) }
   }
 

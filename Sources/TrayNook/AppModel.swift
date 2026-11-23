@@ -402,17 +402,11 @@ final class AppModel: ObservableObject {
     await verifyConcealmentDuringInventoryFailure(.discoveryDeadline)
   }
 
-  private enum InventoryObservationFailure: String {
-    case discoveryDeadline = "discovery exceeded 3 s"
-    case staleSnapshot = "inventory snapshot older than 3 s"
-    case nativeInspectionUnavailable = "native window inspection unavailable"
-  }
-
   private static var unverifiedInventoryRevealMessage: String {
     L("Menu-bar inventory could not be verified. Items are revealed until a fresh scan completes.")
   }
 
-  private func verifyConcealmentDuringInventoryFailure(_ failure: InventoryObservationFailure) async {
+  private func verifyConcealmentDuringInventoryFailure(_ failure: DiagnosticHistory.InventoryFailure) async {
     let requiringScan = failure == .discoveryDeadline
     guard !Task.isCancelled, (!requiringScan || scanTask != nil), concealed, !busy else { return }
     let generation = scanGeneration
@@ -435,12 +429,19 @@ final class AppModel: ObservableObject {
       message = NativeMenuActionError.inventoryUnavailable.localizedDescription
       return
     }
+    let cause = granted ? failure : .permissionDenied
+    let description = switch cause {
+    case .discoveryDeadline: "discovery exceeded 3 s"
+    case .staleSnapshot: "inventory snapshot older than 3 s"
+    case .nativeInspectionUnavailable: "native window inspection unavailable"
+    case .permissionDenied: "accessibility permission denied"
+    }
     if granted, Self.canRetainConcealment(lastVerified: baseline, current: current, unsafeScans: unsafeScans) {
       message = NativeMenuActionError.inventoryUnavailable.localizedDescription
-      modelLog.notice("\(failure.rawValue, privacy: .public) with unchanged native sources; keeping items concealed")
+      modelLog.notice("\(description, privacy: .public) with unchanged native sources; keeping items concealed")
       return
     }
-    revealForInventoryRecovery()
+    revealForInventoryRecovery(inventoryFailure: cause)
     if !granted {
       message = L("Grant Accessibility to discover and organize menu-bar items.")
     } else if failure == .discoveryDeadline {
@@ -448,7 +449,7 @@ final class AppModel: ObservableObject {
     } else {
       message = Self.unverifiedInventoryRevealMessage
     }
-    modelLog.error("revealed: \(failure.rawValue, privacy: .public)")
+    modelLog.error("revealed: \(description, privacy: .public)")
   }
 
   static func canRetainConcealment(lastVerified: [StatusWindowState]?, current: [StatusWindowState]?,
@@ -485,7 +486,7 @@ final class AppModel: ObservableObject {
       else { message = NativeMenuActionError.inventoryUnavailable.localizedDescription }
       return false
     }
-    guard let prepared = prepareInventory(snapshot) else { return true }
+    guard let prepared = prepareInventory(snapshot, publishCompletion: false) else { return true }
     let revision = observationRevision
     let generation = scanGeneration
     let inspection = await native.inspectLatest(prepared.observed)
@@ -510,11 +511,12 @@ final class AppModel: ObservableObject {
     }
     if message == geometryUnavailable || message == inventoryUnavailable
       || message == Self.unverifiedInventoryRevealMessage { message = nil }
+    if !scanComplete { scanComplete = true }
     applyInventory(prepared, inspection: inspection)
     return true
   }
 
-  private func prepareInventory(_ snapshot: InventorySnapshot) -> PreparedInventory? {
+  private func prepareInventory(_ snapshot: InventorySnapshot, publishCompletion: Bool = true) -> PreparedInventory? {
     guard !sessionSuspended else { return nil }
     let displayRevision = displayChangeRevision
     native.noteInventory(snapshot)
@@ -525,7 +527,7 @@ final class AppModel: ObservableObject {
     let recordingGranted = ProxyImageCapture.isAuthorized
     if screenRecordingGranted != recordingGranted { screenRecordingGranted = recordingGranted }
     if concealed != native.isConcealed { concealed = native.isConcealed }
-    guard acceptScanStatus(snapshot, firstSnapshot: firstSnapshot) else { return nil }
+    guard acceptScanStatus(snapshot, firstSnapshot: firstSnapshot, publishCompletion: publishCompletion) else { return nil }
     let observed = snapshot.items.filter { $0.observation.bundleIdentifier != ownBundle }
     let watchingLayout = concealed || reapplyNotBefore != nil || recoveringLayout
     let changes = watchingLayout ? Self.keyedChanges(from: previousItems, to: observed) : []
@@ -668,7 +670,8 @@ final class AppModel: ObservableObject {
     }
   }
 
-  func acceptScanStatus(_ snapshot: InventorySnapshot, firstSnapshot: Bool = false) -> Bool {
+  func acceptScanStatus(_ snapshot: InventorySnapshot, firstSnapshot: Bool = false,
+    publishCompletion: Bool = true) -> Bool {
     guard !sessionSuspended else { return false }
     recordInventoryDiagnostic(snapshot)
     let wasConcealed = concealed
@@ -677,15 +680,16 @@ final class AppModel: ObservableObject {
     let granted = snapshot.permission == .granted
     let complete = snapshot.completeness == .complete
     if permissionGranted != granted { permissionGranted = granted }
-    if scanComplete != complete { scanComplete = complete }
-    if permissionGranted, !scanComplete, concealed, waitingForDisplayInventory {
+    // Polling must finish native inspection before re-enabling edits after recovery.
+    if (!complete || publishCompletion), scanComplete != complete { scanComplete = complete }
+    if permissionGranted, !complete, concealed, waitingForDisplayInventory {
       incompleteScans = 0
       message = NativeMenuActionError.inventoryUnavailable.localizedDescription
       return false
     }
     // An AX read failure cannot undo a verified layout when WindowServer still
     // reports the same owners, windows, geometry, and visibility.
-    if permissionGranted, !scanComplete, concealed, !busy,
+    if permissionGranted, !complete, concealed, !busy,
       Date().timeIntervalSince(snapshot.capturedAt) <= 3,
       Self.canRetainConcealment(lastVerified: lastCompleteStatusWindows,
         current: snapshot.statusWindows, unsafeScans: unsafeScans) {
@@ -697,13 +701,13 @@ final class AppModel: ObservableObject {
     // thread) makes a scan incomplete every few minutes on a crowded bar.
     // Nothing moved, so the section stays hidden through a few such scans;
     // the next complete scan diffs against the last complete one.
-    if permissionGranted, !scanComplete, concealed, !busy, incompleteScans < 3 {
+    if permissionGranted, !complete, concealed, !busy, incompleteScans < 3 {
       incompleteScans += 1
       modelLog.notice("incomplete scan \(self.incompleteScans) of 3 while concealed: \(snapshot.warnings.joined(separator: " | "), privacy: .public)")
       return false
     }
     incompleteScans = 0
-    guard permissionGranted, scanComplete else {
+    guard permissionGranted, complete else {
       // A preparation error must reach the operation's completion UI. Only an
       // external reveal cancels that task; failing its own scan is an error.
       if busy {
@@ -942,11 +946,12 @@ final class AppModel: ObservableObject {
   }
 
   private func revealForInventoryRecovery(reason: DiagnosticsReport.Reason = .inventoryUnavailable,
-    affectedBundles: [String] = []) {
+    affectedBundles: [String] = [], inventoryFailure: DiagnosticHistory.InventoryFailure? = nil) {
     let shouldRecover = concealed && layout.items.contains { $0.placement != .menuBar }
     // Repeated incomplete polls must not replace the event that started recovery.
     if concealed || lastReveal == nil {
-      reveal(cancelLaunchRestore: false, reason: reason, affectedBundles: affectedBundles)
+      reveal(cancelLaunchRestore: false, reason: reason, affectedBundles: affectedBundles,
+        inventoryFailure: inventoryFailure)
     } else {
       preservingRevealReason { reveal(cancelLaunchRestore: false) }
     }
@@ -955,7 +960,7 @@ final class AppModel: ObservableObject {
   }
 
   func reveal(cancelLaunchRestore: Bool = true, reason: DiagnosticsReport.Reason = .userReveal,
-    affectedBundles: [String] = []) {
+    affectedBundles: [String] = [], inventoryFailure: DiagnosticHistory.InventoryFailure? = nil) {
     if concealed {
       let code: DiagnosticHistory.Reason = switch reason {
       case .userReveal: .userReveal
@@ -965,7 +970,7 @@ final class AppModel: ObservableObject {
       case .identityReview: .identityReview
       case .operationFailure: .operationFailure
       }
-      diagnosticHistory.record(.concealment, outcome: .changed, reason: code)
+      diagnosticHistory.record(.concealment, outcome: .changed, reason: code, inventoryFailure: inventoryFailure)
     }
     recordReveal(reason, affectedBundles: affectedBundles)
     pendingMenuBarOrder = nil

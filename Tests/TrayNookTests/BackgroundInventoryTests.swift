@@ -32,6 +32,7 @@ struct BackgroundInventoryTests {
       : NativeMenuActionError.inventoryUnavailable.localizedDescription))
     #expect(model.layout == saved)
     #expect(model.items == originalItems)
+    try await expectRevealCause(in: fixture, equals: concealed ? "nativeInspectionUnavailable" : nil)
 
     model.native.reveal(keepBoundaryVisible: true)
     let queued = fixture.begin(extra: "example.also-obsolete")
@@ -45,6 +46,8 @@ struct BackgroundInventoryTests {
     model.native.reveal(keepBoundaryVisible: true)
     let healthy = fixture.begin(extra: "example.arrived")
     try await waitUntil { fixture.load.calls == 2 }
+    #expect(!model.scanComplete)
+    #expect(!model.canEdit)
     fixture.load.release()
     #expect(try await finish(healthy))
     #expect(model.canEdit)
@@ -72,6 +75,7 @@ struct BackgroundInventoryTests {
     #expect((fixture.model.reapplyNotBefore != nil) == concealed)
     #expect(fixture.model.message == (concealed ? unverifiedInventoryRevealMessage
       : NativeMenuActionError.inventoryUnavailable.localizedDescription))
+    try await expectRevealCause(in: fixture, equals: concealed ? "staleSnapshot" : nil)
   }
 
   @Test("A delayed read publishes neither new items nor layout until its result is accepted")
@@ -178,6 +182,19 @@ struct BackgroundInventoryTests {
     return try #require(pending.outcome.result as Bool?)
   }
 
+  private func expectRevealCause(in fixture: InventoryFixture, equals cause: String?) async throws {
+    let reveals = try await fixture.history.read().filter { $0.category == .concealment }
+    if let cause {
+      let reveal = try #require(reveals.first)
+      #expect(reveals.count == 1)
+      #expect(reveal.reason == .inventoryUnavailable)
+      let record = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(reveal)) as? [String: Any])
+      #expect(record["inventoryFailure"] as? String == cause)
+    } else {
+      #expect(reveals.isEmpty)
+    }
+  }
+
   private func waitUntil(_ condition: () -> Bool) async throws {
     let deadline = ContinuousClock.now.advanced(by: .seconds(2))
     while !condition(), ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(1)) }
@@ -191,6 +208,8 @@ private final class InventoryFixture {
   let permission: Permission
   let load = DelayedInventoryMetadata()
   let model: AppModel
+  let history: DiagnosticHistory
+  private let historyDirectory: URL
   private let launcher: NSStatusItem
   private let preferenceKeys: [String]
   private let previousPreferences: [String: Any]
@@ -215,9 +234,11 @@ private final class InventoryFixture {
     native.reveal(keepBoundaryVisible: true)
     let permission = Permission()
     self.permission = permission
+    historyDirectory = FileManager.default.temporaryDirectory.appendingPathComponent("inventory-\(UUID())")
+    history = DiagnosticHistory(url: historyDirectory.appendingPathComponent("history.jsonl"))
     model = AppModel(native: native, store: nil,
       loginItemStatus: LoginItemStatus(read: { .notRegistered }, register: {}, unregister: {}),
-      currentAccessibilityPermission: { permission.granted })
+      currentAccessibilityPermission: { permission.granted }, diagnosticHistory: history)
     model.layout = SavedLayout(items: [SavedItem(id: "example.baseline", placement: .dropdown)])
     model.accept(Self.snapshot())
     try await Task.sleep(for: .milliseconds(250))
@@ -256,6 +277,12 @@ private final class InventoryFixture {
       else { defaults.removeObject(forKey: key) }
     }
     defaults.synchronize()
+    let history = self.history
+    let directory = historyDirectory
+    Task {
+      _ = try? await history.read()
+      try? FileManager.default.removeItem(at: directory)
+    }
   }
 }
 

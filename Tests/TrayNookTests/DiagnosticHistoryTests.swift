@@ -129,6 +129,25 @@ struct DiagnosticHistoryTests {
     #expect(try await DiagnosticHistory(url: url, now: { now }).read() == events)
   }
 
+  @Test("Inventory reveal detail appends to readable version-one history")
+  func preservesInventoryFailureDetail() async throws {
+    let directory = temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let url = directory.appendingPathComponent("history.jsonl")
+    let old = DiagnosticHistory(url: url, now: { now })
+    old.record(.concealment, outcome: .changed, reason: .inventoryUnavailable)
+    _ = try await old.read()
+    let original = try Data(contentsOf: url)
+
+    let history = DiagnosticHistory(url: url, now: { now })
+    history.record(.concealment, outcome: .changed, reason: .inventoryUnavailable,
+      inventoryFailure: .discoveryDeadline)
+    _ = try await history.read()
+    let events = try await DiagnosticHistory(url: url, now: { now }).read()
+    #expect(events.map(\.inventoryFailure) == [nil, .discoveryDeadline])
+    #expect(try Data(contentsOf: url).starts(with: original))
+  }
+
   @Test("Rotation expires seven-day-old records and enforces a byte cap")
   func boundsRetention() async throws {
     let directory = temporaryDirectory()
