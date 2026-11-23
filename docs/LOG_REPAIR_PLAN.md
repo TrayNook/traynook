@@ -1,5 +1,114 @@
 # TrayNook log review and repair plan
 
+## November 23 follow-up: build 52
+
+The November 19 verification at **22:50:48 Moscow** is the comparison cutoff.
+Before shutdown, the live sample confirmed **1.0.0 (51)**, PID **10228**, launched
+November 22 at **12:29:10 Moscow**. Its UUID matched the installed package.
+Two WindowServer readbacks across both online menu rows observed eight saved
+hidden owners, eight source windows, and zero visible hidden-source windows.
+
+### Coverage and classification
+
+- The local history contains **5,312 events** from November 16 **11:48:57**
+  through November 23 **11:36:01 Moscow**. The **3,143** events after the
+  cutoff start November 19 at **23:49:44**. The longest interval without a
+  local record was November 22 **22:49:50** through November 23 **08:15:49**.
+  Inventory events are sampled.
+- The retained default/info unified-log query includes messages attributed to
+  TrayNook's processes and framework senders. It contains **964 messages**,
+  **10,262 activity records**, and **32 state records** from November 20
+  **11:58:50** through November 23 **11:36:02 Moscow**. All **170** retained
+  application messages are from November 23 **08:15:49–11:36:02**. The earlier
+  framework records leave a gap in app-level coverage across all five terminal
+  refusals. Debug coverage is unavailable.
+- The five terminal `controlPlacementRefused` outcomes span November 21
+  **23:30:56** to November 22 **11:39:03**. The existing
+  `17ef3f4` fix accounts for the captured AppKit separator clamp while keeping
+  protected items visible. A layout completed at **11:40:30**, and build 51
+  completed its startup layout at **12:29:14**. Subsequent history contains
+  zero terminal refusals. Missing application logs prevent reconstruction of
+  each refusal's geometry.
+- All **34** safety reveals reached a saved-layout completion. Thirty
+  inventory/geometry episodes took **4.3–174.4 seconds**. Four sleep/wake
+  recoveries took **1.4–10.8 seconds** after resume, with matching power-log
+  wake times. Across **83** saved-layout attempts, **43** completed, **29**
+  waited for inventory, **six** waited for idle input, and **five** failed
+  as described above. Optional Menu Bar order deferred four times for
+  inventory and six for input. One activation and its selected return completed.
+  Retained logs show **19** unchanged-native-window fallbacks and **six**
+  display-change fallbacks keeping concealment. Two native-inspection reveals
+  on build 51 recovered in **4.4** and **10.5** seconds. The latter waited once
+  for idle input.
+- Of 88 unified Error/Fault records, the two app errors are those recovered
+  inspection reveals. The 73 CarbonCore file-ID lookup messages report the
+  same fallback. Six SkyLight invalid-display messages occur in three pairs.
+  Three Metal, two GenerativeModels, one AppKit, and one LaunchServices
+  message lack a proven product caller or impact. The 69 active-row changes
+  and 434 sampled display events count transitions. User and system diagnostic
+  directories, including archives, contained 238 reports with zero direct
+  TrayNook crash/hang reports. System disk-write reports and an OrcaSlicer
+  hang sample mention the process. Nineteen Jetsam reports list TrayNook as
+  active without a termination reason.
+
+### Reproduced issues and fixes
+
+1. The two native-inspection reveals on November 23 at **11:03:28** and
+   **11:31:53** had the same local reason as stale inventory and an AX
+   discovery timeout. The retained unified messages identify the inspection
+   stage and leave the exact native read failure unknown. Local concealment
+   events now carry an optional fixed code when the watchdog or background
+   inspection triggers the reveal. The history keeps its version-one header
+   and reads earlier entries. Blocked metadata and expired-snapshot tests
+   reproduced the missing detail and verify the two distinct codes.
+2. The isolated slow-AX test exposed a recovery race. A complete AX result
+   re-enabled editing while the asynchronous native inspection was still
+   pending. A blocked metadata regression reproduced it both with and
+   without a preceding reveal. Polling now waits for accepted native
+   metadata before restoring completion and editability after a deferral.
+   Cancellation, layout safety, and fresh validation for native input
+   follow their existing checks.
+
+### Verification and delivery
+
+The final standard run passed **305 tests**. Thirteen sequential AppKit runs
+passed **97 checks**, including the slow-discovery recovery check that exposed
+the race. Both native-menu variants passed three checks each on retry. The
+first run's second variant could not observe its preexisting fixture window.
+Native boundary passed three cycles. Selected placement passed two show/hide
+cycles, with **206** sentinel samples, zero reveals or unavailable samples,
+and all **35** original windows surviving cleanup.
+
+Movement stopped when its 36-point fixture could not fit. Cancellation passed
+seven phases, then fresh return inventory was unavailable before the first
+tested return posted any input. Its **down/up/recovery counters were 0/0/0**.
+Selected promotion had already run before those counters reset. The subsequent
+return and no-space phases remain unverified. Trusted Terminal reported
+Accessibility granted, complete inventory with 20 items, and Screen Recording
+ungranted.
+
+Signed **1.0.0 (52)** passed strict verification with the same designated
+requirement as build 51. Both builds failed the smoke popover focus assertion
+while LoginWindow owned the locked session. The unchanged packaged smoke passed
+once the session was unlocked and preserved layout and history bytes. Build 52
+launched at **11:49:06 Moscow** as PID **38051**. Its version and UUID matched
+the package. Startup recorded 193 log messages, including 15 app messages and
+one private Metal error. The layout completed at **11:49:09.993**. Four
+readbacks three seconds apart and a delayed read at **11:50:03** found eight
+hidden owners and eight current-row windows, all offscreen, across two online
+rows. Three saved owners were closed and one running owner had no current-row
+window. The readback covers observed windows at owner level.
+
+Launch preserved the decoded layout, including all 23 entries and their order.
+Its JSON object key order changed. History appended to the original **1,814,427**
+bytes with mode `0600`. Extended development retention remains **30 days /
+32 MiB** and public defaults remain **seven days / 1 MiB**. The build and tests
+used the current working tree with its pre-existing local edits. Commit
+`b6cc4ee` contains only the two review fixes and their regressions. The
+[sanitized receipt](evidence/2026-11-23-build52-log-repair.json) records
+coverage, verification, and preservation. Raw captures stay local in
+`/private/tmp/traynook-review-20261123.WwphaU`.
+
 ## November 19 follow-up: build 49
 
 Before quitting or rebuilding, a live sample confirmed **1.0.0 (48)**, PID

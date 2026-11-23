@@ -1,12 +1,30 @@
-# TrayNook: build 49, verified diagnostic repairs and concealment
+# TrayNook: build 52, verified inventory recovery and concealment
 
-Updated 2026-11-19. Build 18's measurements are in
+Updated 2026-11-23. Build 18's measurements are in
 [MVP_REPORT.md](MVP_REPORT.md); build 19's decisions are in
 [ADR 0009](adr/0009-hidden-pointer-sibling-keys-and-session-image-cache.md) and
 [ADR 0010](adr/0010-geometry-follows-the-active-menu-bar-row.md).
 
 ## Current state
 
+- **November 23 log follow-up:** the live app was **1.0.0 (51)**. Since the
+  November 19 verification, all 34 recorded safety reveals reached a layout
+  completion. Five terminal separator refusals preceded build 51. Its startup
+  completed with the existing protected-item clamp fix. Build **52** records
+  distinct local reveal causes and keeps editing paused after an inventory
+  deferral until native inspection succeeds. Both changes have failing-before
+  regressions. **305 standard tests**, **97 isolated AppKit checks**, both
+  native-menu variants, native boundary, selected placement, and packaged smoke
+  passed. Movement lacked fixture space. Cancellation passed seven phases
+  before fresh inventory blocked the first tested return with zero return
+  input posts. Signed build 52 launched at **11:49:06 Moscow** with matching live
+  UUID. Four startup readbacks and a delayed recheck found eight hidden-source
+  owners and eight windows, all offscreen across two online rows. Decoded
+  layout data, the original history prefix, signing requirement, and extended
+  retention survived. Startup contained one private Metal error followed by
+  layout completion. The build included pre-existing working-tree edits.
+  See the [review](LOG_REPAIR_PLAN.md#november-23-follow-up-build-52)
+  and [receipt](evidence/2026-11-23-build52-log-repair.json).
 - **November 19 log follow-up:** the live app was build **48**. Since the last
   verified run, all 14 recorded safety reveals recovered, including one
   sleep/wake episode. One optional Menu Bar reorder refused unsafe control
@@ -439,7 +457,7 @@ action. `.optionAll` is required to find offscreen windows.
 
 ```sh
 Scripts/test.sh
-TRAYNOOK_DEV_SIGNING_IDENTITY='TrayNook Dev' TRAYNOOK_BUILD=49 Scripts/build-app.sh
+TRAYNOOK_DEV_SIGNING_IDENTITY='TrayNook Dev' TRAYNOOK_BUILD=52 Scripts/build-app.sh
 Scripts/smoke-test.sh
 Scripts/test-native-cancellation.sh --compile-only
 Scripts/test-native-movement.sh --compile-only

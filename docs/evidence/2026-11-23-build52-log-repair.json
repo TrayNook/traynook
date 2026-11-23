@@ -1,0 +1,724 @@
+{
+  "reviewed_at": "2026-11-23T11:51:22.378431+03:00",
+  "previous_verified_cutoff": "2026-11-19T22:50:48+03:00",
+  "source_base_commit": "ba9a595",
+  "repair_commit": "b6cc4eece729b6b558171bf1dd125151541aa9b6",
+  "working_tree_note": "Build and checks included the pre-existing local edits. Repair commits contain only this review's code, tests, and documentation.",
+  "local_raw_evidence": "/private/tmp/traynook-review-20261123.WwphaU",
+  "original_running_build": {
+    "pid": 10228,
+    "version": "1.0.0",
+    "build": 51,
+    "uuid": "6C3B9633-EB8E-378B-88C2-F5BFBB8CB38D",
+    "launched_at": "2026-11-22T12:29:10.381000+03:00",
+    "live_version_and_uuid_matched_package": true
+  },
+  "coverage": {
+    "history": {
+      "events": 5312,
+      "bytes": 1814427,
+      "first": "2026-11-16T11:48:57.739278+03:00",
+      "last": "2026-11-23T11:36:01.725423+03:00",
+      "after_cutoff": 3143,
+      "first_after_cutoff": "2026-11-19T23:49:44.760492+03:00",
+      "longest_gap": {
+        "from": "2026-11-22T22:49:50.142947+03:00",
+        "through": "2026-11-23T08:15:49.616144+03:00"
+      },
+      "counts_after_cutoff": [
+        {
+          "category": "inventory",
+          "operation": null,
+          "outcome": "completed",
+          "reason": null,
+          "count": 1311
+        },
+        {
+          "category": "inventory",
+          "operation": null,
+          "outcome": "deferred",
+          "reason": "scanIncomplete",
+          "count": 1156
+        },
+        {
+          "category": "display",
+          "operation": null,
+          "outcome": "changed",
+          "reason": null,
+          "count": 434
+        },
+        {
+          "category": "layout",
+          "operation": "savedLayout",
+          "outcome": "started",
+          "reason": null,
+          "count": 83
+        },
+        {
+          "category": "layout",
+          "operation": "savedLayout",
+          "outcome": "completed",
+          "reason": null,
+          "count": 43
+        },
+        {
+          "category": "layout",
+          "operation": "savedLayout",
+          "outcome": "deferred",
+          "reason": "inventoryUnavailable",
+          "count": 29
+        },
+        {
+          "category": "concealment",
+          "operation": null,
+          "outcome": "changed",
+          "reason": "inventoryUnavailable",
+          "count": 28
+        },
+        {
+          "category": "inventory",
+          "operation": null,
+          "outcome": "deferred",
+          "reason": "budgetExceeded",
+          "count": 18
+        },
+        {
+          "category": "layout",
+          "operation": "menuBarOrder",
+          "outcome": "deferred",
+          "reason": "inputNotIdle",
+          "count": 6
+        },
+        {
+          "category": "layout",
+          "operation": "savedLayout",
+          "outcome": "deferred",
+          "reason": "inputNotIdle",
+          "count": 6
+        },
+        {
+          "category": "layout",
+          "operation": "savedLayout",
+          "outcome": "failed",
+          "reason": "controlPlacementRefused",
+          "count": 5
+        },
+        {
+          "category": "concealment",
+          "operation": null,
+          "outcome": "changed",
+          "reason": "environmentChange",
+          "count": 4
+        },
+        {
+          "category": "lifecycle",
+          "operation": null,
+          "outcome": "suspended",
+          "reason": null,
+          "count": 4
+        },
+        {
+          "category": "lifecycle",
+          "operation": null,
+          "outcome": "resumed",
+          "reason": null,
+          "count": 4
+        },
+        {
+          "category": "layout",
+          "operation": "menuBarOrder",
+          "outcome": "deferred",
+          "reason": "inventoryUnavailable",
+          "count": 4
+        },
+        {
+          "category": "concealment",
+          "operation": null,
+          "outcome": "changed",
+          "reason": "geometryUnavailable",
+          "count": 2
+        },
+        {
+          "category": "activation",
+          "operation": "activation",
+          "outcome": "started",
+          "reason": null,
+          "count": 1
+        },
+        {
+          "category": "selectedReturn",
+          "operation": null,
+          "outcome": "started",
+          "reason": null,
+          "count": 1
+        },
+        {
+          "category": "selectedReturn",
+          "operation": null,
+          "outcome": "completed",
+          "reason": null,
+          "count": 1
+        },
+        {
+          "category": "activation",
+          "operation": "activation",
+          "outcome": "completed",
+          "reason": null,
+          "count": 1
+        },
+        {
+          "category": "layout",
+          "operation": "placement",
+          "outcome": "started",
+          "reason": null,
+          "count": 1
+        },
+        {
+          "category": "layout",
+          "operation": "placement",
+          "outcome": "completed",
+          "reason": null,
+          "count": 1
+        }
+      ],
+      "terminal_control_refusals": [
+        "2026-11-21T23:30:56.317897+03:00",
+        "2026-11-21T23:32:35.873511+03:00",
+        "2026-11-22T10:33:44.597860+03:00",
+        "2026-11-22T11:29:05.716539+03:00",
+        "2026-11-22T11:39:03.537130+03:00"
+      ],
+      "safety_recovery_episodes": [
+        {
+          "revealed": "2026-11-20T10:03:34.028031+03:00",
+          "reason": "environmentChange",
+          "resumed": "2026-11-20T10:49:37.485395+03:00",
+          "completed": "2026-11-20T10:49:39.044019+03:00",
+          "recovery_seconds": 1.559
+        },
+        {
+          "revealed": "2026-11-20T11:45:36.635383+03:00",
+          "reason": "inventoryUnavailable",
+          "completed": "2026-11-20T11:45:48.119541+03:00",
+          "recovery_seconds": 11.484
+        },
+        {
+          "revealed": "2026-11-20T15:50:02.284804+03:00",
+          "reason": "inventoryUnavailable",
+          "completed": "2026-11-20T15:50:06.560060+03:00",
+          "recovery_seconds": 4.275
+        },
+        {
+          "revealed": "2026-11-20T16:11:55.389064+03:00",
+          "reason": "inventoryUnavailable",
+          "completed": "2026-11-20T16:12:00.953455+03:00",
+          "recovery_seconds": 5.564
+        },
+        {
+          "revealed": "2026-11-20T16:35:40.972849+03:00",
+          "reason": "inventoryUnavailable",
+          "completed": "2026-11-20T16:35:45.649055+03:00",
+          "recovery_seconds": 4.676
+        },
+        {
+          "revealed": "2026-11-20T16:40:26.198646+03:00",
+          "reason": "inventoryUnavailable",
+          "completed": "2026-11-20T16:40:49.234198+03:00",
+          "recovery_seconds": 23.036
+        },
+        {
+          "revealed": "2026-11-20T17:00:09.313638+03:00",
+          "reason": "geometryUnavailable",
+          "completed": "2026-11-20T17:00:17.980943+03:00",
+          "recovery_seconds": 8.667
+        },
+        {
+          "revealed": "2026-11-20T17:02:30.271734+03:00",
+          "reason": "inventoryUnavailable",
+          "completed": "2026-11-20T17:02:51.456304+03:00",
+          "recovery_seconds": 21.185
+        },
+        {
+          "revealed": "2026-11-20T17:02:58.542952+03:00",
+          "reason": "inventoryUnavailable",
+          "completed": "2026-11-20T17:03:04.921937+03:00",
+          "recovery_seconds": 6.379
+        },
+        {
+          "revealed": "2026-11-20T17:03:14.094499+03:00",
+          "reason": "inventoryUnavailable",
+          "completed": "2026-11-20T17:03:28.990444+03:00",
+          "recovery_seconds": 14.896
+        },
+        {
+          "revealed": "2026-11-20T17:03:36.192402+03:00",
+          "reason": "inventoryUnavailable",
+          "completed": "2026-11-20T17:06:30.594787+03:00",
+          "recovery_seconds": 174.402
+        },
+        {
+          "revealed": "2026-11-20T17:09:51.954627+03:00",
+          "reason": "inventoryUnavailable",
+          "completed": "2026-11-20T17:11:02.582260+03:00",
+          "recovery_seconds": 70.628
+        },
+        {
+          "revealed": "2026-11-20T18:04:09.000283+03:00",
+          "reason": "inventoryUnavailable",
+          "completed": "2026-11-20T18:05:57.436791+03:00",
+          "recovery_seconds": 108.437
+        },
+        {
+          "revealed": "2026-11-20T18:49:28.765629+03:00",
+          "reason": "inventoryUnavailable",
+          "completed": "2026-11-20T18:49:33.548406+03:00",
+          "recovery_seconds": 4.783
+        },
+        {
+          "revealed": "2026-11-20T20:21:34.674294+03:00",
+          "reason": "inventoryUnavailable",
+          "completed": "2026-11-20T20:22:17.398005+03:00",
+          "recovery_seconds": 42.724
+        },
+        {
+          "revealed": "2026-11-20T20:43:02.414236+03:00",
+          "reason": "inventoryUnavailable",
+          "completed": "2026-11-20T20:44:11.485242+03:00",
+          "recovery_seconds": 69.071
+        },
+        {
+          "revealed": "2026-11-20T20:46:48.842596+03:00",
+          "reason": "inventoryUnavailable",
+          "completed": "2026-11-20T20:47:41.476717+03:00",
+          "recovery_seconds": 52.634
+        },
+        {
+          "revealed": "2026-11-20T20:51:30.800087+03:00",
+          "reason": "inventoryUnavailable",
+          "completed": "2026-11-20T20:52:40.609656+03:00",
+          "recovery_seconds": 69.81
+        },
+        {
+          "revealed": "2026-11-20T21:21:36.236042+03:00",
+          "reason": "environmentChange",
+          "resumed": "2026-11-20T22:04:12.686790+03:00",
+          "completed": "2026-11-20T22:04:23.514884+03:00",
+          "recovery_seconds": 10.828
+        },
+        {
+          "revealed": "2026-11-20T22:36:51.411332+03:00",
+          "reason": "geometryUnavailable",
+          "completed": "2026-11-20T22:36:57.399989+03:00",
+          "recovery_seconds": 5.989
+        },
+        {
+          "revealed": "2026-11-21T01:21:49.896991+03:00",
+          "reason": "inventoryUnavailable",
+          "completed": "2026-11-21T01:21:57.521364+03:00",
+          "recovery_seconds": 7.624
+        },
+        {
+          "revealed": "2026-11-21T01:36:56.533637+03:00",
+          "reason": "inventoryUnavailable",
+          "completed": "2026-11-21T01:37:33.010144+03:00",
+          "recovery_seconds": 36.477
+        },
+        {
+          "revealed": "2026-11-21T16:49:15.077132+03:00",
+          "reason": "inventoryUnavailable",
+          "completed": "2026-11-21T16:49:19.625780+03:00",
+          "recovery_seconds": 4.549
+        },
+        {
+          "revealed": "2026-11-21T21:01:12.635729+03:00",
+          "reason": "inventoryUnavailable",
+          "completed": "2026-11-21T21:01:17.900147+03:00",
+          "recovery_seconds": 5.264
+        },
+        {
+          "revealed": "2026-11-21T22:21:18.499548+03:00",
+          "reason": "inventoryUnavailable",
+          "completed": "2026-11-21T22:22:30.354017+03:00",
+          "recovery_seconds": 71.854
+        },
+        {
+          "revealed": "2026-11-22T13:09:26.010398+03:00",
+          "reason": "inventoryUnavailable",
+          "completed": "2026-11-22T13:10:41.001579+03:00",
+          "recovery_seconds": 74.991
+        },
+        {
+          "revealed": "2026-11-22T13:18:11.759774+03:00",
+          "reason": "inventoryUnavailable",
+          "completed": "2026-11-22T13:19:07.272605+03:00",
+          "recovery_seconds": 55.513
+        },
+        {
+          "revealed": "2026-11-22T13:21:12.823675+03:00",
+          "reason": "inventoryUnavailable",
+          "completed": "2026-11-22T13:21:54.406451+03:00",
+          "recovery_seconds": 41.583
+        },
+        {
+          "revealed": "2026-11-22T13:24:53.207584+03:00",
+          "reason": "inventoryUnavailable",
+          "completed": "2026-11-22T13:24:58.194978+03:00",
+          "recovery_seconds": 4.987
+        },
+        {
+          "revealed": "2026-11-22T13:34:34.613365+03:00",
+          "reason": "inventoryUnavailable",
+          "completed": "2026-11-22T13:34:40.174455+03:00",
+          "recovery_seconds": 5.561
+        },
+        {
+          "revealed": "2026-11-23T08:15:49.616144+03:00",
+          "reason": "environmentChange",
+          "resumed": "2026-11-23T08:20:55.769935+03:00",
+          "completed": "2026-11-23T08:21:06.313647+03:00",
+          "recovery_seconds": 10.544
+        },
+        {
+          "revealed": "2026-11-23T08:31:29.960549+03:00",
+          "reason": "environmentChange",
+          "resumed": "2026-11-23T09:34:40.901952+03:00",
+          "completed": "2026-11-23T09:34:42.304567+03:00",
+          "recovery_seconds": 1.403
+        },
+        {
+          "revealed": "2026-11-23T11:03:28.248402+03:00",
+          "reason": "inventoryUnavailable",
+          "completed": "2026-11-23T11:03:32.603066+03:00",
+          "recovery_seconds": 4.355
+        },
+        {
+          "revealed": "2026-11-23T11:31:53.158358+03:00",
+          "reason": "inventoryUnavailable",
+          "completed": "2026-11-23T11:32:03.682244+03:00",
+          "recovery_seconds": 10.524
+        }
+      ]
+    },
+    "unified_logs": {
+      "records": 11258,
+      "first": "2026-11-20 11:58:50.254554+0300",
+      "last": "2026-11-23 11:36:02.532902+0300",
+      "record_types": {
+        "logEvent": 964,
+        "stateEvent": 32,
+        "activityCreateEvent": 10262
+      },
+      "application_messages": 170,
+      "application_first": "2026-11-23 08:15:49.575465+0300",
+      "application_last": "2026-11-23 11:36:02.500936+0300",
+      "error_fault_by_sender": {
+        "SkyLight": 6,
+        "CarbonCore": 73,
+        "GenerativeModels": 2,
+        "LaunchServices": 1,
+        "Metal": 3,
+        "AppKit": 1,
+        "TrayNook": 2
+      },
+      "scope": "Retained default/info TrayNook process and subsystem records, including frameworks. Tail restricted to the original live PID.",
+      "gaps": "No matching retained records until November 20 11:58:50. No application messages before November 23 08:15:49 in the review window. Debug coverage unavailable.",
+      "carboncore_file_id_fallbacks": 73,
+      "skylight_error_pairs": 3,
+      "unchanged_source_fallbacks_retained_concealment": 19,
+      "display_fallbacks_retained_concealment": 6,
+      "active_row_changes": 69
+    },
+    "diagnostic_reports": {
+      "user_files": 132,
+      "system_files": 106,
+      "direct_traynook_crash_or_hang_reports": 0,
+      "jetsam_reports_with_active_traynook_and_no_reason": 19,
+      "note": "User and system directories including archives. System disk-write reports and an OrcaSlicer hang sample mention the process."
+    },
+    "native_readbacks_before_quit": [
+      {
+        "current_row_source_windows": 8,
+        "discriminated_hidden_keys": 0,
+        "excluded_windows": 10,
+        "excluded_windows_onscreen": 0,
+        "hidden_owners_observed": 8,
+        "mixed_placement_owners": 0,
+        "online_rows": 2,
+        "raced_windows": 0,
+        "running_hidden_owners_without_current_row_window": 1,
+        "saved_hidden_owners": 12,
+        "saved_hidden_owners_not_running": 3,
+        "timestamp": "2026-11-23T08:35:09Z",
+        "topology_changed_during_readback": false,
+        "visible_hidden_source_windows": 0
+      },
+      {
+        "current_row_source_windows": 8,
+        "discriminated_hidden_keys": 0,
+        "excluded_windows": 10,
+        "excluded_windows_onscreen": 0,
+        "hidden_owners_observed": 8,
+        "mixed_placement_owners": 0,
+        "online_rows": 2,
+        "raced_windows": 0,
+        "running_hidden_owners_without_current_row_window": 1,
+        "saved_hidden_owners": 12,
+        "saved_hidden_owners_not_running": 3,
+        "timestamp": "2026-11-23T08:35:12Z",
+        "topology_changed_during_readback": false,
+        "visible_hidden_source_windows": 0
+      }
+    ]
+  },
+  "repairs": [
+    "Preserve fixed optional local inventory failure detail in version-one concealment records. Reproduced missing metadata and stale-snapshot causes.",
+    "Keep editing paused during a recovery scan until native inspection is accepted. The blocked-read fixture reproduced premature editability in both concealed and revealed cases."
+  ],
+  "verification": {
+    "standard": 305,
+    "isolated_appkit": {
+      "AppModelInventoryTests": 19,
+      "BackgroundInventoryTests": 7,
+      "ConcealmentRecoveryTests": 33,
+      "DetailReorderTests": 4,
+      "DisplayChangeTests": 1,
+      "DragRenderingTests": 3,
+      "IdleInventoryTests": 2,
+      "LatestNativeInspectionTests": 1,
+      "LoginItemStatusTests": 5,
+      "MenuBarReorderTests": 8,
+      "ProxyImageCaptureTests": 4,
+      "SavedPlacementEditingTests": 1,
+      "WindowMetadataReaderTests": 9
+    },
+    "native_menu": {
+      "variants": 2,
+      "checks_per_variant": 3,
+      "first_run_limit": "Second variant's ordinary fixture window was not visible; clean retry passed."
+    },
+    "native_boundary_cycles": 3,
+    "native_placement": {
+      "cycles": 2,
+      "sentinel_samples": 206,
+      "reveals": 0,
+      "unavailable": 0,
+      "original_windows": 35,
+      "surviving_windows": 35
+    },
+    "native_movement": {
+      "result": "blocked",
+      "reason": "The 36-point disposable fixture did not fit. No item was moved."
+    },
+    "native_cancellation": {
+      "before_refusal_passed_phases": 7,
+      "stopped_at": "return-motion-down",
+      "reason": "Fresh return inventory unavailable",
+      "return_sequence_down_up_recovery_posts": [
+        0,
+        0,
+        0
+      ]
+    },
+    "trusted_terminal_prelaunch_diagnose": {
+      "accessibility": "granted",
+      "inventory": "complete",
+      "items": 20,
+      "screen_recording": "not granted"
+    },
+    "packaged_smoke": {
+      "passed": true,
+      "earlier_focus_failure": "Builds 51 and 52 failed the popover focus assertion while LoginWindow owned the locked GUI session."
+    },
+    "launched_build": {
+      "pid": 38051,
+      "version": "1.0.0",
+      "build": 52,
+      "uuid": "40F1B033-ECB8-306B-8ECE-437206FB3CA4",
+      "launched_at": "2026-11-23T11:49:06.903000+03:00",
+      "live_version_and_uuid_matched_package": true,
+      "signing_authority": "TrayNook Dev",
+      "strict_deep_signature_verified": true,
+      "designated_requirement_matches_original": true,
+      "startup_live_unified": {
+        "records": 238,
+        "first": "2026-11-23 11:49:06.932662+0300",
+        "last": "2026-11-23 11:49:20.129937+0300",
+        "record_types": {
+          "activityCreateEvent": 45,
+          "logEvent": 193
+        },
+        "application_messages": 15,
+        "application_first": "2026-11-23 11:49:07.870999+0300",
+        "application_last": "2026-11-23 11:49:09.287730+0300",
+        "error_fault_by_sender": {
+          "Metal": 1
+        }
+      },
+      "startup_retained_unified": {
+        "records": 239,
+        "first": "2026-11-23 11:49:06.932719+0300",
+        "last": "2026-11-23 11:49:17.622196+0300",
+        "record_types": {
+          "activityCreateEvent": 46,
+          "logEvent": 193
+        },
+        "application_messages": 15,
+        "application_first": "2026-11-23 11:49:07.895308+0300",
+        "application_last": "2026-11-23 11:49:09.312027+0300",
+        "error_fault_by_sender": {
+          "Metal": 1
+        }
+      },
+      "startup_local_history": [
+        {
+          "timestamp": "2026-11-23T11:49:07.871167+03:00",
+          "category": "inventory",
+          "outcome": "completed",
+          "reason": null,
+          "operation": null
+        },
+        {
+          "timestamp": "2026-11-23T11:49:08.008173+03:00",
+          "category": "layout",
+          "outcome": "started",
+          "reason": null,
+          "operation": "savedLayout"
+        },
+        {
+          "timestamp": "2026-11-23T11:49:08.371587+03:00",
+          "category": "inventory",
+          "outcome": "completed",
+          "reason": null,
+          "operation": null
+        },
+        {
+          "timestamp": "2026-11-23T11:49:08.766337+03:00",
+          "category": "inventory",
+          "outcome": "completed",
+          "reason": null,
+          "operation": null
+        },
+        {
+          "timestamp": "2026-11-23T11:49:09.282510+03:00",
+          "category": "inventory",
+          "outcome": "completed",
+          "reason": null,
+          "operation": null
+        },
+        {
+          "timestamp": "2026-11-23T11:49:09.897376+03:00",
+          "category": "inventory",
+          "outcome": "completed",
+          "reason": null,
+          "operation": null
+        },
+        {
+          "timestamp": "2026-11-23T11:49:09.993427+03:00",
+          "category": "layout",
+          "outcome": "completed",
+          "reason": null,
+          "operation": "savedLayout"
+        }
+      ],
+      "native_readbacks": [
+        {
+          "current_row_source_windows": 8,
+          "discriminated_hidden_keys": 0,
+          "excluded_windows": 10,
+          "excluded_windows_onscreen": 0,
+          "hidden_owners_observed": 8,
+          "mixed_placement_owners": 0,
+          "online_rows": 2,
+          "raced_windows": 0,
+          "running_hidden_owners_without_current_row_window": 1,
+          "saved_hidden_owners": 12,
+          "saved_hidden_owners_not_running": 3,
+          "timestamp": "2026-11-23T08:49:10Z",
+          "topology_changed_during_readback": false,
+          "visible_hidden_source_windows": 0
+        },
+        {
+          "current_row_source_windows": 8,
+          "discriminated_hidden_keys": 0,
+          "excluded_windows": 10,
+          "excluded_windows_onscreen": 0,
+          "hidden_owners_observed": 8,
+          "mixed_placement_owners": 0,
+          "online_rows": 2,
+          "raced_windows": 0,
+          "running_hidden_owners_without_current_row_window": 1,
+          "saved_hidden_owners": 12,
+          "saved_hidden_owners_not_running": 3,
+          "timestamp": "2026-11-23T08:49:13Z",
+          "topology_changed_during_readback": false,
+          "visible_hidden_source_windows": 0
+        },
+        {
+          "current_row_source_windows": 8,
+          "discriminated_hidden_keys": 0,
+          "excluded_windows": 10,
+          "excluded_windows_onscreen": 0,
+          "hidden_owners_observed": 8,
+          "mixed_placement_owners": 0,
+          "online_rows": 2,
+          "raced_windows": 0,
+          "running_hidden_owners_without_current_row_window": 1,
+          "saved_hidden_owners": 12,
+          "saved_hidden_owners_not_running": 3,
+          "timestamp": "2026-11-23T08:49:16Z",
+          "topology_changed_during_readback": false,
+          "visible_hidden_source_windows": 0
+        },
+        {
+          "current_row_source_windows": 8,
+          "discriminated_hidden_keys": 0,
+          "excluded_windows": 10,
+          "excluded_windows_onscreen": 0,
+          "hidden_owners_observed": 8,
+          "mixed_placement_owners": 0,
+          "online_rows": 2,
+          "raced_windows": 0,
+          "running_hidden_owners_without_current_row_window": 1,
+          "saved_hidden_owners": 12,
+          "saved_hidden_owners_not_running": 3,
+          "timestamp": "2026-11-23T08:49:19Z",
+          "topology_changed_during_readback": false,
+          "visible_hidden_source_windows": 0
+        }
+      ],
+      "delayed_native_readback": {
+        "current_row_source_windows": 8,
+        "discriminated_hidden_keys": 0,
+        "excluded_windows": 10,
+        "excluded_windows_onscreen": 0,
+        "hidden_owners_observed": 8,
+        "mixed_placement_owners": 0,
+        "online_rows": 2,
+        "raced_windows": 0,
+        "running_hidden_owners_without_current_row_window": 1,
+        "saved_hidden_owners": 12,
+        "saved_hidden_owners_not_running": 3,
+        "timestamp": "2026-11-23T08:50:03Z",
+        "topology_changed_during_readback": false,
+        "visible_hidden_source_windows": 0
+      },
+      "native_readback_scope": "WindowServer optionAll bracketing optionOnScreenOnly on both online menu rows. Owner-level evidence covers observed windows and cannot identify AX siblings."
+    }
+  },
+  "preservation": {
+    "layout_bytes_preserved": false,
+    "decoded_layout_preserved": true,
+    "layout_before_sha256": "d2df627a823670e4a05cbefcaf0a2be3c559fb25402800730e63182aab07d476",
+    "layout_after_sha256": "bcfe941453b020237061364bc4640bea1d35f6e0c2d383b5bb909608ff9bc77c",
+    "history_prefix_preserved": true,
+    "history_mode": "0600",
+    "history_bytes_before_quit": 1814427,
+    "history_bytes_after_startup": 1816750,
+    "extended_development_retention_days": 30,
+    "extended_development_retention_bytes": 33554432,
+    "public_retention_days": 7,
+    "public_retention_bytes": 1048576,
+    "logs_uploaded": false,
+    "system_logging_retention_changed": false
+  }
+}
