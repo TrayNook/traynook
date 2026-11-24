@@ -29,6 +29,26 @@ struct NativeGeometryTests {
       clippedAt: 729) == nil)
   }
 
+  @Test("Automatic separator recovery keeps the saved launcher slot when its window is clipped")
+  func separatorRecoveryPreservesLauncher() {
+    #expect(!NativeMenuBarController.shouldResetLauncher(isVisible: false,
+      savedPosition: 527, displayWidths: [1728, 2560]))
+    #expect(!NativeMenuBarController.shouldResetLauncher(isVisible: false,
+      savedPosition: 1900, displayWidths: [1728, 2560]))
+    #expect(!NativeMenuBarController.shouldResetLauncher(isVisible: false,
+      savedPosition: 527, displayWidths: []))
+  }
+
+  @Test("Automatic recovery can rescue a launcher with an out-of-range slot and confirmed clipping")
+  func separatorRecoveryRescuesUnusableLauncher() {
+    for visibility: Bool? in [nil, true] {
+      #expect(!NativeMenuBarController.shouldResetLauncher(isVisible: visibility,
+        savedPosition: 6000, displayWidths: [1728, 2560]))
+    }
+    #expect(NativeMenuBarController.shouldResetLauncher(isVisible: false,
+      savedPosition: 6000, displayWidths: [1728, 2560]))
+  }
+
   @Test("Display attachment grows concealment and removal never shrinks it")
   func concealmentLengthRetainsDisplayCoverage() {
     let initial = NativeMenuBarController.concealmentLength(current: 2, displayWidths: [1728])

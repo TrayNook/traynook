@@ -432,6 +432,13 @@ final class NativeMenuBarController: NSObject {
     return position + max(24, shortfall + 8)
   }
 
+  static func shouldResetLauncher(isVisible: Bool?, savedPosition: Double?, displayWidths: [CGFloat]) -> Bool {
+    guard isVisible == false, let savedPosition, savedPosition.isFinite,
+      let widestDisplay = displayWidths.filter({ $0.isFinite && $0 > 0 }).max() else { return false }
+    // Crowding or an inactive display can temporarily hide a valid launcher slot.
+    return savedPosition > widestDisplay
+  }
+
   /// Establish our controls without asking the user to drag an offscreen item.
   /// Preserve the launcher slot while looking for a safe place for the separator.
   func prepareLayout(keepingVisible: Set<String> = []) async throws {
@@ -463,13 +470,18 @@ final class NativeMenuBarController: NSObject {
         .doubleValue ?? initialBoundaryPosition
       if compactEnvironment() == nil {
         // A stale separator slot can clip either control. Test the launcher on
-        // its own before using a fallback for a genuinely offscreen launcher.
+        // its own before repairing an out-of-range saved position.
         Self.setVisiblePreservingPosition(separator, visible: false)
         try await pause(0.25, token: token)
+        let launcherName = "TrayNookLauncher"
+        let launcherPosition = (UserDefaults.standard.object(forKey: Self.preferredPositionKey(launcherName)) as? NSNumber)?
+          .doubleValue
         if let window = launcher.button?.window, let id = UInt32(exactly: window.windowNumber),
-          WindowMetadata.read(ids: [id]).first?.isVisible == false {
+          Self.shouldResetLauncher(isVisible: WindowMetadata.read(ids: [id]).first?.isVisible,
+            savedPosition: launcherPosition, displayWidths: NSScreen.screens.map(\.frame.width)) {
           try requireIdleInput(checkingKeys: false)
-          Self.restorePosition(of: launcher, name: "TrayNookLauncher", fallback: 0, force: true)
+          nativeLog.notice("prepareLayout resetting an out-of-range launcher position")
+          Self.restorePosition(of: launcher, name: launcherName, fallback: 0, force: true)
         }
         position = 0
         try await positionBoundary(position)
